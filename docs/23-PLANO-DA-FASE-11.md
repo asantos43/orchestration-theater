@@ -85,7 +85,7 @@ Conferido no código em 2026-11-22, no commit `3c84693` (a main depois do PR #31
 | P6 | Caos C: atualização de adaptador e atualização do aplicativo, com processos mortos de verdade | P1 | P3, P4, P5, P7, P10 | a fazer |
 | P7 | Idempotência de integração e de PR: queda em cada fronteira do efeito | P1, P2 | P3, P4, P5, P6, P10 | a fazer |
 | P8 | Revisão de segurança da API e das cascas (D3) | P0 | P1, P2, P9 | a fazer |
-| P9 | Revisão das portas (R16) (D4) | P0 | P1, P2, P8 | a fazer |
+| P9 | Revisão das portas (R16) (D4) | P0 | P1, P2, P8 | feito |
 | P10 | Documentação: o guia de adaptadores e plugins (D5), com exemplo que roda | P9 | P3 a P7 | a fazer |
 | P11 | Roteiro de caos do dono (nível manual) e, se a D1 mandar, a VM | P3, P4, P5, P6, P7 | P12 (a parte automática) | a fazer |
 | P12 | Aceite da fase | P1 a P11 | nada | a fazer |
@@ -249,7 +249,125 @@ O resultado é a seção "Revisão da Fase 11" no [docs/09](09-ISOLAMENTO-E-SEGU
 
 **Aceite:** a tabela cobre todas as portas, cada linha com a evidência (arquivo) e a recomendação; as divergências com a arquitetura estão listadas para o dono decidir (a arquitetura não é mudada por este passo).
 
-**Como ficou:** a preencher.
+**Como ficou:** a revisão está na subseção "Revisão das portas", logo abaixo. Nenhum código foi mexido (N281: só se listam as candidatas do R16; a simplificação fica para depois, com o ok do dono). Conferido no código em 2026-11-23, no commit `b389285` (a main) **[V]**.
+
+- **24 portas cobertas:** as 18 portas versionadas de `core/src/ports` e as 6 da tabela da §5.18 sem código.
+- **Recomendações:** 9 **manter**, 7 **completar** (falta suíte, ou falso, ou os dois), 2 **simplificar** (candidatas do R16: `LocalModelServer` e `Vcs`) e 6 sem código. Dessas 6, 4 ficam no desenho até a fase que as usa (`OsScheduler`, `Notifier`, `TerminalSession`, `Dictation`) e 2 são candidatas a sair da tabela (`EventSink`, `TelemetryIngest`).
+- **Achados que pedem decisão do dono** (detalhe em "Divergências com a arquitetura"):
+  - o daemon não monta nenhum `CodeHost` real: o `compose.ts` só aceita `overrides.codeHost`, e o GitHub só é usado nos testes do próprio adaptador;
+  - os adaptadores `Ollama` e `llama.cpp` não são usados pelo daemon;
+  - `ResourceMonitor` na arquitetura e `MemoryProbe` no código, e `TelemetryStore` fora da tabela.
+- **Nenhuma suíte de conformidade nova foi escrita aqui.** As sete portas marcadas **completar** viram passo próprio, se o dono quiser (D4).
+
+#### Revisão das portas
+
+**Método.** Para cada porta de `core/src/ports` e da tabela da §5.18, procurei no código: o adaptador real (`implements: { port: ... }` e `class X implements Porta`), o falso (`core/src/testing`, `testing/` dos pacotes e classes de teste), a suíte (`describe*Conformance` em `sdk/src/conformance` e nos pacotes) e quantos arquivos de produção citam o nome da porta. Os caminhos são relativos a `packages/`. A contagem de arquivos é por `grep -w`, **sem testes nem fixtures**, e inclui a definição e o adaptador: serve de ordem de grandeza, não de medida exata **[V: contagem; aproximada]**.
+
+**O que conta como porta.** São 18 as interfaces com `*_PORT_VERSION` em `core/src/ports`: `AgentSession`, `BrowserSession`, `ClientAdapter`, `Clock`, `CodeHost`, `EventLog`, `LocalModelServer`, `MemoryProbe`, `ModelCatalog`, `ProcessLauncher`, `PromptSource`, `QuotaProbe`, `Sandbox`, `SecretVault`, `Store`, `TelemetryStore`, `UsageSource` e `Vcs`. Os outros arquivos da pasta não são portas à parte:
+
+- 16 são os agregados do `Store` (`plays`, `sessions`, `directives`, `usage`, `wakeups` e os demais), cobertos pela suíte do `Store`;
+- 5 são apoio: `adapter.ts` (a base `Adapter`), `conventions.ts`, `executor.ts`, `store-schemas.ts` e `client-otel.ts` (contrato de ambiente dos clientes, sem adaptador).
+
+**Critério da recomendação:**
+
+- **manter:** tem adaptador real, falso e suíte, e o daemon a usa em produção;
+- **completar:** tem adaptador real e uso em produção, mas falta suíte, falso ou os dois (regra 5);
+- **simplificar:** candidata do R16, porque não tem segundo previsto e a porta não paga a cerimônia, ou porque o daemon não a usa.
+
+##### Portas com código (18)
+
+| Porta | Adaptadores reais | Falso | Suíte | Segundo previsto | Custo de tirar | Recomendação |
+|---|---|---|---|---|---|---|
+| `ClientAdapter` | `claude-code`, `codex`, `opencode` (`adapters/client-*`) | `FakeClientAdapter` (`core/src/testing/fake-client-adapter.ts`) | `sdk/src/conformance/client-adapter.ts`, rodada nos três clientes e no falso | `gemini`: o id está em `KNOWN_CLIENT_IDS` (`core/src/ports/executor.ts`), sem adaptador | alto: 32 arquivos, 14 no daemon | **manter** |
+| `AgentSession` | `AcpTransport` (`adapters/session-acp/src/acp-transport.ts`), embrulhado por `ManagedAgentSession` (`core/src/managed-agent-session.ts`). Quem varia é a `SessionTransport` | `FakeSessionTransport` (`core/src/testing/fake-session-transport.ts`) | `sdk/src/conformance/agent-session.ts` | transporte headless (a "saída de emergência"): só os argumentos `headlessArgs` do Claude Code (`client-claude-code/src/policy.ts`); não há `AgentSession` headless | alto: 16 | **manter** |
+| `ModelCatalog` | `ClaudeModelCatalog`, `CodexModelCatalog`, `OpenCodeModelCatalog` (`adapters/client-*/src/model-catalog.ts`) | `FakeModelCatalog` (`fake-client-adapter.ts`) | **nenhuma**: a do `ClientAdapter` só confere `models.discovery` não vazio (`conformance/client-adapter.ts:129`) | clientes novos | médio: 13 | **completar** (suíte própria) |
+| `LocalModelServer` | `OllamaServer`, `LlamaCppServer` (`adapters/local-*`) | servidor roteirizado dentro de cada adaptador (`adapters/local-*/src/testing`) e o `ScriptedServer` da suíte; nada em `core/src/testing` | `sdk/src/conformance/local-model-server.ts`, rodada nos dois | LM Studio e vLLM, depois da v1 (N71) | baixo: o daemon **não importa nem depende** dos dois pacotes, e só um comentário de `execution/admission.ts` cita a porta | **simplificar** (candidata do R16; ver "Candidatas") |
+| `QuotaProbe` | Claude, Codex e OpenCode (`adapters/client-*/src/quota-probe.ts`); `MiniMaxQuotaProbe` e `ProviderQuotaProbe` (`daemon/src/quota`) | `FakeQuotaProbe` (`fake-client-adapter.ts`) | **nenhuma** | provedores novos; depois da v1, por plugin, com a mesma suíte na ativação (§5.18) | médio: 15 | **completar** (suíte) |
+| `UsageSource` | `CcusageSource` (`adapters/usage-ccusage`) | `FakeSource`, **copiada** em dois testes do daemon (`daemon-ccusage.test.ts`, `usage/ccusage-audit.test.ts`); o `fake-ccusage` do pacote é um binário falso | **nenhuma** | "contabilidade local": sem adaptador e sem plano **[N]** | baixo: 4 | **completar** (falso compartilhado e suíte) |
+| `SecretVault` | `KeyringVault`, `EncryptedFileVault` (`adapters/vault-*`) | `InMemorySecretVault` | `conformance/secret-vault.ts`, rodada nos dois e no falso | os dois reais já são o segundo | alto: 23 | **manter** |
+| `Store` | `SqliteStore` (`adapters/store-sqlite`), com **dois drivers**: `better-sqlite3` e `node:sqlite` | `InMemoryStore` | `conformance/store.ts` (agregados e transações), rodada nos dois drivers e no falso | `node:sqlite` já existe, como driver do mesmo adaptador | muito alto: 91 | **manter** |
+| `EventLog` | tabela `events` do SQLite (`adapters/store-sqlite/src/events.ts`) | `InMemoryEventLog` | `conformance/event-log.ts`, rodada também com `synchronous=normal` | nenhum (`—` na tabela) | alto: 22 | **manter** |
+| `TelemetryStore` | `SqliteTelemetryStore` (`adapters/telemetry-sqlite`) | `MemoryTelemetryStore` em `daemon/src/telemetry/telemetry-fixture.ts`, usado por 17 arquivos; **não** está em `core/src/testing`, então o SDK não o alcança | **nenhuma** (`telemetry-sqlite/src/store.test.ts` testa só o adaptador) | nenhum; a porta nem consta na tabela | médio: 15, 12 no daemon | **completar** (falso em `core/src/testing` e suíte) |
+| `Vcs` | `GitVcs` (`adapters/vcs-git`) | **nenhum**: os testes usam o `git` de verdade em pasta temporária | `conformance/vcs.ts` | nenhum (`—` na tabela) | alto: 26, 19 no daemon | **simplificar** (a porta fica; ver "Candidatas") |
+| `CodeHost` | `GithubCodeHost` (`adapters/codehost-github`) | `FakeCodeHost` (`core/src/testing/fake-code-host.ts`) | `conformance/code-host.ts`, rodada no falso e no GitHub com `gh` falso | GitLab, Gitea, só merge local **[hipótese]** | médio: 13 | **manter**; mas o daemon não o monta (ver "Divergências") |
+| `Sandbox` | `SrtSandbox` (`adapters/sandbox-srt`) | `RecordingSandbox`, privado em `daemon/src/sandbox-wiring.test.ts`. O adaptador "nulo" **não existe**: sem camada, o `compose.ts` devolve `undefined` | **nenhuma** | usuário de baixo privilégio, no Windows: não existe | médio: 14 | **completar** (suíte e um falso exportado) |
+| `ProcessLauncher` | `PosixProcessLauncher` (com escopo do systemd), `WindowsProcessLauncher` (`adapters/platform-*`) | `FakeProcessLauncher` (`core/src/testing/fake-process-launcher.ts`) | `conformance/process-launcher.ts`, rodada nos dois e no falso | `koffi` e `execa`: não previstos agora | alto: 38 | **manter** |
+| `MemoryProbe` | `PosixMemoryProbe` (`adapters/platform-posix/src/memory-probe.ts`), que também cobre macOS e Windows por `os.freemem` | `FakeMemoryProbe` (`core/src/testing/fake-memory-probe.ts`) | **nenhuma** (só `memory-probe.test.ts` do adaptador) | nenhum | baixo: 6 | **completar** (suíte pequena) |
+| `Clock` | `SystemClock` (`adapters/clock-system`) | `FakeClock` (`core/src/testing/fake-clock.ts`) | `conformance/clock.ts`, rodada no real, no falso e num relógio de tempo real de teste | o falso, nos testes | muito alto: 107 | **manter** |
+| `PromptSource` | `FilePromptSource` (`adapters/prompts-files`) | `InMemoryPromptSource` | `conformance/prompt-source.ts` | prompts por projeto **[hipótese]** | médio: 16 | **manter** |
+| `BrowserSession` | `PlaywrightBrowserSession` (`adapters/browser-playwright`) | `FakeBrowserSession` (`core/src/testing/fake-browser-session.ts`) | **nenhuma** | extensão no navegador (N40, Fase 12): não existe no código **[V]** | baixo: 4, mas é a fronteira com o Chromium | **completar** (suíte) |
+
+##### Portas da tabela da §5.18 sem código (6)
+
+Nenhuma tem arquivo em `core/src/ports` nem adaptador **[V: `grep` no código; só apareceu o tipo `PluginEventSink`, que não é a porta]**. O custo de tirar é só texto (arquitetura e docs).
+
+| Porta | O que faz o papel hoje | Quando nasce | Recomendação |
+|---|---|---|---|
+| `OsScheduler` | nada. Só os `wakeups` de cota e de orçamento (`core/src/ports/wakeups.ts`) acordam o daemon | Fase 9b, junto com o agendador (N285) | **manter** no desenho; a porta nasce com o primeiro adaptador, pela regra 5 |
+| `Notifier` | nada. Os avisos vão por eventos e pelo chat, sem porta | Fase 9b (§5.15) | **manter** no desenho; idem |
+| `TerminalSession` | nada | Fase 12 (web, N39) | **manter** no desenho; idem |
+| `Dictation` | nada | Fase 12; o motor ainda é **[a definir]** | **manter** no desenho; idem |
+| `EventSink` | a função existe, **sem porta**: SSE (`daemon/src/api/routes/events.ts`), exportador OTLP (`daemon/src/telemetry/otlp-exporter.ts`), `/metrics` (`telemetry/prometheus.ts`) e ATIF (`daemon/src/atif`), cada um ligado à mão no `compose.ts` e no `daemon.ts` | já "nasceu" sem a porta | **simplificar**: riscar da tabela, ou o dono manda criar a porta (há quatro saídas reais, mas nenhuma é trocada por configuração) |
+| `TelemetryIngest` | a classe concreta `TelemetryReceiver` (`daemon/src/telemetry/receiver.ts`), o receptor OTLP | idem | **simplificar**: riscar da tabela; é um receptor só, sem variação prevista (`—`) |
+
+**Contagem:** 24 portas. **Manter:** 9 com código (`ClientAdapter`, `AgentSession`, `SecretVault`, `Store`, `EventLog`, `CodeHost`, `ProcessLauncher`, `Clock`, `PromptSource`) e 4 no desenho. **Completar:** 7 (`ModelCatalog`, `QuotaProbe`, `UsageSource`, `TelemetryStore`, `Sandbox`, `MemoryProbe`, `BrowserSession`). **Simplificar:** 4, sendo 2 com código (`LocalModelServer`, `Vcs`) e 2 sem (`EventSink`, `TelemetryIngest`).
+
+##### Candidatas do R16
+
+Só a lista, pela N281. Cada uma, se o dono quiser, vira um PR próprio (P9a, P9b...), nos arquivos da porta.
+
+1. **`LocalModelServer` (porta sem consumidor em produção).**
+   - Há dois adaptadores, falso e suíte, mas o `daemon/package.json` não depende de `adapter-local-ollama` nem de `adapter-local-llama-cpp`, e nada em `daemon/src` os importa [V]. O único elo é `localInstanceOf(config, detectedSlots)` em `execution/admission.ts`, e **não achei** quem lhe passe os `slots` lidos pela porta [V: `grep` de `.slots()` em `daemon/src`, sem resultado].
+   - A regra 5 diz "porta sem uso real não entra". Duas saídas: ligar a porta ao `compose.ts` (trabalho de funcionalidade, não de endurecimento) ou tirar a porta e os dois pacotes até o perfil `local` precisar deles.
+   - **Custo de tirar:** apagar dois pacotes e a suíte; nenhum arquivo do daemon muda.
+2. **`Vcs` (cerimônia sem segundo adaptador).**
+   - A porta é fronteira legítima (processo e disco), e a tabela diz `—` para o segundo. Mas o contrato foi dividido em oito interfaces: `Vcs` e sete extensões opcionais (`VcsMerge`, `VcsRebase`, `VcsDiff`, `VcsBranchDelete`, `VcsHistory`, `VcsInspect`, `VcsInit`), com sete guardas `supports*` (61 ocorrências no código, entre definições e chamadas) para um adaptador que implementa todas [V: `core/src/ports/vcs.ts`; `adapters/vcs-git/src/vcs.ts:70`].
+   - Simplificar é **fundir as extensões em `Vcs`** e apagar as guardas, mantendo a porta, o falso (que não existe) e a suíte. **Custo:** médio, mexe em `daemon/src/{scenarios,project,workspace}` e nos testes que fingem um `Vcs` parcial.
+   - Sem falso: se o dono aceitar o `git` em pasta temporária como o "falso" da regra 5, a porta passa a **manter**.
+3. **`EventSink` e `TelemetryIngest` (portas que o código dispensou).** A função existe sem a porta, e a tabela as prevê sem segundo adaptador (`TelemetryIngest`) ou com saídas que ninguém troca por configuração (`EventSink`). Riscar da tabela custa só texto; criar a porta custa uma interface, um falso e uma suíte por saída.
+
+##### Afirmações do "Ponto de partida"
+
+Marcas: **[V]** verificado agora, **[N]** não confirmado. Onde a afirmação do plano precisa de correção, a correção está na terceira coluna; o texto do "Ponto de partida" **não foi alterado**.
+
+| Afirmação do plano | Marca | O que a conferência achou |
+|---|---|---|
+| `Clock`: único real é o relógio do sistema; segundo é o falso | [V] | `SystemClock` e `FakeClock`; a suíte roda nos dois |
+| `CodeHost`: só o GitHub; GitLab e Gitea são hipótese | [V] | confere. **Falta dizer** que o daemon não monta o GitHub (ver "Divergências", item 4) |
+| `Vcs`: só o git, sem segundo | [V] | confere. **Falta dizer** que não há falso e que o contrato tem sete extensões opcionais |
+| `Sandbox`: `sandbox-runtime`; segundo "nulo, só nos testes" | [V] | o adaptador nulo **não existe**; sem camada 3 o `compose.ts` usa `undefined`, e o falso é privado de um teste do daemon |
+| `Store`: SQLite; segundo `node:sqlite` | [V] | `node:sqlite` já é **driver do mesmo adaptador** (`store-sqlite/src/driver.ts`), com a mesma suíte nos dois (`conformance.test.ts`); não é um segundo adaptador |
+| `TelemetryStore`: SQLite, fora da tabela | [V] | confere; versão da porta `0.4.0`; o falso mora no daemon |
+| `PromptSource`: pasta `prompts/` | [V] | confere; "prompts por projeto" segue **[hipótese]** |
+| `UsageSource`: ccusage; segundo "contabilidade local" | [V] / [N] | o único adaptador é confirmado; o segundo **não existe nem tem plano** **[N]** |
+| `BrowserSession`: Playwright; extensão **[N]** | [V] | a extensão não existe no código |
+| `MemoryProbe`: leitura do POSIX; "o `platform-windows` não tem o seu" | [V] | confere, mas o `PosixMemoryProbe` **já cobre** macOS e Windows por `os.freemem` (só o `treeMb` é exclusivo do Linux); o nome "Posix" engana |
+| "Têm mais de um adaptador": `ClientAdapter`, `QuotaProbe`, `LocalModelServer`, `SecretVault`, `ProcessLauncher` | [V] | confere. **Faltam na lista dos de um só:** `AgentSession` (um transporte real, o ACP) e `EventLog` (um real, o do `Store`). Os dois `LocalModelServer` não são usados pelo daemon |
+| "Não achei porta para `OsScheduler`, `Notifier`, `TerminalSession`, `EventSink`, `TelemetryIngest` nem `Dictation`" | [V] | confere; mas `EventSink` e `TelemetryIngest` têm código sem porta |
+| "A `EventLog` existe e tem suíte" | [V] | confere |
+| Suítes de conformidade existem para `Clock`, `CodeHost`, `Vcs`, `Store`, `EventLog`, `PromptSource`, `ProcessLauncher`, `SecretVault`, `LocalModelServer`, `ClientAdapter` e `AgentSession` | [V] | confere |
+| Não há suíte para `Sandbox`, `MemoryProbe`, `UsageSource`, `BrowserSession`, `TelemetryStore` nem `QuotaProbe` | [V] | confere. **Falta `ModelCatalog`**, que também não tem |
+| Método: `grep "port: '"` nos adaptadores | [V] | o método acha só parte dos adaptadores (muitos declaram `implements: { port: ... }` com template ou `readonly implements`); o resultado do plano bate com a leitura das classes |
+| "O falso dos testes não conta" | [V] | critério mantido; por ele, `Vcs` e `Sandbox` ficam sem falso |
+
+##### Divergências com a arquitetura (para o dono decidir)
+
+**A arquitetura não foi mudada.** Cada item diz o que a §5.18 (ou a "Montagem") afirma e o que o código faz.
+
+1. **`ResourceMonitor` × `MemoryProbe`.** A tabela chama a porta `ResourceMonitor` ("RAM livre e carga, para a admissão"). O código a chama `MemoryProbe` (`core/src/ports/memory-probe.ts`), lê só a RAM livre (`availableMb`), não lê a carga, e tem um `treeMb` opcional que a tabela não prevê. O comentário do próprio arquivo registra "the port is not in the table of 5.18 yet". Escolher: renomear no código (mexe em 6 arquivos de produção) ou na arquitetura.
+2. **`TelemetryStore` fora da tabela.** Existe com versão própria (`0.4.0`), adaptador e uso no daemon (12 arquivos), pela N54 ("a base de telemetria é outro arquivo"). A tabela só tem `TelemetryIngest`. Acrescentar a linha à tabela.
+3. **Portas da tabela sem código:** `OsScheduler`, `Notifier`, `TerminalSession`, `Dictation` (previstas para as Fases 9b e 12), `EventSink` e `TelemetryIngest` (a função existe como classes concretas). O texto diz "a tabela é o ponto de partida"; falta marcar quais já nasceram.
+4. **O daemon não monta o `CodeHost`.** A seção "Montagem" mostra `code_host: github` na chave `adapters`. No código, `adapters` só tem `store`, `vault`, `clock` e `prompts` (`daemon/src/config.ts:1805-1812`), e o `compose.ts` só repassa `overrides.codeHost`: nenhum arquivo de produção importa `GithubCodeHost`, e o `daemon/package.json` não depende de `adapter-codehost-github` [V]. Sem `codeHost`, `orchestration/wiring.ts` registra "no code host is set up: plays cannot be opened" e não cria o `Workspace`. É a divergência de maior efeito: **ou** o daemon de produção não abre peças, **ou** a ligação está fora do que li **[N: não rodei o daemon; só li o `compose.ts`, o `wiring.ts` e o `package.json`]**. Sugestão: o dono confirma; se for lacuna, é passo de código, não de revisão de portas.
+5. **Chaves de escolha por id.** A "Montagem" mostra `adapters: store, vault, vcs, code_host, sandbox, notifier`. O código só escolhe por id `store`, `vault`, `clock` e `prompts`; `vcs`, `sandbox`, `usage`, `browser` e `telemetry` têm configuração própria, mas não um seletor de adaptador.
+6. **`LocalModelServer` sem consumidor** (ver candidata 1). A §5.9 e a N71 descrevem a leitura de slots e o `server: llama-cpp | ollama` no perfil `local`; o daemon não liga a porta.
+7. **`Sandbox` "nulo, só nos testes".** Não há adaptador nulo exportado; o "sem camada" é `undefined` mais a chave `sandbox.mode: off` e `security.unenforced`.
+8. **`Store`: "`node:sqlite`" como outro adaptador.** No código é um driver do mesmo adaptador SQLite, com a mesma suíte (N49).
+9. **`AgentSession` e `SessionTransport`.** A tabela diz que o adaptador padrão é o transporte ACP "dentro da casca". No código, a variação real é a interface `SessionTransport` (na mesma pasta, fora da tabela); `AgentSession` é implementada também por decoradores no núcleo e no daemon (`ManagedAgentSession`, `CatalogProbeSession`, `ModeVetoSession`, `QuotaTappedSession`).
+10. **`Vcs`.** A tabela descreve uma porta ("worktree, branch, commit, merge e push"); o código a entrega em oito interfaces (candidata 2).
+11. **Portas que o código tem e a tabela não lista:** `TelemetryStore` e `MemoryProbe` (item 1). Fora de `core/src/ports`, o `compose.ts` verifica a faixa de versão de dez portas (`PortName`); `PromptSource` tem verificação própria (`daemon/src/prompts.ts`). Se as demais (`ClientAdapter`, `QuotaProbe`, `CodeHost`, `LocalModelServer`) são verificadas na subida, **não confirmei** **[N]**.
+12. **`ProcessLauncher` padrão no Windows.** A tabela diz "lançador Rust com Job Object". O `WindowsProcessLauncher` usa Job Object e o executável `ot-job-launcher`; que ele seja de fato escrito em Rust **não confirmei** **[N]**.
+
+**Não confirmado neste passo:** o comportamento do daemon em produção (item 4 acima), a linguagem do `ot-job-launcher`, a verificação de faixa de versão dos adaptadores que não passam pelo `checkAdapterRange`, e a contagem exata de arquivos por porta (aproximada). Nada foi rodado: a revisão é de leitura do código, com `grep`.
 
 ### P10. Guia de adaptadores e de plugins
 
