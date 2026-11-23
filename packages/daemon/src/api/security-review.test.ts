@@ -65,10 +65,16 @@ describe('the attachment by path stays inside the roots (N287)', () => {
   let service: AttachmentService;
   let config: ReturnType<typeof parseConfig>['security']['attachment_roots'];
   let store: InMemoryStore;
+  // The user folders of the platform: on macOS and Windows they are fixed (`~/Documents`, `~/Downloads`,
+  // under `%USERPROFILE%` on Windows); only the other Unixes take them from the XDG variables.
+  const FIXED = process.platform === 'win32' || process.platform === 'darwin';
+  const DOCS = FIXED ? 'Documents' : 'Docs';
+  const DOWN = FIXED ? 'Downloads' : 'Down';
   const env = (): Record<string, string> => ({
     HOME: home,
-    XDG_DOCUMENTS_DIR: join(home, 'Docs'),
-    XDG_DOWNLOAD_DIR: join(home, 'Down'),
+    USERPROFILE: home,
+    XDG_DOCUMENTS_DIR: join(home, DOCS),
+    XDG_DOWNLOAD_DIR: join(home, DOWN),
     XDG_CONFIG_HOME: join(home, '.config'),
   });
 
@@ -82,8 +88,8 @@ describe('the attachment by path stays inside the roots (N287)', () => {
     home = join(tmp.dir, 'home');
     project = join(tmp.dir, 'project');
     outside = join(tmp.dir, 'elsewhere');
-    await mkdir(join(home, 'Docs'), { recursive: true });
-    await mkdir(join(home, 'Down'), { recursive: true });
+    await mkdir(join(home, DOCS), { recursive: true });
+    await mkdir(join(home, DOWN), { recursive: true });
     await mkdir(project, { recursive: true });
     await mkdir(outside, { recursive: true });
     const clock = new FakeClock();
@@ -116,8 +122,8 @@ describe('the attachment by path stays inside the roots (N287)', () => {
   it('takes a file from the project, the Documents and the Downloads folders', async () => {
     for (const path of [
       await put(join(project, 'src', 'a.txt')),
-      await put(join(home, 'Docs', 'b.txt')),
-      await put(join(home, 'Down', 'c.txt')),
+      await put(join(home, DOCS, 'b.txt')),
+      await put(join(home, DOWN, 'c.txt')),
     ]) {
       await expect(service.addFile('s1', { path })).resolves.toMatchObject({ scenarioId: 's1' });
     }
@@ -156,7 +162,7 @@ describe('the attachment by path stays inside the roots (N287)', () => {
 
   it.skipIf(!POSIX)('refuses a symlink inside a root that points out of it', async () => {
     const target = await put(join(outside, 'secret.txt'));
-    const link = join(home, 'Docs', 'innocent.txt');
+    const link = join(home, DOCS, 'innocent.txt');
     await symlink(target, link);
     await expect(service.addFile('s1', { path: link })).rejects.toMatchObject({
       name: 'PermissionDenied',
@@ -188,7 +194,7 @@ describe('the attachment by path stays inside the roots (N287)', () => {
   });
 
   it('drops a default the user took out of `defaults`', async () => {
-    const path = await put(join(home, 'Docs', 'b.txt'));
+    const path = await put(join(home, DOCS, 'b.txt'));
     config = { ...config, defaults: ['project'] };
     await expect(service.addFile('s1', { path })).rejects.toMatchObject({
       name: 'PermissionDenied',
@@ -203,32 +209,40 @@ describe('the attachment by path stays inside the roots (N287)', () => {
     await expect(service.read(record)).rejects.toMatchObject({ name: 'PermissionDenied' });
   });
 
-  it('resolves the user folders of the platform from the environment, the user-dirs file, then the home', async () => {
-    const base = { homedir: home, platform: 'linux' as const };
-    expect(await userFolder('documents', { ...base, env: env() })).toBe(join(home, 'Docs'));
-    // Without the variables: `user-dirs.dirs` ...
-    await put(
-      join(home, '.config', 'user-dirs.dirs'),
-      'XDG_DOCUMENTS_DIR="$HOME/Papers"\nXDG_DOWNLOAD_DIR="$HOME/Grabs"\n',
-    );
-    const bare = { HOME: home, XDG_CONFIG_HOME: join(home, '.config') };
-    expect(await userFolder('documents', { ...base, env: bare })).toBe(join(home, 'Papers'));
-    expect(await userFolder('downloads', { ...base, env: bare })).toBe(join(home, 'Grabs'));
-    // ... then ~/Documents and ~/Downloads.
-    expect(
-      await userFolder('documents', { ...base, env: { HOME: home, XDG_CONFIG_HOME: outside } }),
-    ).toBe(join(home, 'Documents'));
-    // A folder that is the home itself (what `xdg-user-dirs` writes for one that does not exist) or the
-    // root of the disk is not a folder of its own: it would make the whole home a root.
-    await put(
-      join(home, '.config', 'user-dirs.dirs'),
-      'XDG_DOCUMENTS_DIR="$HOME/"\nXDG_DOWNLOAD_DIR="/"\n',
-    );
-    expect(await userFolder('documents', { ...base, env: bare })).toBe(join(home, 'Documents'));
-    expect(await userFolder('downloads', { ...base, env: bare })).toBe(join(home, 'Downloads'));
-    expect(
-      await userFolder('documents', { ...base, env: { ...bare, XDG_DOCUMENTS_DIR: home } }),
-    ).toBe(join(home, 'Documents'));
+  // The `linux` platform reads POSIX paths (`$HOME`, `/`): the host paths of Windows are not that.
+  it.skipIf(!POSIX)(
+    'resolves the user folders of Linux from the environment, the user-dirs file, then the home',
+    async () => {
+      const base = { homedir: home, platform: 'linux' as const };
+      expect(await userFolder('documents', { ...base, env: env() })).toBe(join(home, DOCS));
+      // Without the variables: `user-dirs.dirs` ...
+      await put(
+        join(home, '.config', 'user-dirs.dirs'),
+        'XDG_DOCUMENTS_DIR="$HOME/Papers"\nXDG_DOWNLOAD_DIR="$HOME/Grabs"\n',
+      );
+      const bare = { HOME: home, XDG_CONFIG_HOME: join(home, '.config') };
+      expect(await userFolder('documents', { ...base, env: bare })).toBe(join(home, 'Papers'));
+      expect(await userFolder('downloads', { ...base, env: bare })).toBe(join(home, 'Grabs'));
+      // ... then ~/Documents and ~/Downloads.
+      expect(
+        await userFolder('documents', { ...base, env: { HOME: home, XDG_CONFIG_HOME: outside } }),
+      ).toBe(join(home, 'Documents'));
+      // A folder that is the home itself (what `xdg-user-dirs` writes for one that does not exist) or the
+      // root of the disk is not a folder of its own: it would make the whole home a root.
+      await put(
+        join(home, '.config', 'user-dirs.dirs'),
+        'XDG_DOCUMENTS_DIR="$HOME/"\nXDG_DOWNLOAD_DIR="/"\n',
+      );
+      expect(await userFolder('documents', { ...base, env: bare })).toBe(join(home, 'Documents'));
+      expect(await userFolder('downloads', { ...base, env: bare })).toBe(join(home, 'Downloads'));
+      expect(
+        await userFolder('documents', { ...base, env: { ...bare, XDG_DOCUMENTS_DIR: home } }),
+      ).toBe(join(home, 'Documents'));
+    },
+  );
+
+  // Pure on every host: the paths are literals of the platform asked for.
+  it('resolves the user folders of macOS and of Windows from the home', async () => {
     expect(
       await userFolder('downloads', { homedir: '/Users/x', platform: 'darwin', env: {} }),
     ).toBe('/Users/x/Downloads');
