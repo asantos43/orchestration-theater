@@ -40,3 +40,18 @@ export {
   type EscapeScript,
   type EscapeStep,
 } from './escape-scripts.js';
+export {
+  armAtStartup,
+  authError,
+  dieScriptSchema,
+  failAuthScriptSchema,
+  failQuotaScriptSchema,
+  failTransientScriptSchema,
+  ignoreTermScriptSchema,
+  MAX_LIFE_MS,
+  quotaError,
+  slowScriptSchema,
+  spawnChildScriptSchema,
+  stallScriptSchema,
+  transientError,
+} from './failure-scripts.js';
