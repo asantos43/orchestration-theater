@@ -1,6 +1,16 @@
 // SPDX-License-Identifier: MPL-2.0
 import { z } from 'zod';
 import { escapeScriptSchema } from './escape-scripts.js';
+import {
+  dieScriptSchema,
+  failAuthScriptSchema,
+  failQuotaScriptSchema,
+  failTransientScriptSchema,
+  ignoreTermScriptSchema,
+  slowScriptSchema,
+  spawnChildScriptSchema,
+  stallScriptSchema,
+} from './failure-scripts.js';
 
 /**
  * Deterministic scripts the fake agent can play. Each script is a plain object validated by zod:
@@ -87,6 +97,15 @@ export const scriptSchema = z.discriminatedUnion('name', [
   }),
   /** [proposal] Tries to leave its confinement, step by step (P5): see `escape-scripts.ts`. */
   escapeScriptSchema,
+  /** [proposal] The failure scripts of Phase 11 (P2): see `failure-scripts.ts`. */
+  dieScriptSchema,
+  stallScriptSchema,
+  ignoreTermScriptSchema,
+  spawnChildScriptSchema,
+  slowScriptSchema,
+  failAuthScriptSchema,
+  failQuotaScriptSchema,
+  failTransientScriptSchema,
   z.strictObject({ name: z.literal('hang') }),
   z.strictObject({
     name: z.literal('deaf'),
@@ -139,6 +158,14 @@ export const SCRIPT_NAMES: readonly ScriptName[] = [
   'probe',
   'escape',
   'fail',
+  'die',
+  'stall',
+  'ignore-term',
+  'spawn-child',
+  'slow',
+  'fail-auth',
+  'fail-quota',
+  'fail-transient',
   'hang',
   'deaf',
   'quota-signal',
