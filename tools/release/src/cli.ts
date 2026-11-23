@@ -5,7 +5,8 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
 import { buildTarget } from './build.js';
-import { loadReleaseConfig, ReleaseConfigError } from './config.js';
+import { loadReleaseConfig, parseReleaseConfig, ReleaseConfigError } from './config.js';
+import { RELEASE_COMMANDS, RELEASE_USAGE, runReleaseCommand } from './release-cli.js';
 import { repoRoot } from './resolve.js';
 import { runSmoke } from './smoke.js';
 import { hostTarget, isTargetId, TARGET_IDS, type TargetId } from './targets.js';
@@ -13,15 +14,16 @@ import { hostTarget, isTargetId, TARGET_IDS, type TargetId } from './targets.js'
 const USAGE = `Usage: otheater-release <command> [options]
 
 Commands:
-  build [--target <id>] [--out <dir>] [--config <file>] [--node <binary>] [--minify]
+  build [--target <id>] [--out <dir>] [--config <file>] [--node <binary>] [--minify] [--version <x.y.z>]
       Builds the single executable (Node SEA) of the platform this machine is. --target names it
       (${TARGET_IDS.join(', ')}); a target other than the host's is refused. Without --target, the first
       target of the config that is the host's. --node is the Node binary to inject into (default:
-      $OT_SEA_NODE, else the running one; it has to be a standalone build).
+      $OT_SEA_NODE, else the running one; it has to be a standalone build). --version bakes that
+      version into the executable instead of the one of the package (the release sets it).
   smoke <executable> [--version <x.y.z>]
       Runs the executable as the acceptance of the build does: --version, the daemon in a temporary
       folder and its API, the TUI without a terminal, the MCP shim and the modes not yet available.
-`;
+${RELEASE_USAGE}`;
 
 function fail(message: string): never {
   process.stderr.write(`otheater-release: ${message}\n`);
@@ -40,6 +42,7 @@ export async function main(argv: readonly string[]): Promise<number> {
         config: { type: 'string' },
         node: { type: 'string' },
         minify: { type: 'boolean' },
+        version: { type: 'string' },
       },
       strict: true,
     });
@@ -51,6 +54,14 @@ export async function main(argv: readonly string[]): Promise<number> {
     } catch (error) {
       if (error instanceof ReleaseConfigError) fail(error.message);
       throw error;
+    }
+    if (values.version !== undefined) {
+      try {
+        config = parseReleaseConfig({ ...config, versionOverride: values.version });
+      } catch (error) {
+        if (error instanceof ReleaseConfigError) fail(error.message);
+        throw error;
+      }
     }
     const host = hostTarget();
     let target: TargetId | undefined;
@@ -89,6 +100,9 @@ export async function main(argv: readonly string[]): Promise<number> {
       log: (line) => process.stdout.write(`${line}\n`),
     });
     return result.ok ? 0 : 1;
+  }
+  if (command !== undefined && (RELEASE_COMMANDS as readonly string[]).includes(command)) {
+    return runReleaseCommand(command, rest, (line) => process.stdout.write(`${line}\n`), root);
   }
   process.stdout.write(USAGE);
   return command === undefined || command === '--help' || command === '-h' ? 0 : 2;

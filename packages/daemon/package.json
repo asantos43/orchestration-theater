@@ -12,6 +12,14 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./updates/manifest": {
+      "types": "./dist/updates/manifest.d.ts",
+      "default": "./dist/updates/manifest.js"
+    },
+    "./updates/verify": {
+      "types": "./dist/updates/verify.d.ts",
+      "default": "./dist/updates/verify.js"
     }
   },
   "files": [
