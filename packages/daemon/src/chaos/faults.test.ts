@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 import { describe, expect, it } from 'vitest';
+import { resolve } from 'node:path';
 import {
   CRASH_AT_VARIABLE,
   EMPTY_FAULT_PLAN,
@@ -182,7 +183,7 @@ describe('resolveFaultPlan', () => {
 
 describe('helpers', () => {
   it('faultPlanPath puts a relative file inside the data directory', () => {
-    expect(faultPlanPath('/data', 'fault-plan.json')).toBe('/data/fault-plan.json');
+    expect(faultPlanPath('/data', 'fault-plan.json')).toBe(resolve('/data', 'fault-plan.json'));
     expect(faultPlanPath('/data', '/elsewhere/plan.json')).toBe('/elsewhere/plan.json');
   });
 
