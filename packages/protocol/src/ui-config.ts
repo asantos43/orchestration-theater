@@ -23,6 +23,7 @@ export const UI_KEY_RENDER_MODES = ['flush', 'throttle'] as const;
 export const UI_SETUP_OPEN_MODES = ['auto', 'never'] as const;
 export const UI_INK_PATCHES = ['cache', 'grid'] as const;
 export const UI_SCROLL_STEPS = ['page', 'half', 'line'] as const;
+export const UI_DENSITIES = ['comfortable', 'compact'] as const;
 export const UI_KEYBOARD_PROTOCOLS = ['auto', 'kitty', 'off'] as const;
 
 export type UiKeymapPreset = (typeof UI_KEYMAP_PRESETS)[number];
@@ -118,7 +119,10 @@ export const UiRuntimeConfigSchema = z.strictObject({
  * rail it becomes (5); `minChatWidth` and `minPanelWidth`: the least the chat and the work panel
  * keep when the window is narrow (30 each); `chatStep`: columns one press of the width keys moves
  * the edge of the chat (2); `scrollStep`: how far the scroll keys of a list go, `page`, `half`
- * (default) or `line`. The ranges and defaults are [proposta].
+ * (default) or `line`; `density` (N258): `comfortable` (default) draws the margins and the alignment
+ * of the mockup (a column of margin inside each frame, the sections of the panel with a blank row
+ * and an indent, the tab bar and the hints in the places of the mockup), `compact` is the screen
+ * as it was before (no margin). The ranges and defaults are [proposta].
  */
 export const UiTuiLayoutConfigSchema = z.strictObject({
   sidebarWidth: z.int().min(16).max(80).default(30),
@@ -127,9 +131,11 @@ export const UiTuiLayoutConfigSchema = z.strictObject({
   minPanelWidth: z.int().min(20).max(200).default(30),
   chatStep: z.int().min(1).max(20).default(2),
   scrollStep: z.enum(UI_SCROLL_STEPS).default('half'),
+  density: z.enum(UI_DENSITIES).default('comfortable'),
 });
 export type UiTuiLayoutConfig = z.output<typeof UiTuiLayoutConfigSchema>;
 export type UiScrollStep = (typeof UI_SCROLL_STEPS)[number];
+export type UiDensity = (typeof UI_DENSITIES)[number];
 // ---- The text box (N35; P10 of docs/18) ---------------------------------------------------------
 
 /** `marker`: a long paste becomes `[Pasted text #n]` plus an attachment; `inline`: it stays in the text. */

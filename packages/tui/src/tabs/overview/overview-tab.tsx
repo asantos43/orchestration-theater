@@ -18,6 +18,7 @@ import { useTabHost } from '../../layout/tab-host.js';
 import type { TabContentProps, TabDefinition } from '../../layout/tab-types.js';
 import type { QuotaRow } from '../../layout/scenario-rows.js';
 import { fillBar } from '../../layout/scenario-rows.js';
+import { useDensity } from '../../layout/density-context.js';
 import { Section } from '../../layout/section.js';
 import { cellWidth, fit, wrapText } from '../../layout/text.js';
 import { TOKEN, paint } from '../../layout/theme.js';
@@ -200,6 +201,7 @@ function QuotaLine(props: { readonly row: QuotaRow; readonly width: number }): R
 function OverviewTab(props: TabContentProps): ReactNode {
   const { t } = useTranslation();
   const host = useTabHost();
+  const spaced = useDensity().sections;
   const { width, sections, scenarioId, focused } = props;
   const settings = host.settings.overview;
   const [actorKey, setActorKey] = useState<string | undefined>();
@@ -330,7 +332,10 @@ function OverviewTab(props: TabContentProps): ReactNode {
       </Text>
     ));
   }
-
+  // The mockup's sections: the content indented by 2 and a blank row between them.
+  const indent = spaced ? 2 : 0;
+  const gap = spaced ? 1 : 0;
+  const inner = Math.max(1, width - indent);
   const { play, pipeline } = data;
   const approved = data.demands.filter((row) => row.state === 'approved').length;
   return (
@@ -342,13 +347,15 @@ function OverviewTab(props: TabContentProps): ReactNode {
         right={pipeline?.paused === true ? t('overview.paused') : undefined}
         width={width}
         control={sections}
+        indent={indent}
+        gap={gap}
       >
         {play === undefined || pipeline === undefined ? (
           <Text dimColor wrap="truncate">
             {t('overview.noPlay')}
           </Text>
         ) : (
-          <PipelineLines pipeline={pipeline} need={play.need} width={width} />
+          <PipelineLines pipeline={pipeline} need={play.need} width={inner} />
         )}
       </Section>
       <Section
@@ -361,13 +368,15 @@ function OverviewTab(props: TabContentProps): ReactNode {
         }
         width={width}
         control={sections}
+        indent={indent}
+        gap={gap}
       >
         {data.demands.length === 0 ? (
           <Text dimColor wrap="truncate">
             {t('overview.demands.empty')}
           </Text>
         ) : (
-          data.demands.map((row) => <DemandLine key={row.id} row={row} width={width} />)
+          data.demands.map((row) => <DemandLine key={row.id} row={row} width={inner} />)
         )}
       </Section>
       <Section
@@ -376,6 +385,8 @@ function OverviewTab(props: TabContentProps): ReactNode {
         right={data.actors.length === 0 ? undefined : String(data.actors.length)}
         width={width}
         control={sections}
+        indent={indent}
+        gap={gap}
       >
         {data.actors.length === 0 ? (
           <Text dimColor wrap="truncate">
@@ -383,7 +394,7 @@ function OverviewTab(props: TabContentProps): ReactNode {
           </Text>
         ) : (
           data.actors.map((row) => (
-            <ActorLine key={row.key} row={row} selected={row.key === selected?.key} width={width} />
+            <ActorLine key={row.key} row={row} selected={row.key === selected?.key} width={inner} />
           ))
         )}
       </Section>
@@ -392,13 +403,15 @@ function OverviewTab(props: TabContentProps): ReactNode {
         title={t('overview.events.title')}
         width={width}
         control={sections}
+        indent={indent}
+        gap={gap}
       >
         {data.events.length === 0 ? (
           <Text dimColor wrap="truncate">
             {t('overview.events.empty')}
           </Text>
         ) : (
-          data.events.map((row) => <EventLine key={row.id} row={row} width={width} />)
+          data.events.map((row) => <EventLine key={row.id} row={row} width={inner} />)
         )}
       </Section>
       <Section
@@ -406,13 +419,14 @@ function OverviewTab(props: TabContentProps): ReactNode {
         title={t('overview.quota.title')}
         width={width}
         control={sections}
+        indent={indent}
       >
         {data.quotas.length === 0 ? (
           <Text dimColor wrap="truncate">
             {t('overview.quota.empty')}
           </Text>
         ) : (
-          data.quotas.map((row) => <QuotaLine key={row.profile} row={row} width={width} />)
+          data.quotas.map((row) => <QuotaLine key={row.profile} row={row} width={inner} />)
         )}
       </Section>
     </Box>

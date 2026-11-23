@@ -37,6 +37,12 @@ export interface FrameProps {
   readonly edgeRef?: Ref<DOMElement> | undefined;
   /** A mouse press anywhere in the frame (the area takes the focus); what is inside still gets its click. */
   readonly onPress?: (() => void) | undefined;
+  /**
+   * Columns of margin inside the border, on each side (`ui.tuiLayout.density`, N258): what is
+   * inside has `frameInner(width, pad)` cells. What goes from border to border (a separator, the
+   * line of a selection) takes the margin back with a negative `marginX`. Default 0.
+   */
+  readonly pad?: number | undefined;
   readonly children: ReactNode;
 }
 
@@ -119,7 +125,13 @@ export function Frame(props: FrameProps): ReactNode {
         <Box width={1} flexDirection="column">
           <Text color={color}>{column('│', inner)}</Text>
         </Box>
-        <Box width={Math.max(0, width - 2)} height={inner} flexDirection="column" overflow="hidden">
+        <Box
+          width={Math.max(0, width - 2)}
+          height={inner}
+          paddingX={props.pad ?? 0}
+          flexDirection="column"
+          overflow="hidden"
+        >
           {props.children}
         </Box>
         <Box ref={props.edgeRef} width={1} flexDirection="column">

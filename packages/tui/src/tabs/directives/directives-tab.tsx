@@ -7,6 +7,7 @@ import { Text } from '../../layout/themed-text.js';
 import { keyLabel, pairLabel } from '../../keys/labels.js';
 import { useRawKeys, type KeyEvent } from '../../keys/use-keymap.js';
 import { fit, fitRight, wrapText } from '../../layout/text.js';
+import { useDensity } from '../../layout/density-context.js';
 import { Section } from '../../layout/section.js';
 import { useTabHost } from '../../layout/tab-host.js';
 import type { TabContentProps } from '../../layout/tab-types.js';
@@ -76,6 +77,7 @@ export function DirectivesTab(props: TabContentProps): ReactNode {
   const { t } = useTranslation();
   const { afterKey } = useRenderControl();
   const { width } = props;
+  const spaced = useDensity().sections;
 
   const byId = useStoreValue(stores.orders, (state) => state.byId);
   const expiring = useStoreValue(stores.orders, (state) => state.expiring);
@@ -447,7 +449,7 @@ export function DirectivesTab(props: TabContentProps): ReactNode {
           {fit(t('directives.tab.empty', { key: keyLabel(keymap, 'directives.new') ?? '' }), width)}
         </Text>
       )}
-      {ORDER_SECTIONS.map((section) => {
+      {ORDER_SECTIONS.map((section, position) => {
         const groups = sections[section];
         const count = groups.reduce((sum, group) => sum + group.orders.length, 0);
         return (
@@ -458,6 +460,7 @@ export function DirectivesTab(props: TabContentProps): ReactNode {
             right={String(count)}
             width={width}
             control={props.sections}
+            gap={spaced && position < ORDER_SECTIONS.length - 1 ? 1 : 0}
           >
             {count === 0 ? (
               <Text dimColor wrap="truncate">
