@@ -1,8 +1,13 @@
 name: Dist SEA
 
 # The single executable (Node SEA, Phase 10, P1) built on a runner of each platform, and its smoke
-# test. It publishes nothing: no release, no tag, no upload (the release gate is P9). The job only
-# writes the size of each executable to its summary.
+# test. It publishes nothing: no release, no tag, no release asset. The job only writes the size of
+# each executable to its summary.
+#
+# P9: release.yml calls this workflow (`workflow_call`) for the rehearsal of the release. The inputs are
+# optional and empty in every other event, so the behavior of a push, a pull request or a manual
+# dispatch does not change: `version` bakes a version into the executables, and `upload` keeps them as
+# a workflow artifact (`sea-<target>`, one day, nothing secret) for the next jobs of that run.
 on:
   # Main runs after each merge that touches the paths below. A pull request is decided by the job
   # `changes` (a `paths:` filter on the event would leave a pending status when nothing matches).
@@ -32,12 +37,26 @@ on:
       - 'pnpm-lock.yaml'
   pull_request:
   workflow_dispatch:
+  workflow_call:
+    inputs:
+      version:
+        description: 'A version (x.y.z) baked into the executables instead of the one of the package'
+        type: string
+        required: false
+        default: ''
+      upload:
+        description: 'Keep the executables and the notices as the workflow artifact sea-<target> (1 day)'
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: read
 
 concurrency:
-  group: dist-sea-${{ github.ref }}
+  # In a called workflow `github.workflow` is the name of the caller, so a release rehearsal and the
+  # push of the same ref do not cancel each other.
+  group: dist-sea-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -107,10 +126,18 @@ jobs:
       - run: pnpm -s build
         env:
           NODE_OPTIONS: --max-old-space-size=6144
-      - run: node tools/release/dist/cli.js build --target ${{ matrix.target }} --out dist/sea
+      # `OT_RELEASE_VERSION` is empty outside the release rehearsal: the build then keeps the version of
+      # the package. It goes through the environment, never into the text of the command.
+      - name: Build the single executable
+        env:
+          OT_RELEASE_VERSION: ${{ inputs.version }}
+        run: node tools/release/dist/cli.js build --target ${{ matrix.target }} --out dist/sea ${OT_RELEASE_VERSION:+--version "$OT_RELEASE_VERSION"}
       # The acceptance of the build: --version, the daemon in a temporary folder and its API, the TUI
       # without a real terminal, the MCP shim by internal mode, and the modes of later steps.
-      - run: node tools/release/dist/cli.js smoke dist/sea/${{ matrix.target }}/otheater${{ matrix.target == 'win32-x64' && '.exe' || '' }}
+      - name: Smoke test
+        env:
+          OT_RELEASE_VERSION: ${{ inputs.version }}
+        run: node tools/release/dist/cli.js smoke dist/sea/${{ matrix.target }}/otheater${{ matrix.target == 'win32-x64' && '.exe' || '' }} ${OT_RELEASE_VERSION:+--version "$OT_RELEASE_VERSION"}
       # The notices of the platform (P10): the build already generated THIRD_PARTY_NOTICES-<target>.md
       # next to the executable; this checks it again against the graph of the platform (no package
       # missing or extra, no build tool) and fails when it is not there.
@@ -125,3 +152,19 @@ jobs:
           bytes=$(wc -c < "$exe")
           echo "${{ matrix.target }}: $bytes bytes"
           echo "- ${{ matrix.target }}: $bytes bytes" >> "$GITHUB_STEP_SUMMARY"
+      # Release rehearsal (P9): the files as the release names them, otheater-<platform>[.exe] and
+      # THIRD_PARTY_NOTICES-<platform>.md. A workflow artifact for this run only: one day, no secret.
+      - name: Keep the executable and the notices for the rehearsal
+        if: inputs.upload == true
+        run: |
+          mkdir -p upload
+          cp "dist/sea/${{ matrix.target }}/otheater${{ matrix.target == 'win32-x64' && '.exe' || '' }}" "upload/otheater-${{ matrix.target }}${{ matrix.target == 'win32-x64' && '.exe' || '' }}"
+          cp "dist/sea/${{ matrix.target }}/THIRD_PARTY_NOTICES-${{ matrix.target }}.md" upload/
+      - name: Upload the rehearsal files
+        if: inputs.upload == true
+        uses: actions/upload-artifact@v4
+        with:
+          name: sea-${{ matrix.target }}
+          path: upload/*
+          if-no-files-found: error
+          retention-days: 1
