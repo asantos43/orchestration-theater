@@ -11,6 +11,7 @@ import {
   type Store,
   type Vcs,
 } from '@otheater/core';
+import { crashPoint } from '../chaos/crash-points.js';
 import type { Logger } from '../logger.js';
 import { DECISION_KINDS } from '../orchestration/play-effects.js';
 import { situationSubject, situationText, type SituationSink } from '../situations.js';
@@ -81,15 +82,21 @@ export interface RecoveryReport {
  */
 export async function reconcileBeforeResume(deps: RecoveryDeps): Promise<RecoveryReport> {
   const { logger } = deps;
+  await crashPoint('reconcile.before_orphans');
   const orphans = await endOrphans(deps);
+  await crashPoint('reconcile.after_orphans');
+  await crashPoint('reconcile.before_worktrees');
   const wipCommits = await keepUncommittedWork(deps).catch((error: unknown) => {
     logger.error({ err: error }, 'recovery: the work left in the worktrees could not be kept');
     return 0;
   });
+  await crashPoint('reconcile.after_worktrees');
+  await crashPoint('reconcile.before_effects');
   const effects = await settleEffects(deps).catch((error: unknown) => {
     logger.error({ err: error }, 'recovery: the side effects could not be settled');
     return { resolved: [] as ResolvedEffect[], pending: [] as PendingEffect[] };
   });
+  await crashPoint('reconcile.after_effects');
   logger.info(
     {
       orphansKilled: orphans.killed,
@@ -199,6 +206,8 @@ async function settleEffects(
   for (const record of records) {
     const play = playOfKey(record.idempotencyKey, openPlays);
     const verdict = await verdictOf(verifierDeps, record, deps.pluginEffects);
+    if (verdict.verdict !== 'ambiguous')
+      await crashPoint('reconcile.before_effect_resolve', record.type);
     if (verdict.verdict === 'done') {
       await store.sideEffects.resolve(record.idempotencyKey, {
         state: 'done',
