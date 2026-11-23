@@ -145,7 +145,7 @@ Toda regra ou padrão novo vira chave, com padrão e modos. Tudo **[proposta]**;
 | `disk.min_free` | tamanho (`256MB`), `off` | `256MB` | P5 | Espaço livre abaixo do qual o daemon age **antes** de a escrita falhar |
 | `disk.notify` | `once`, `every_hour`, `off` | `once` | P5 | Quantas vezes avisar o Producer enquanto o disco está cheio |
 | `recovery.orphans` | `kill`, `report` | `kill` (o que o código faz hoje) | P3 | Hoje a morte do órfão é fixa em `reconcile.ts`. O P3 confere se já é chave; se não for, vira `kill` (padrão) ou `report` (só relata, para depuração) |
-| `security.*` | a definir pelo P8 | a definir | P8 | O que a revisão achar e for regra nova (limite de corpo, limite de pedidos, expiração de token) entra como chave, nunca como constante |
+| `security.*` e afins | `security.attachment_roots.mode`: `list`, `any`; `shell.node_inline`: `deny`, `allow`; `shell.http_get.block_private`: `on`, `off`; `updates.manifest_expiry`: `enforce`, `require`, `off`; limites numéricos `api.max_json_depth`, `api.chat.max_tickets`, `api.chat.max_sockets`, `api.chat.max_queued_messages`, `api.idempotency_max_entries`, `clients.adapters.redirect_hosts`, `redirect_max`, `tar_max_entries` | `list` (raízes project, worktrees, documents, downloads); `deny`; `on`; `enforce`; 64, 64, 32, 256, 10000, `[]`, 3, 20000 | P8 | Feito no P8 (P8a e P8b): o que a revisão achou e era regra nova virou chave, nunca constante (N287, N290; docs/09, "Revisão da Fase 11") |
 
 O que o sistema faz com provedor fora do ar, com Executor travado e com perfil vencido já é política por causa (§5.16) e já tem chaves (`limits.*`, `resume.*`). O caos **testa** essas políticas. Se achar uma lacuna, o PR do P4 propõe a chave na seção "Como ficou".
 
