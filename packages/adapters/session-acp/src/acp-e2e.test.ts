@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 import { existsSync } from 'node:fs';
-import { mkdtemp, stat } from 'node:fs/promises';
+import { mkdtemp, readFile, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -73,6 +73,7 @@ interface Rig {
 async function rig(
   processModel: ProcessModel = 'process-per-session',
   sharedCancel?: SharedCancelMode,
+  baseEnv: Record<string, string> = {},
 ): Promise<Rig> {
   const cwd = await mkdtemp(join(tmpdir(), 'otheater-acp-e2e-'));
   tempDirs.push(cwd);
@@ -80,7 +81,7 @@ async function rig(
   allLaunchers.push(launcher);
   const adapter = new FakeClientAdapter({
     launcher,
-    baseEnv: {},
+    baseEnv,
     adapterVersion: '1.0.0',
     command: { cmd: process.execPath, args: [FAKE_AGENT_CLI] },
     processModel,
@@ -447,5 +448,105 @@ describe('the scripts of the fake agent, end to end', () => {
     );
     expect(error).toBeInstanceOf(QuotaExhausted);
     await session.close();
+  });
+
+  const failureOf = (running: Promise<unknown>): Promise<unknown> =>
+    running.then(
+      () => undefined,
+      (e: unknown) => e,
+    );
+
+  it('fail-quota: the quota error of a client becomes QuotaExhausted', async () => {
+    const { r, session } = await opened();
+    const error = await failureOf(session.prompt(script('fail-quota')));
+    expect(error).toBeInstanceOf(QuotaExhausted);
+    await session.close();
+    expect(r.alive()).toBe(0);
+  });
+
+  it('fail-auth and fail-transient: a typed error the session survives (the fake adapter does not tell them apart)', async () => {
+    const { session } = await opened();
+    for (const name of ['fail-auth', 'fail-transient']) {
+      const error = await failureOf(session.prompt(script(name)));
+      expect(isOTheaterError(error)).toBe(true);
+      expect(error).not.toBeInstanceOf(QuotaExhausted);
+    }
+    await session.close();
+  });
+
+  it('slow: the chunks arrive one by one, with the interval between them', async () => {
+    const { session, updates } = await opened();
+    const started = Date.now();
+    await session.prompt(script('slow', '{"chunks":3,"intervalMs":150}'));
+    expect(Date.now() - started).toBeGreaterThanOrEqual(300);
+    expect(updates.map(text).join('')).toBe('slow 1/3\nslow 2/3\nslow 3/3\n');
+    await session.close();
+  });
+
+  it('die: a client that kills itself in the turn rejects it with AdapterUnavailable', async () => {
+    const { r, session } = await opened();
+    const error = await failureOf(session.prompt(script('die', '{"afterChunks":1}')));
+    expect(error).toMatchObject({ code: 'ADAPTER_UNAVAILABLE' });
+    await session.close();
+    expect(r.alive()).toBe(0);
+  });
+
+  it('stall: a cancel the client does not answer is escalated to a kill, and no process is left', async () => {
+    const { r, session } = await opened();
+    const running = failureOf(session.prompt(script('stall', '{"chunks":1}')));
+    await new Promise((done) => setTimeout(done, 300));
+    expect(r.alive()).toBe(1);
+    await session.cancel();
+    await running;
+    expect(r.alive()).toBe(0);
+  });
+
+  it('ignore-term: the kill goes through SIGTERM that is ignored and ends with SIGKILL', async () => {
+    const { r, session } = await opened();
+    const running = failureOf(session.prompt(script('ignore-term')));
+    await new Promise((done) => setTimeout(done, 300));
+    await session.cancel();
+    await running;
+    expect(r.alive()).toBe(0);
+  });
+
+  it('spawn-child: the grandchild is in the group of the client and ends with it', async () => {
+    const stateDir = await mkdtemp(join(tmpdir(), 'otheater-acp-e2e-state-'));
+    const r = await rig('process-per-session', undefined, { FAKE_AGENT_STATE_DIR: stateDir });
+    // The rig removes its own folder; the state folder goes with it, after the processes.
+    const dispose = r.dispose;
+    cleanup.push({
+      ...r,
+      dispose: async () => {
+        await dispose();
+        await removeDir(stateDir);
+      },
+    });
+    const session = await r.adapter.openSession(profile, policy, r.cwd, r.via);
+    const running = failureOf(session.prompt(script('spawn-child', '{"after":"stall"}')));
+    const pidFile = join(stateDir, 'grandchild.pid');
+    for (let i = 0; i < 100 && !existsSync(pidFile); i += 1) {
+      await new Promise((done) => setTimeout(done, 50));
+    }
+    const grandchild = Number((await readFile(pidFile, 'utf8')).trim());
+    expect(Number.isInteger(grandchild)).toBe(true);
+    process.kill(grandchild, 0);
+    await session.cancel();
+    await running;
+    expect(r.alive()).toBe(0);
+    const gone = async (): Promise<boolean> => {
+      for (let i = 0; i < 100; i += 1) {
+        try {
+          process.kill(grandchild, 0);
+        } catch {
+          return true;
+        }
+        await new Promise((done) => setTimeout(done, 50));
+      }
+      return false;
+    };
+    const ended = await gone();
+    if (!ended) process.kill(grandchild, 'SIGKILL');
+    expect(ended).toBe(true);
   });
 });
