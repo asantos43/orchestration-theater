@@ -35,8 +35,9 @@ export const KEYS = {
 
 /** `text` without the terminal's color and cursor sequences. */
 export function plain(text: string): string {
+  // The colors and cursor moves (CSI) and the hyperlinks (OSC 8, ended by ST or BEL).
   // eslint-disable-next-line no-control-regex
-  return text.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, '');
+  return text.replace(/\x1b\[[0-9;?]*[A-Za-z]|\x1b\]8;[^\x07\x1b]*(?:\x07|\x1b\\)/g, '');
 }
 
 /** Waits (in real time, in short steps) until `read` gives a value, or fails with `what`. */
@@ -64,6 +65,8 @@ export interface RenderedApp {
   readonly locale: LocaleController;
   /** The last frame, without color. */
   frame(): string;
+  /** The last frame as Ink wrote it, with its colors and hyperlinks. */
+  rawFrame(): string;
   /** Writes keys to the app, as the terminal would. */
   press(keys: string): void;
   /** Resizes the terminal and waits for the app to see it. */
@@ -107,11 +110,14 @@ export interface RenderAppOptions {
 /**
  * The settings the tests start from: the defaults, with the first-run assistant (P17) off. A real
  * daemon with no configuration says `firstRunNeeded`, which would take the screen of every test
- * that is not about the assistant; the tests that are about it ask for `open: 'auto'`.
+ * that is not about the assistant; the tests that are about it ask for `open: 'auto'`. The sign-in
+ * panel does not open the browser (`login.browser: off`): a test about that gives a fake opener.
  */
 export const TEST_UI_SETTINGS: UiSettings = {
   ...DEFAULT_UI_SETTINGS,
   setup: { ...DEFAULT_UI_SETTINGS.setup, open: 'never' },
+  // The sign-in panel would start the browser of the machine that runs the tests.
+  login: { browser: 'off' },
 };
 
 /** The labels of the tests are the ones of Linux (`Alt+K`), whatever system runs them. */
@@ -165,6 +171,7 @@ export async function renderApp(options: RenderAppOptions): Promise<RenderedApp>
     i18n,
     locale,
     frame,
+    rawFrame: () => view.lastFrame() ?? '',
     press: (keys) => {
       view.stdin.write(keys);
     },

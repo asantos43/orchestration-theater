@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: MPL-2.0
 import { translateUiText, type UiBarItem } from '@otheater/client';
-import { Box, Text } from 'ink';
+import { Box } from 'ink';
 import type { ReactNode } from 'react';
+import { Text } from './themed-text.js';
 import { useUiTranslate } from './use-ui-translate.js';
 import { cellWidth } from './text.js';
-import { COLOR } from './theme.js';
+import { TOKEN } from './theme.js';
 
 /** A key and what it does, already translated. */
 export interface Hint {
@@ -32,10 +33,10 @@ export function Hints(props: {
         {' '}
         {shown.map((hint) => (
           <Text key={hint.id}>
-            <Text color={COLOR.key} bold backgroundColor={COLOR.keyBackground}>
+            <Text color={TOKEN.key} bold backgroundColor={TOKEN.keyBackground}>
               {` ${hint.label} `}
             </Text>
-            <Text dimColor>{` ${hint.text}  `}</Text>
+            <Text dimColor hint>{` ${hint.text}  `}</Text>
           </Text>
         ))}
       </Text>

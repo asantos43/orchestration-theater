@@ -5,12 +5,14 @@ import {
   UiInputConfigSchema,
   UiKeyboardConfigSchema,
   UiKeymapConfigSchema,
+  UiLoginConfigSchema,
   UiMouseModeSchema,
   UiOverviewConfigSchema,
   UiRenderConfigSchema,
   UiRuntimeConfigSchema,
   UiNewProjectConfigSchema,
   UiSetupConfigSchema,
+  UiThemeModeSchema,
   UiTuiLayoutConfigSchema,
   UI_USAGE_SECTIONS,
   UiUsageConfigSchema,
@@ -173,5 +175,19 @@ describe('ui.* schemas of the terminal', () => {
     expect(UiKeyboardConfigSchema.parse({ protocol: 'off' }).protocol).toBe('off');
     expect(UiKeyboardConfigSchema.safeParse({ protocol: 'legacy' }).success).toBe(false);
     expect(UiKeyboardConfigSchema.safeParse({ flags: 1 }).success).toBe(false);
+  });
+
+  it('has the default of ui.login and refuses an unknown mode', () => {
+    expect(UiLoginConfigSchema.parse({})).toEqual({ browser: 'auto' });
+    expect(UiLoginConfigSchema.parse({ browser: 'key' }).browser).toBe('key');
+    expect(UiLoginConfigSchema.parse({ browser: 'off' }).browser).toBe('off');
+    expect(UiLoginConfigSchema.safeParse({ browser: 'always' }).success).toBe(false);
+    expect(UiLoginConfigSchema.safeParse({ open: true }).success).toBe(false);
+  });
+
+  it('has the modes of ui.theme and refuses an unknown one', () => {
+    expect(UiThemeModeSchema.parse('otheater')).toBe('otheater');
+    expect(UiThemeModeSchema.parse('terminal')).toBe('terminal');
+    expect(UiThemeModeSchema.safeParse('dark').success).toBe(false);
   });
 });

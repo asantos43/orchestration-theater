@@ -1,0 +1,10 @@
+{
+  "name": "@otheater/tools-ci",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "license": "MPL-2.0",
+  "bin": {
+    "otheater-cross-classify": "./dist/cross-classify-cli.js"
+  }
+}

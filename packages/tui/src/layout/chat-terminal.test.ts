@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0
 import { describe, expect, it } from 'vitest';
 import { terminalLines, type ChatTerminal } from './chat.js';
+import { TERMINAL_PALETTE } from './palette.js';
+import { TOKEN } from './theme.js';
 
 const block: ChatTerminal = {
   header: '! ls -la',
@@ -31,9 +33,12 @@ describe('the rows of a ! command (P18)', () => {
   it('colours the notes by tone and dims only the quiet one', () => {
     const rows = terminalLines(block, 40);
     const note = (text: string) => rows.find((row) => row.text === text);
-    expect(note('Finished with code 0 in 1 s.')?.color).toBe('green');
-    expect(note('The command asked for input.')?.color).toBe('yellow');
-    expect(note('Failed.')?.color).toBe('red');
+    // The rows carry roles; in `terminal` they are the named colours the layout always had.
+    const named = (text: string) => TERMINAL_PALETTE.resolve(note(text)?.color);
+    expect(note('Finished with code 0 in 1 s.')?.color).toBe(TOKEN.ok);
+    expect(named('Finished with code 0 in 1 s.')).toBe('green');
+    expect(named('The command asked for input.')).toBe('yellow');
+    expect(named('Failed.')).toBe('red');
     expect(note('Kept here.')?.dim).toBe(true);
     expect(note('Failed.')?.dim).toBe(false);
     expect(rows[0]?.bold).toBe(true);

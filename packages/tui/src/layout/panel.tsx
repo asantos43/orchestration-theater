@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: MPL-2.0
-import { Box, Text, type DOMElement } from 'ink';
+import { Box, type DOMElement } from 'ink';
 import { useRef, type ReactNode } from 'react';
+import { Text } from './themed-text.js';
 import { useMouseTarget } from '../mouse/index.js';
 import { Frame } from './frame.js';
 import { Hints, type Hint } from './shortcut-bar.js';
 import { layoutTabBar, type TabLabel } from './tab-bar.js';
 import { panelBarRight, tabBarHit, type TabBarHit } from './tab-bar-hit.js';
 import { cellWidth } from './text.js';
-import { COLOR, paint } from './theme.js';
+import { TOKEN, paint } from './theme.js';
 
 /** Cells and rows left to the content of a panel of this size: the frame, the tab bar and the footer take the rest. */
 export function panelContentSize(width: number, height: number): { width: number; height: number } {
@@ -68,8 +69,8 @@ export function Panel(props: PanelProps): ReactNode {
                 key={segment.id}
                 bold={segment.active}
                 {...paint(
-                  segment.active ? 'white' : undefined,
-                  segment.active ? COLOR.selected : undefined,
+                  segment.active ? TOKEN.tabText : undefined,
+                  segment.active ? TOKEN.selected : undefined,
                 )}
                 dimColor={!segment.active}
               >
@@ -78,10 +79,10 @@ export function Panel(props: PanelProps): ReactNode {
             ),
           )}
           {' '.repeat(gap)}
-          <Text color={COLOR.accent}>{right}</Text>
+          <Text color={TOKEN.accent}>{right}</Text>
         </Text>
       </Box>
-      <Text color={props.focused ? COLOR.borderActive : COLOR.border} wrap="truncate">
+      <Text color={props.focused ? TOKEN.borderActive : TOKEN.border} wrap="truncate">
         {(bar.underline + '─'.repeat(Math.max(0, inner - cellWidth(bar.underline)))).slice(
           0,
           inner,

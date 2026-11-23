@@ -88,6 +88,10 @@ jobs:
   #   `code` (default: only when the PR is not docs only), `always` or `manual` (dispatch only).
   # - The full suite on linux (owner, 2026-11-21): the variable OT_DOCS_CI picks the mode: `light`
   #   (default: a docs-only PR runs the job `docs` instead) or `full` (always the full suite).
+  # - The lint and prettier on Windows and macOS (owner, 2026-11-22): OT_CROSS_LINT, `off` (default)
+  #   or `on`; checked here, read by the job `cross`.
+  # - The tests on Windows and macOS (owner, 2026-11-22): OT_CROSS_TESTS, `os` (default: on a pull
+  #   request only the tests that touch the system) or `all`; checked here, read by the job `cross`.
   # On a pull request the checkout is the merge commit, so HEAD^1 is the tip of the base branch.
   changes:
     if: github.event_name == 'pull_request'
@@ -104,6 +108,8 @@ jobs:
         env:
           MODE: ${{ vars.OT_CROSS_CI || 'code' }}
           DOCS_MODE: ${{ vars.OT_DOCS_CI || 'light' }}
+          LINT_MODE: ${{ vars.OT_CROSS_LINT || 'off' }}
+          TESTS_MODE: ${{ vars.OT_CROSS_TESTS || 'os' }}
         run: |
           changed=$(git diff --name-only HEAD^1 HEAD)
           echo "$changed"
@@ -123,6 +129,16 @@ jobs:
             light) full=$code ;;
             full) full=true ;;
             *) echo "::error::OT_DOCS_CI=$DOCS_MODE: use light or full"; exit 1 ;;
+          esac
+          # OT_CROSS_LINT is read by the job `cross`; a wrong value fails here instead of passing as `off`.
+          case "$LINT_MODE" in
+            off | on) ;;
+            *) echo "::error::OT_CROSS_LINT=$LINT_MODE: use off or on"; exit 1 ;;
+          esac
+          # The same for OT_CROSS_TESTS, read by the job `cross` (tools/ci/test-affected.sh).
+          case "$TESTS_MODE" in
+            os | all) ;;
+            *) echo "::error::OT_CROSS_TESTS=$TESTS_MODE: use os or all"; exit 1 ;;
           esac
           if printf '%s\n' "$changed" | grep -qE '^(packages/protocol/src/atif/|packages/daemon/src/atif/|packages/daemon/src/phase8-acceptance\.e2e\.test\.ts|tools/atif-validate/)'; then
             atif=true
@@ -212,16 +228,27 @@ jobs:
       # `pnpm verify` reads the crates of native/ offline: the sources must be in the cache first.
       - run: cargo fetch --locked
         working-directory: native/job-launcher
+      - run: pnpm build
+      # The lint and prettier give the same result on every system, and the job `linux` already runs
+      # them; on macOS the typed lint alone took 11 min of the 31 of PR #298 (owner, 2026-11-22). The
+      # repository variable OT_CROSS_LINT picks the mode: `off` (default) or `on` (run them here too).
       # The typed lint (`eslint .`) passed the default ~2 GB heap of Node on a runner (PR #55).
-      - run: pnpm build && pnpm lint && pnpm format:check
+      - run: pnpm lint && pnpm format:check
+        if: ${{ vars.OT_CROSS_LINT == 'on' }}
         env:
           NODE_OPTIONS: --max-old-space-size=6144
-      # The same mode as on linux (OT_TEST_CI). Git Bash runs the script on Windows.
+      # The same mode as on linux (OT_TEST_CI), then only the tests that touch the system (owner,
+      # 2026-11-22): the others are pure logic and give the same result on the three systems, and in
+      # PR #298 the tests took 18 min on macOS, 12 on Windows and 15 on linux. The repository variable
+      # OT_CROSS_TESTS picks the mode on a pull request: `os` (default: the classifier of
+      # tools/ci/src/cross-classify.ts picks them) or `all`. A push to main and a dispatch run all of
+      # them, which catches a test the classifier left out. Git Bash runs the script on Windows.
       - run: bash tools/ci/test-affected.sh HEAD^1
         shell: bash
         env:
           NODE_OPTIONS: --max-old-space-size=6144
           OT_TEST_CI: ${{ github.event_name == 'pull_request' && (vars.OT_TEST_CI || 'affected') || 'full' }}
+          OT_CROSS_TESTS: ${{ github.event_name == 'pull_request' && (vars.OT_CROSS_TESTS || 'os') || 'all' }}
       - run: pnpm verify
 
   # Real test of the Windows Job Object launcher (N58): only here the integration tests run.

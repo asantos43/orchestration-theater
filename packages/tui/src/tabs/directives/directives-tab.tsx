@@ -1,15 +1,16 @@
 // SPDX-License-Identifier: MPL-2.0
 import type { ApiOrder } from '@otheater/protocol';
-import { Box, Text } from 'ink';
+import { Box } from 'ink';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Text } from '../../layout/themed-text.js';
 import { keyLabel, pairLabel } from '../../keys/labels.js';
 import { useRawKeys, type KeyEvent } from '../../keys/use-keymap.js';
 import { fit, fitRight, wrapText } from '../../layout/text.js';
 import { Section } from '../../layout/section.js';
 import { useTabHost } from '../../layout/tab-host.js';
 import type { TabContentProps } from '../../layout/tab-types.js';
-import { COLOR, paint } from '../../layout/theme.js';
+import { TOKEN, paint } from '../../layout/theme.js';
 import { useRenderControl } from '../../render-control.js';
 import { useStoreValue } from '../../use-store-value.js';
 import {
@@ -62,8 +63,8 @@ interface Message {
 
 const TONE_COLOR: Readonly<Record<Tone, string | undefined>> = {
   info: undefined,
-  ok: COLOR.ok,
-  error: COLOR.error,
+  ok: TOKEN.ok,
+  error: TOKEN.error,
 };
 
 function errorText(error: unknown): string {
@@ -308,12 +309,12 @@ export function DirectivesTab(props: TabContentProps): ReactNode {
         <Text
           bold={isSelected}
           dimColor={ended && !isSelected}
-          {...paint(isSelected ? COLOR.accent : undefined)}
+          {...paint(isSelected ? TOKEN.accent : undefined)}
           wrap="truncate"
         >
           {`${fit(head, headWidth)} ${fitRight(deadlineText, Math.min(deadlineText.length, width - 2))}`}
         </Text>
-        <Text dimColor={!warn} {...paint(warn ? COLOR.warn : undefined)} wrap="truncate">
+        <Text dimColor={!warn} {...paint(warn ? TOKEN.warn : undefined)} wrap="truncate">
           {fit(line, width)}
         </Text>
         {isSelected && renderDetail(order)}
@@ -395,7 +396,7 @@ export function DirectivesTab(props: TabContentProps): ReactNode {
     return (
       <>
         {parts.before}
-        <Text inverse>{parts.under}</Text>
+        <Text caret>{parts.under}</Text>
         {parts.after}
       </>
     );
@@ -406,14 +407,14 @@ export function DirectivesTab(props: TabContentProps): ReactNode {
     const subject = current.subject ?? '';
     return (
       <Box flexDirection="column" width={width} marginBottom={1}>
-        <Text bold {...paint(COLOR.accent)} wrap="truncate">
+        <Text bold {...paint(TOKEN.accent)} wrap="truncate">
           {fit(t(`directives.form.title.${current.action}`, { subject }), width)}
         </Text>
         {fields.map((field) => (
           <Text
             key={field}
             bold={field === current.active}
-            {...paint(field === current.active ? COLOR.accent : undefined)}
+            {...paint(field === current.active ? TOKEN.accent : undefined)}
             wrap="truncate"
           >
             {`${field === current.active ? '›' : ' '} ${t(`directives.form.field.${field}`)}: `}

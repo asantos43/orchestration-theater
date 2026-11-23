@@ -345,6 +345,8 @@ export async function main(argv: readonly string[], deps: CliDeps): Promise<numb
         }
         if (!isProfileAction(action))
           return usageError(t('usage.unknownProfileAction', { action }));
+        if (values.login === true && values['no-login'] === true)
+          return usageError(t('usage.profileLoginOne'));
         return await runProfileCommand(
           context,
           {
@@ -353,6 +355,11 @@ export async function main(argv: readonly string[], deps: CliDeps): Promise<numb
             input: deps.input,
             passwordPrompt: deps.passwordPrompt?.(t),
             shims: shimHost,
+            interactive: deps.interactive,
+            confirm: deps.confirm,
+            cwd: deps.cwd,
+            spawn: deps.execSpawn,
+            signals: deps.execSignals,
           },
           action,
           args,
@@ -531,6 +538,8 @@ function parseCliArgs(argv: readonly string[]) {
       'api-key-stdin': { type: 'boolean' },
       'accept-notice': { type: 'boolean' },
       'check-login': { type: 'boolean' },
+      login: { type: 'boolean' },
+      'no-login': { type: 'boolean' },
       json: { type: 'boolean' },
       // The options of `ot profile shims` (`json` is shared).
       install: { type: 'boolean' },
@@ -615,6 +624,7 @@ function profileOptions(values: ParsedValues): ProfileOptions {
     client: values.client,
     all: values.all === true,
     checkLogin: values['check-login'] === true,
+    login: values.login === true ? true : values['no-login'] === true ? false : undefined,
     json: values.json === true,
   };
 }
@@ -789,6 +799,23 @@ export function isProfileExecArgv(argv: readonly string[]): boolean {
   return words[0] === 'profile' && words[1] === 'exec';
 }
 
+/** Whether the command line is `ot [--data-dir <dir>] profile add ... --login` (the login runs in this terminal). */
+export function isProfileAddLoginArgv(argv: readonly string[]): boolean {
+  const words: string[] = [];
+  let login = false;
+  for (let at = 0; at < argv.length; at += 1) {
+    const token = argv[at];
+    if (token === undefined || token === '--') break;
+    if (token === '--data-dir') {
+      at += 1;
+      continue;
+    }
+    if (token === '--login') login = true;
+    if (!token.startsWith('-') && words.length < 2) words.push(token);
+  }
+  return login && words[0] === 'profile' && words[1] === 'add';
+}
+
 /**
  * The program: reads `process.argv` and sets the exit code. Runs by itself when this file is the
  * script (`isMainModule`); the single executable calls it from `sea/main.ts`.
@@ -796,6 +823,8 @@ export function isProfileExecArgv(argv: readonly string[]): boolean {
 export async function entry(): Promise<void> {
   const argv = process.argv.slice(2);
   const exec = isProfileExecArgv(argv);
+  // `profile add --login`: the client's login in the terminal owns Ctrl+C there too.
+  const ownsCtrlC = exec || isProfileAddLoginArgv(argv);
   // A swap whose applier died is finished or undone before anything else (Phase 10, P8).
   if (isSeaProcess() && !exec) await recoverAtStart({ execPath: process.execPath });
   const controller = new AbortController();
@@ -806,7 +835,7 @@ export async function entry(): Promise<void> {
     if (signals > 1) process.exit(EXIT_FAILED);
     controller.abort(new Error('terminated by signal'));
   };
-  if (!exec) {
+  if (!ownsCtrlC) {
     process.on('SIGINT', onSignal);
     process.on('SIGTERM', onSignal);
   }

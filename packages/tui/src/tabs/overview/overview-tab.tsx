@@ -8,9 +8,10 @@ import {
   type EventRow,
   type PipelineView,
 } from '@otheater/client';
-import { Box, Text } from 'ink';
+import { Box } from 'ink';
 import { useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Text } from '../../layout/themed-text.js';
 import { keyLabel } from '../../keys/labels.js';
 import { useRawKeys, type KeyEvent } from '../../keys/use-keymap.js';
 import { useTabHost } from '../../layout/tab-host.js';
@@ -19,7 +20,7 @@ import type { QuotaRow } from '../../layout/scenario-rows.js';
 import { fillBar } from '../../layout/scenario-rows.js';
 import { Section } from '../../layout/section.js';
 import { cellWidth, fit, wrapText } from '../../layout/text.js';
-import { COLOR, paint } from '../../layout/theme.js';
+import { TOKEN, paint } from '../../layout/theme.js';
 import { useStoreValue } from '../../use-store-value.js';
 import { formatClock, useNow } from '../use-now.js';
 import { useControlRunner, type ControlKind, type ControlRequest } from './use-controls.js';
@@ -43,20 +44,20 @@ const OVERVIEW_ACTIONS = [
 ] as const;
 
 const DEMAND_MARK: Readonly<Record<DemandRow['state'], { glyph: string; color?: string }>> = {
-  approved: { glyph: '✓', color: COLOR.ok },
-  running: { glyph: '●', color: COLOR.accent },
-  in_review: { glyph: '◉', color: COLOR.accent },
+  approved: { glyph: '✓', color: TOKEN.ok },
+  running: { glyph: '●', color: TOKEN.accent },
+  in_review: { glyph: '◉', color: TOKEN.accent },
   ready: { glyph: '○' },
   pending: { glyph: '·' },
-  failed: { glyph: '✗', color: COLOR.error },
-  blocked: { glyph: '⊘', color: COLOR.warn },
+  failed: { glyph: '✗', color: TOKEN.error },
+  blocked: { glyph: '⊘', color: TOKEN.warn },
   cancelled: { glyph: '–' },
 };
 
 function quotaColor(row: QuotaRow): string {
-  if (row.state === 'exhausted') return COLOR.error;
-  if (row.state === 'near_limit') return COLOR.warn;
-  return COLOR.ok;
+  if (row.state === 'exhausted') return TOKEN.error;
+  if (row.state === 'near_limit') return TOKEN.warn;
+  return TOKEN.ok;
 }
 
 // ---- the sections ---------------------------------------------------------------------------
@@ -99,9 +100,9 @@ function PipelineLines(props: {
               dimColor={step.mark === 'todo'}
               {...paint(
                 step.mark === 'done'
-                  ? COLOR.ok
+                  ? TOKEN.ok
                   : step.mark === 'current'
-                    ? COLOR.accent
+                    ? TOKEN.accent
                     : undefined,
               )}
             >
@@ -155,12 +156,12 @@ function ActorLine(props: {
     Math.max(1, width - 4 - cellWidth(right) - 1),
   );
   return (
-    <Text wrap="truncate" {...paint(undefined, props.selected ? COLOR.selected : undefined)}>
-      <Text color={COLOR.accent}>{props.selected ? '▸ ' : '  '}</Text>
-      <Text {...paint(row.paused === undefined ? COLOR.accent : COLOR.warn)}>
+    <Text wrap="truncate" {...paint(undefined, props.selected ? TOKEN.selected : undefined)}>
+      <Text color={TOKEN.accent}>{props.selected ? '▸ ' : '  '}</Text>
+      <Text {...paint(row.paused === undefined ? TOKEN.accent : TOKEN.warn)}>
         {row.paused === undefined ? '●' : '‖'}
       </Text>{' '}
-      {left} <Text {...paint(late ? COLOR.warn : undefined)}>{right}</Text>
+      {left} <Text {...paint(late ? TOKEN.warn : undefined)}>{right}</Text>
     </Text>
   );
 }
@@ -290,7 +291,7 @@ function OverviewTab(props: TabContentProps): ReactNode {
       t(`overview.confirm.${runner.pending.kind}`, { subject: runner.pending.subject }),
       width,
     ).map((line) => (
-      <Text key={line} color={COLOR.warn} bold wrap="truncate">
+      <Text key={line} color={TOKEN.warn} bold wrap="truncate">
         {line}
       </Text>
     ));
@@ -308,7 +309,7 @@ function OverviewTab(props: TabContentProps): ReactNode {
           defaultValue: t('overview.failed.other', { code: result.code }),
         });
     notice = (
-      <Text color={result.ok ? COLOR.ok : COLOR.error} wrap="truncate">
+      <Text color={result.ok ? TOKEN.ok : TOKEN.error} wrap="truncate">
         {fit(text, width)}
       </Text>
     );

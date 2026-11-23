@@ -1,15 +1,16 @@
 // SPDX-License-Identifier: MPL-2.0
 import { ApiRequestError, deriveShortcutBar, type UiBarItem } from '@otheater/client';
 import type { SetupRunView } from '@otheater/protocol';
-import { Box, Text, useWindowSize } from 'ink';
+import { Box, useWindowSize } from 'ink';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Text } from '../layout/themed-text.js';
 import { keyLabel } from '../keys/labels.js';
 import { useRawKeys, type KeyEvent, type TuiKeymap } from '../keys/use-keymap.js';
 import { Frame } from '../layout/frame.js';
 import { ShortcutBar } from '../layout/shortcut-bar.js';
 import { fit, wrapText } from '../layout/text.js';
-import { COLOR, paint } from '../layout/theme.js';
+import { TOKEN, paint } from '../layout/theme.js';
 import { useRenderControl } from '../render-control.js';
 import { fieldStep } from '../tabs/settings/field.js';
 import { errorText } from '../tabs/settings/index.js';
@@ -80,9 +81,9 @@ interface State {
 
 const IDLE: Mode = { kind: 'idle' };
 const TONE_COLOR: Readonly<Record<Tone, string>> = {
-  ok: COLOR.ok,
-  warn: COLOR.warn,
-  error: COLOR.error,
+  ok: TOKEN.ok,
+  warn: TOKEN.warn,
+  error: TOKEN.error,
 };
 
 const FIRST: State = {
@@ -396,12 +397,12 @@ export function SetupScreen(props: SetupScreenProps): ReactNode {
         mode.purpose === 'executor'
           ? t('setup.prompt.executor')
           : t('setup.prompt.budget', { profile: mode.profileId }),
-      color: COLOR.accent,
+      color: TOKEN.accent,
     });
     head.push({ key: 'p.value', text: `> ${mode.value}▏` });
     head.push({ key: 'p.hint', text: t('setup.prompt.hintEnter'), dim: true });
   } else if (mode.kind === 'confirmCancel') {
-    head.push({ key: 'c.q', text: t('setup.prompt.confirmCancel'), color: COLOR.warn });
+    head.push({ key: 'c.q', text: t('setup.prompt.confirmCancel'), color: TOKEN.warn });
     head.push({ key: 'c.hint', text: t('setup.prompt.hintConfirm'), dim: true });
   }
   if (message !== undefined) {
@@ -413,7 +414,7 @@ export function SetupScreen(props: SetupScreenProps): ReactNode {
     head.push({
       key: 'fail',
       text: t('setup.loadFailed', { message: state.loadError ?? '' }),
-      color: COLOR.error,
+      color: TOKEN.error,
     });
     head.push({
       key: 'retry',
@@ -449,7 +450,7 @@ export function SetupScreen(props: SetupScreenProps): ReactNode {
           wrap="truncate"
           dimColor={line.dim === true}
           bold={line.bold === true}
-          {...paint(line.color, line.selected === true ? COLOR.selected : undefined)}
+          {...paint(line.color, line.selected === true ? TOKEN.selected : undefined)}
         >
           {fit(`${line.selected === true && index === 0 ? '›' : ' '}${piece}`, innerWidth)}
         </Text>,

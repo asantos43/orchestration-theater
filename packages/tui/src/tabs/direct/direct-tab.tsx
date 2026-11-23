@@ -1,14 +1,15 @@
 // SPDX-License-Identifier: MPL-2.0
 import { ApiRequestError } from '@otheater/client';
-import { Box, Text } from 'ink';
+import { Box } from 'ink';
 import { createElement, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Text } from '../../layout/themed-text.js';
 import { keyLabel, pairLabel } from '../../keys/labels.js';
 import { useRawKeys, type KeyEvent } from '../../keys/use-keymap.js';
 import { useTabHost } from '../../layout/tab-host.js';
 import type { TabContentProps, TabDefinition } from '../../layout/tab-types.js';
 import { fit } from '../../layout/text.js';
-import { COLOR, paint } from '../../layout/theme.js';
+import { TOKEN, paint } from '../../layout/theme.js';
 import { useRenderControl } from '../../render-control.js';
 import { useStoreValue } from '../../use-store-value.js';
 import { apiOf, type DirectApi } from './api.js';
@@ -63,12 +64,12 @@ const VIEW: Ui = { mode: 'view' };
 const TONE_COLOR: Readonly<Record<Tone | Tone2, string | undefined>> = {
   plain: undefined,
   info: undefined,
-  producer: COLOR.accent,
+  producer: TOKEN.accent,
   actor: undefined,
   dim: undefined,
-  ok: COLOR.ok,
-  warn: COLOR.warn,
-  error: COLOR.error,
+  ok: TOKEN.ok,
+  warn: TOKEN.warn,
+  error: TOKEN.error,
 };
 
 /** The id of the last event `direct.session.*` of the stream: what makes the tab read again. */
@@ -372,21 +373,21 @@ function DirectTab({ content, options }: TabProps): ReactNode {
     };
     return (
       <Box flexDirection="column" width={width} marginBottom={1}>
-        <Text bold {...paint(COLOR.accent)} wrap="truncate">
+        <Text bold {...paint(TOKEN.accent)} wrap="truncate">
           {fit(t('direct.form.title'), width)}
         </Text>
         {fields.map(([id, label, active]) => (
           <Text
             key={id}
             bold={active}
-            {...paint(active ? COLOR.accent : undefined)}
+            {...paint(active ? TOKEN.accent : undefined)}
             wrap="truncate"
           >
             {fit(`${active ? '›' : ' '} ${label}: ${values[id] ?? ''}`, width)}
           </Text>
         ))}
         {confirming ? (
-          <Text {...paint(COLOR.warn)} wrap="truncate">
+          <Text {...paint(TOKEN.warn)} wrap="truncate">
             {fit(t('direct.form.confirmScenario'), width)}
           </Text>
         ) : null}
@@ -431,7 +432,7 @@ function DirectTab({ content, options }: TabProps): ReactNode {
           key={session.id}
           bold={session.id === selectedId}
           dimColor={session.state === 'closed'}
-          {...paint(session.id === selectedId ? COLOR.accent : undefined)}
+          {...paint(session.id === selectedId ? TOKEN.accent : undefined)}
           wrap="truncate"
         >
           {fit(`${session.id === selectedId ? '›' : ' '} ${sessionLine(session, say)}`, width)}
@@ -459,7 +460,7 @@ function DirectTab({ content, options }: TabProps): ReactNode {
         <Text wrap="truncate">
           {'› '}
           {talkLine.before}
-          <Text inverse>{talkLine.under}</Text>
+          <Text caret>{talkLine.under}</Text>
           {talkLine.after}
         </Text>
       )}

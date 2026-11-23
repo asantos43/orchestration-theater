@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MPL-2.0
-import { Text } from 'ink';
 import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Text } from '../../layout/themed-text.js';
 import { fit } from '../../layout/text.js';
-import { COLOR } from '../../layout/theme.js';
+import { TOKEN } from '../../layout/theme.js';
 import type { SourceLoad } from './use-panels.js';
 
 /** The value a section draws: what was read, or what it read before when the last read failed. */
@@ -33,7 +33,7 @@ export function SourceNotice(props: {
   }
   if (load.status === 'error') {
     return (
-      <Text color={COLOR.error} wrap="truncate">
+      <Text color={TOKEN.error} wrap="truncate">
         {fit(
           t(`usage.failed.${load.code}`, {
             defaultValue: t('usage.failed.other', { code: load.code }),

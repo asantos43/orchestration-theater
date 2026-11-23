@@ -693,6 +693,7 @@
       "limit": "New value of {{key}} ({{hint}})",
       "confirmRemove": "Remove {{profile}}? Its sessions drain, then its directory and key go. y/n",
       "confirmNotice": "{{provider}} already has {{existing}}. Add another? y/n",
+      "confirmLogin": "{{profile}} was added. Log in now? y/n",
       "hintEnter": "Enter confirms, Esc cancels",
       "hintConfirm": "y confirms, any other key cancels",
       "yes": "y"
@@ -707,7 +708,22 @@
         "browser": "Open the address in a browser and sign in.",
         "device_code": "Open the address and type the code there."
       },
-      "url": "Address: {{url}}",
+      "url": "Address:",
+      "keys": {
+        "both": "{{open}} opens the address in the browser, {{copy}} copies it.",
+        "copy": "{{copy}} copies the address (it is not opened from here)."
+      },
+      "opened": "Opened in the browser ({{command}}).",
+      "openOff": "Opening the browser is off (ui.login.browser). Copy the address with {{copy}}.",
+      "openFailed": {
+        "bad_url": "Only http and https addresses are opened.",
+        "remote": "This interface runs over SSH: the browser would open on the other machine. Copy the address with {{copy}} and open it where you are.",
+        "failed": "Could not start {{command}}. Copy the address with {{copy}}."
+      },
+      "copied": {
+        "osc52": "Sent {{chars}} characters to the clipboard through the terminal (OSC 52). If it does not paste, the terminal does not accept OSC 52 (GNOME Terminal and the other VTE terminals do not). Set ui.clipboard.copy to auto or system to use wl-copy or xclip.",
+        "system": "Copied {{chars}} characters with the clipboard tool of the system."
+      },
       "code": "Code: {{code}}",
       "noUrl": "The client has not printed an address yet.",
       "takesCode": "Paste the code the browser shows here. Enter sends it, Esc cancels.",

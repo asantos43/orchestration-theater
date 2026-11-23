@@ -693,6 +693,7 @@
       "limit": "Novo valor de {{key}} ({{hint}})",
       "confirmRemove": "Remover {{profile}}? As sessões esvaziam, depois somem o diretório e a chave. s/n",
       "confirmNotice": "{{provider}} já tem {{existing}}. Adicionar outra? s/n",
+      "confirmLogin": "{{profile}} foi adicionada. Entrar agora? s/n",
       "hintEnter": "Enter confirma, Esc cancela",
       "hintConfirm": "s confirma, qualquer outra tecla cancela",
       "yes": "s"
@@ -707,7 +708,22 @@
         "browser": "Abra o endereço num navegador e entre.",
         "device_code": "Abra o endereço e digite o código lá."
       },
-      "url": "Endereço: {{url}}",
+      "url": "Endereço:",
+      "keys": {
+        "both": "{{open}} abre o endereço no navegador, {{copy}} o copia.",
+        "copy": "{{copy}} copia o endereço (ele não é aberto daqui)."
+      },
+      "opened": "Aberto no navegador ({{command}}).",
+      "openOff": "Abrir o navegador está desligado (ui.login.browser). Copie o endereço com {{copy}}.",
+      "openFailed": {
+        "bad_url": "Só endereços http e https são abertos.",
+        "remote": "Esta interface roda por SSH: o navegador abriria na outra máquina. Copie o endereço com {{copy}} e abra onde você está.",
+        "failed": "Não deu para iniciar {{command}}. Copie o endereço com {{copy}}."
+      },
+      "copied": {
+        "osc52": "{{chars}} caracteres enviados à área de transferência pelo terminal (OSC 52). Se não colar, o terminal não aceita OSC 52 (o GNOME Terminal e os outros terminais VTE não aceitam). Ponha ui.clipboard.copy em auto ou system para usar wl-copy ou xclip.",
+        "system": "{{chars}} caracteres copiados com a ferramenta de área de transferência do sistema."
+      },
       "code": "Código: {{code}}",
       "noUrl": "O cliente ainda não imprimiu um endereço.",
       "takesCode": "Cole aqui o código que o navegador mostra. Enter envia, Esc cancela.",

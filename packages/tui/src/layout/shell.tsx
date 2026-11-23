@@ -12,7 +12,7 @@ import {
   type UiTranslate,
 } from '@otheater/client';
 import { API_ROUTES } from '@otheater/protocol';
-import { Box, Text, useApp, useWindowSize } from 'ink';
+import { Box, useApp, useWindowSize } from 'ink';
 import { randomUUID } from 'node:crypto';
 import {
   useCallback,
@@ -24,6 +24,7 @@ import {
   type ReactNode,
 } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Text } from './themed-text.js';
 import { keyLabel, pairLabel } from '../keys/labels.js';
 import { useMouseCopy, type CopyOutcome, type DragInfo } from '../mouse/index.js';
 import { useRawKeys, type KeyEvent, type TuiKeymap } from '../keys/use-keymap.js';
@@ -78,7 +79,7 @@ import {
   setPanelOpen,
   useLayoutPreferences,
 } from './use-layout.js';
-import { COLOR } from './theme.js';
+import { TOKEN } from './theme.js';
 import { useUiTranslate } from './use-ui-translate.js';
 
 /** The areas the focus walks, in the order Tab takes it. */
@@ -808,7 +809,7 @@ export function Shell(props: ShellProps): ReactNode {
         {notice === undefined ? (
           <ShortcutBar width={geometry.columns} items={barItems} />
         ) : (
-          <Text color={COLOR.warn} wrap="truncate">
+          <Text color={TOKEN.warn} wrap="truncate">
             {` ${notice}`}
           </Text>
         )}

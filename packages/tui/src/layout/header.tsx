@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: MPL-2.0
-import { Box, Text } from 'ink';
+import { Box } from 'ink';
 import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useTheme } from './theme-context.js';
+import { Text } from './themed-text.js';
 import type { Link } from './data.js';
 import type { ScenarioMark } from './scenario-rows.js';
 import { clip } from './text.js';
-import { COLOR } from './theme.js';
+import { TOKEN } from './theme.js';
 import type { UpdateHint } from './use-update-status.js';
 
 /** The mark of the product, which is not translated. */
@@ -26,10 +28,10 @@ export interface HeaderProps {
 }
 
 const MARK_COLOR: Readonly<Record<ScenarioMark, string>> = {
-  decision: COLOR.warn,
-  running: COLOR.ok,
-  done: COLOR.ok,
-  idle: COLOR.headerText,
+  decision: TOKEN.warn,
+  running: TOKEN.ok,
+  done: TOKEN.ok,
+  idle: TOKEN.headerText,
 };
 
 /** The top row: where the person is (scenario, play, state, decisions) and the daemon on the right. */
@@ -42,12 +44,13 @@ export function Header(props: HeaderProps): ReactNode {
       : props.play === undefined
         ? props.scenarioName
         : `${props.scenarioName} › ${props.play}`;
+  const palette = useTheme();
   const daemon = t('layout.header.daemon', { address: props.address });
   const room = Math.max(0, width - daemon.length - 6 - 4);
   return (
-    <Box width={width} height={1} backgroundColor={COLOR.header}>
-      <Text color={COLOR.headerText} wrap="truncate">
-        <Text color={COLOR.headerKey} bold>
+    <Box width={width} height={1} backgroundColor={palette.resolve(TOKEN.header)}>
+      <Text color={TOKEN.headerText} wrap="truncate">
+        <Text color={TOKEN.headerKey} bold>
           {BRAND}
         </Text>
         {' │ '}
@@ -61,7 +64,7 @@ export function Header(props: HeaderProps): ReactNode {
         {props.decisions > 0 && (
           <>
             {' │ '}
-            <Text color={COLOR.warn} bold>
+            <Text color={TOKEN.warn} bold>
               ! {t('layout.header.decisions', { count: props.decisions })}
             </Text>
           </>
@@ -69,7 +72,7 @@ export function Header(props: HeaderProps): ReactNode {
         {props.update !== undefined && (
           <>
             {' │ '}
-            <Text color={COLOR.ok}>
+            <Text color={TOKEN.ok}>
               {t(props.update.ready ? 'layout.header.updateReady' : 'layout.header.updateFound', {
                 version: props.update.version,
               })}
@@ -79,8 +82,8 @@ export function Header(props: HeaderProps): ReactNode {
         )}
       </Text>
       <Box flexGrow={1} />
-      <Text color={COLOR.headerText} wrap="truncate">
-        {daemon} <Text color={props.link === 'live' ? COLOR.ok : COLOR.warn}>●</Text>
+      <Text color={TOKEN.headerText} wrap="truncate">
+        {daemon} <Text color={props.link === 'live' ? TOKEN.ok : TOKEN.warn}>●</Text>
         {props.link === 'live' ? '' : ` ${t(`layout.link.${props.link}`)}`}{' '}
       </Text>
     </Box>

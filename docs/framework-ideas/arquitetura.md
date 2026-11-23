@@ -1350,7 +1350,7 @@ api:
 ### 5.13 Interfaces
 
 **Mockups de referência** (valores ilustrativos):
-- `mockup/tui.html`: TUI (interface principal), gerada por `mockup/tui-render.js` (`node tui-render.js`);
+- `mockup/tui.html`: TUI (interface principal), gerada por `mockup/tui-render.cjs` (`node tui-render.cjs`);
 - `mockup/app.html`: web e desktop (Fases 12 e 13);
 - `mockup/mobile.html`: app Android, celular e tablet em paisagem e retrato (Fase 14).
 
@@ -1501,6 +1501,7 @@ O patch fica, com a versão do Ink travada em 8.0.0: se a versão mudar, o patch
 | `ui.keymap.overrides` | `{}` | id da ação para uma combinação, uma lista ou `[]` (sem atalho) |
 | `ui.clipboard.copy` | `osc52` | `osc52`, `system`, `auto` **[proposta]**, `off` |
 | `ui.mouse` | `full` | `full`, `wheel` (só a roda, e o terminal continua capturado), `off` (devolve a seleção do terminal) |
+| `ui.theme` | `otheater` | `otheater` (paleta do mockup em hex, truecolor; sem truecolor o chalk do Ink reduz para 256 ou 16 cores), `terminal` (as 16 cores nomeadas do terminal e o SGR `dim`, como antes); lida na partida (N257, 2026-11-22) |
 | `ui.tuiMouse.wheelLines` **[proposta]** | 3 | inteiro de 1 a 50 |
 | `ui.tuiMouse.copyMaxBytes` **[proposta]** | 100.000 | inteiro de 1 a 10.000.000 |
 | `ui.render.keyRender` | `flush` | `flush`, `throttle` |
@@ -3174,7 +3175,7 @@ Acesso via **Kysely** (MIT; query builder tipado) sobre `better-sqlite3`, dentro
 | Contratos | `@otheater/core`: portas (interfaces) + schemas zod, semver por porta; suítes de conformidade em `@otheater/sdk` (5.18) |
 | Montagem | Composição manual num ponto de montagem (`compose.ts`), sem container de injeção nem decorators |
 | Monorepo | pnpm workspaces |
-| CI | GitHub Actions: Linux em cada PR e a cada push na `main`; Windows e macOS nos PRs que mexem em código e por disparo manual, pela chave `OT_CROSS_CI` (N49, N162, N163) |
+| CI | GitHub Actions: Linux em cada PR e a cada push na `main`; Windows e macOS nos PRs que mexem em código e por disparo manual, pela chave `OT_CROSS_CI` (N49, N162, N163). O lint e o prettier rodam só no Linux, porque dão o mesmo resultado em todo sistema (chave `OT_CROSS_LINT`, N162, 2026-11-22). Nos PRs, o Windows e o macOS rodam só os testes que tocam o sistema, escolhidos pelo conteúdo por `tools/ci/src/cross-classify.ts` (o e2e entra pelos mesmos sinais, sem regra de nome; decisão do dono, 2026-11-22); o push na `main` e o disparo manual rodam todos (chave `OT_CROSS_TESTS`, `os` ou `all`, N162, 2026-11-22) |
 | Regra de dependência | dependency-cruiser (N49) |
 | i18n | i18next + `react-i18next` (N49) |
 | ACP | `@agentclientprotocol/sdk` 2.x + adaptadores como processos externos |
@@ -3967,7 +3968,7 @@ Decididas:
 - login com código colado (2026-11-18, seção 5.6 e Fase 5, N158): o nível `profiles` achou que o login do Claude Code pede um código do navegador e que o fluxo não tinha como entregá-lo; `LoginFlow.submitCode` leva o código à entrada padrão do login, e o teste real o lê de `/dev/tty`; passo P27;
 - comando por perfil (2026-11-19, seção 5.6 e Fase 5, N159): `ot profile exec <cliente>/<perfil>` com as palavras comuns `login`, `logout`, `status`, `run` e `--model`, extensíveis por `profiles.commands` e `profiles.options`; a comum vence, e o original fica depois de `--`; scripts `<prefixo><cliente>-<perfil>` que só repassam ao `ot`, com prefixo vazio por padrão, recusa de nome que já existe no PATH e escolha entre alterar o rc do shell ou mostrar a linha; passos P28a e P28b;
 - MCP do daemon na sandbox do macOS (2026-11-19, seção 5.8, N161): por soquete Unix do daemon, liberado por caminho no Seatbelt, com um shim stdio dentro da sandbox; medido no cross do macOS no mesmo dia, e o Seatbelt libera só o soquete da pasta listada [V]; implementado na v0.78, com `sandbox.mcp_bridge: auto | proxy | unix | off` (padrão `auto`), e confirmado no cross do macOS (run 44609563234) [V];
-- Windows e macOS na CI (2026-11-19, Fase 1, N162): os jobs `cross` e `windows-launcher` rodam nos PRs que mexem em código; PRs só de docs, spikes e `.claude/` ficam no linux; chave `OT_CROSS_CI` com `code` (padrão), `always` e `manual`;
+- Windows e macOS na CI (2026-11-19, Fase 1, N162): os jobs `cross` e `windows-launcher` rodam nos PRs que mexem em código; PRs só de docs, spikes e `.claude/` ficam no linux; chave `OT_CROSS_CI` com `code` (padrão), `always` e `manual`; desde 2026-11-22, o lint e o prettier saem do `cross` (chave `OT_CROSS_LINT`, `off` padrão ou `on`) e, também em 2026-11-22, nos PRs o `cross` roda só os testes que tocam o sistema (chave `OT_CROSS_TESTS`, `os` padrão ou `all`; o push na `main` e o disparo rodam todos); o classificador escolhe pelo conteúdo do teste, e o e2e não entra pelo nome (decisão do dono, 2026-11-22);
 - Push da CI só na `main` (2026-11-19, Fase 1, N163): a branch de um PR roda só o evento `pull_request`, que antes rodava junto com o `push` sem filtro;
 - dependências da Fase 6 (2026-11-19, seção 5.12 e Fase 6, N164): `ws` 8.23.0 (MIT) como exceção de segurança à regra de duas semanas, `zustand` 5.1.0 (MIT) a partir de 2026-11-20, e o leitor de SSE próprio;
 - token da API (2026-11-19, seção 5.12, N165): `api.token: persistent | per_start`, padrão `persistent`, num arquivo 0600 com `ot api rotate-token`;
