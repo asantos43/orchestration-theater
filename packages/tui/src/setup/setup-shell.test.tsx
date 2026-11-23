@@ -3,6 +3,7 @@ import type { ApiConfig, ApiRoles } from '@otheater/protocol';
 import { afterEach, describe, expect, it } from 'vitest';
 import { cleanupApps, renderApp, TEST_UI_SETTINGS, type RenderedApp } from '../ink.test-support.js';
 import { fakeOnline, seedStores } from '../layout.test-support.js';
+import { MOUSE_DISABLE_SEQUENCE, mouseEnableSequence } from '../mouse/modes.js';
 import type { TabContentMap } from '../layout/tab-content.js';
 import { parseUiSettings, type UiSettings } from '../settings.js';
 import type { SettingsApi } from '../tabs/settings/api.js';
@@ -234,5 +235,47 @@ describe('the entries of the Settings tab', () => {
     const resumed = await app.waitForText('Setup assistant: first run');
     expect(resumed).toContain('Pick the accounts that take part');
     expect(api.calls.filter((call) => call === 'start:first_run')).toHaveLength(1);
+  });
+});
+
+describe('the step that adds an account inside the TUI (N274)', () => {
+  const ENTER = '\r';
+
+  it('hands the terminal over for the login and gets the mouse back after it', async () => {
+    const api = new FakeSetupApi({ profiles: PROFILES, withAccounts: true });
+    const accounts = api.accounts;
+    if (accounts === undefined) throw new Error('the fake has no accounts');
+    const writes: string[] = [];
+    const online = fakeOnline({ readSettings: () => Promise.resolve(settingsWith('auto')) });
+    seedStores(online.stores);
+    const app = await renderApp({
+      connector: online.connector,
+      size: SIZE,
+      settings: settingsWith('auto'),
+      setupApi: api,
+      mouseWrites: writes,
+    });
+    await app.waitForText('Add an account of a client');
+    const enable = mouseEnableSequence('full');
+    expect(writes).toContain(enable);
+    const seenDuring: string[][] = [];
+    accounts.onRun = () => {
+      seenDuring.push([...writes]);
+    };
+    app.press('a');
+    await app.settle();
+    for (const char of 'work') {
+      app.press(char);
+      await app.settle();
+    }
+    app.press(ENTER);
+    await app.waitForText('Added in this run: claude-code/work');
+    expect(accounts.ran).toEqual(['ot profile exec claude-code/work login']);
+    // While the command ran the mouse reports were off; after it they are on again.
+    expect(seenDuring[0]?.[seenDuring[0].length - 1]).toBe(MOUSE_DISABLE_SEQUENCE);
+    expect(writes[writes.length - 1]).toBe(enable);
+    // And the keys still work: Enter goes on to the detection.
+    app.press(ENTER);
+    await app.waitForText('Pick the accounts that take part');
   });
 });

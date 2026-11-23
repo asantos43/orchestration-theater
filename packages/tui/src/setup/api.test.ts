@@ -55,4 +55,24 @@ describe('setupApiOf', () => {
     expect(keys[1]).toMatch(/^[0-9a-f-]{36}$/);
     expect(keys[0]).not.toBe(keys[1]);
   });
+
+  it('gives the step that adds an account the routes the tab Settings uses', async () => {
+    const { api, calls } = recorder();
+    const accounts = api.accounts;
+    if (accounts === undefined) throw new Error('no accounts');
+    await accounts.addProfile({
+      client: 'claude-code',
+      name: 'work',
+      kind: 'token_plan',
+      provider: 'anthropic',
+    });
+    await accounts.startLogin('claude-code/work');
+    await accounts.cancelLogin('claude-code/work');
+    expect(calls.map((call) => call.route)).toEqual([
+      API_ROUTES.addProfile,
+      API_ROUTES.startProfileLogin,
+      API_ROUTES.cancelProfileLogin,
+    ]);
+    expect(calls[1]?.options?.params).toEqual({ client: 'claude-code', name: 'work' });
+  });
 });
