@@ -53,7 +53,7 @@ O que já existe foi conferido no código em 2026-11-20, no commit `29af929` **[
   - teclas (`spikes/tui-keys`, 41 teclas do mapa da N35): só tmux no Linux. O Ctrl+J chega como `\n`, diferente do Enter; o Ink 8.0.0 lê `CSI u` (Shift+Enter), mas não o modifyOtherKeys; no tmux, o Ctrl+B é engolido pelo prefixo;
   - mouse: precisou de um leitor próprio no stdin (`filter` ou `tap`), com sequência cortada vazando para a entrada; funcionou só no tmux;
   - **terminais não testados:** Windows Terminal, terminal do VS Code, Terminal.app, iTerm2, GNOME Terminal e Konsole, SSH e IME.
-- **Mockup:** `docs/framework-ideas/mockup/tui.html`, gerado por `tui-render.js` (grade de 140x42), com quatro telas (principal, Trajetórias com a lateral recolhida, Configurações aberta como aba, só o chat). `spikes/tui-mockup-ink` reproduz as quatro em Ink, célula a célula. O rodapé do mockup ainda mostra os atalhos com Ctrl da v0.7; vale o mapa da §5.13 (N35).
+- **Mockup:** `docs/framework-ideas/mockup/tui.html`, gerado por `tui-render.cjs` (grade de 140x42), com quatro telas (principal, Trajetórias com a lateral recolhida, Configurações aberta como aba, só o chat). `spikes/tui-mockup-ink` reproduz as quatro em Ink, célula a célula. O rodapé do mockup ainda mostra os atalhos com Ctrl da v0.7; vale o mapa da §5.13 (N35).
 - **CI** (`.github/workflows/ci.yml`): `linux` (`pnpm check` e o Rust), `changes`, `cross` (Windows e macOS, `pnpm check`) e `windows-launcher`. Nenhum job testa uma TUI: não há pty, tmux nem `ink-testing-library`.
 
 ## Dependências novas
