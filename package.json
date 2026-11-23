@@ -13,6 +13,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "vitest run",
+    "test:chaos": "vitest run -c vitest.chaos.config.ts",
     "test:affected": "bash tools/ci/test-affected.sh",
     "api:catalog": "vitest run packages/protocol/src/api/catalog.test.ts -u",
     "plugin:schema": "vitest run packages/core/src/plugins/manifest-schema.test.ts -u",
