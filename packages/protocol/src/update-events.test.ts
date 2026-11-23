@@ -153,7 +153,14 @@ describe('the /v1/updates routes', () => {
 
 describe('the notices of the application of a version', () => {
   it('have their own kinds', () => {
-    for (const kind of ['update_applied', 'update_rolled_back', 'update_failed', 'update_ask']) {
+    for (const kind of [
+      'update_applied',
+      'update_rolled_back',
+      'update_failed',
+      'update_ask',
+      'update_no_expiry',
+      'update_untrusted_journal',
+    ]) {
       expect(DAEMON_NOTICE_KINDS).toContain(kind);
       const notice = { kind, subject: '0.6.0', detail: 'x' };
       expect(validateEventPayload('daemon.notice', 1, notice)).toEqual(notice);

@@ -24,7 +24,15 @@ export class TarError extends Error {
 export interface TarOptions {
   /** Upper bound of the uncompressed size. Default 512 MiB. */
   readonly maxBytes?: number;
+  /**
+   * Upper bound of the entries (files, directories, links and the rest; not the pax and long-name
+   * headers). A bigger archive is a {@link TarError}. Default {@link DEFAULT_MAX_ENTRIES}.
+   */
+  readonly maxEntries?: number;
 }
+
+/** The default of `clients.adapters.tar_max_entries`. */
+export const DEFAULT_MAX_ENTRIES = 20_000;
 
 const BLOCK = 512;
 const DEFAULT_MAX_BYTES = 512 * 1024 * 1024;
@@ -85,9 +93,16 @@ export function safeArchivePath(name: string): string | undefined {
   return rest.length === 0 ? undefined : rest.join('/');
 }
 
-/** The regular files of a `.tgz`, in archive order. */
+/**
+ * The regular files of a `.tgz`, in archive order. An entry that repeats a path (or only the case of
+ * one, which is the same file on a case-insensitive disk) is a {@link TarError}: the second would
+ * replace the first after it was checked, and nothing in an npm tarball needs it.
+ */
 export function readTarGz(archive: Buffer, options: TarOptions = {}): TarFile[] {
   const maxBytes = options.maxBytes ?? DEFAULT_MAX_BYTES;
+  const maxEntries = options.maxEntries ?? DEFAULT_MAX_ENTRIES;
+  const seen = new Set<string>();
+  let entries = 0;
   let tar: Buffer;
   try {
     tar = gunzipSync(archive, { maxOutputLength: maxBytes });
@@ -123,6 +138,8 @@ export function readTarGz(archive: Buffer, options: TarOptions = {}): TarFile[] 
       longName = text(data, 0, data.length);
       continue;
     }
+    entries += 1;
+    if (entries > maxEntries) throw new TarError(`more than ${String(maxEntries)} entries`);
     const prefix = text(header, 345, 155);
     const baseName = text(header, 0, 100);
     const name =
@@ -132,6 +149,9 @@ export function readTarGz(archive: Buffer, options: TarOptions = {}): TarFile[] 
     if (type !== '0' && type !== '\0') continue; // directories are made by their files; links are not made
     const relative = safeArchivePath(name);
     if (relative === undefined) continue;
+    const key = relative.normalize('NFC').toLowerCase();
+    if (seen.has(key)) throw new TarError(`the archive has the path twice: ${relative}`);
+    seen.add(key);
     files.push({
       path: relative,
       data: Buffer.from(data),

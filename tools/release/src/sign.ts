@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 import {
+  createHash,
   createPrivateKey,
   createPublicKey,
   generateKeyPairSync,
@@ -58,6 +59,80 @@ export function publicPemOf(privatePem: string): string {
 export function signManifest(manifestBytes: Uint8Array, privatePem: string): string {
   const signature = sign(null, manifestBytes, parsePrivateKey(privatePem));
   return `${signature.toString('base64')}\n`;
+}
+
+/** The SSHSIG namespace of the release signature (N288): `ssh-keygen -Y verify -n otheater-release`. */
+export const SSHSIG_NAMESPACE = 'otheater-release';
+
+const SSH_KEY_TYPE = 'ssh-ed25519';
+
+/** An SSH wire `string`: uint32 length, then the bytes. */
+function sshString(value: Uint8Array | string): Buffer {
+  const bytes = typeof value === 'string' ? Buffer.from(value, 'latin1') : Buffer.from(value);
+  const length = Buffer.alloc(4);
+  length.writeUInt32BE(bytes.length);
+  return Buffer.concat([length, bytes]);
+}
+
+/** The 32 raw bytes of an Ed25519 public key (the tail of its SPKI DER). */
+function rawPublicKey(publicKey: KeyObject): Buffer {
+  const der = publicKey.export({ type: 'spki', format: 'der' });
+  return Buffer.from(der.subarray(der.length - 32));
+}
+
+/** The SSH wire blob of an Ed25519 public key: `string("ssh-ed25519") string(raw key)`. */
+function sshPublicBlob(publicKey: KeyObject): Buffer {
+  return Buffer.concat([sshString(SSH_KEY_TYPE), sshString(rawPublicKey(publicKey))]);
+}
+
+/**
+ * The `ssh-ed25519 <base64>` line of an Ed25519 public key (PEM), the form `allowed_signers` and
+ * `authorized_keys` take. It is what `install.sh` carries for `ssh-keygen -Y verify` (N288).
+ */
+export function sshPublicKeyLine(publicPem: string): string {
+  const key = parsePublicKey(publicPem);
+  if (key.state !== 'valid')
+    throw new SigningKeyError('the public key is not an Ed25519 public key');
+  return `${SSH_KEY_TYPE} ${sshPublicBlob(key.key).toString('base64')}`;
+}
+
+/**
+ * The SSHSIG signature (the format of `ssh-keygen -Y sign`) of `manifestBytes`, armored, made with the
+ * same Ed25519 key as the raw signature (N288, P8a). Layout (PROTOCOL.sshsig of OpenSSH, checked here
+ * against OpenSSH 10.5): the blob `"SSHSIG"`, uint32 version 1, string(public key blob),
+ * string(namespace), string(reserved ""), string(hash algorithm "sha512"), string(signature blob);
+ * the Ed25519 signature covers `"SSHSIG"`, string(namespace), string(""), string("sha512") and
+ * string(SHA-512 of the message). The armor is 70-character base64 lines between
+ * `-----BEGIN SSH SIGNATURE-----` and `-----END SSH SIGNATURE-----`.
+ */
+export function signManifestSshsig(
+  manifestBytes: Uint8Array,
+  privatePem: string,
+  namespace: string = SSHSIG_NAMESPACE,
+): string {
+  const privateKey = parsePrivateKey(privatePem);
+  const digest = createHash('sha512').update(manifestBytes).digest();
+  const signedData = Buffer.concat([
+    Buffer.from('SSHSIG', 'latin1'),
+    sshString(namespace),
+    sshString(''),
+    sshString('sha512'),
+    sshString(digest),
+  ]);
+  const signature = sign(null, signedData, privateKey);
+  const version = Buffer.alloc(4);
+  version.writeUInt32BE(1);
+  const blob = Buffer.concat([
+    Buffer.from('SSHSIG', 'latin1'),
+    version,
+    sshString(sshPublicBlob(createPublicKey(privateKey))),
+    sshString(namespace),
+    sshString(''),
+    sshString('sha512'),
+    sshString(Buffer.concat([sshString(SSH_KEY_TYPE), sshString(signature)])),
+  ]);
+  const lines = blob.toString('base64').match(/.{1,70}/gu) ?? [];
+  return `-----BEGIN SSH SIGNATURE-----\n${lines.join('\n')}\n-----END SSH SIGNATURE-----\n`;
 }
 
 export type KeyCheckReason =

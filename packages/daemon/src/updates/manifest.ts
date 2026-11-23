@@ -52,6 +52,12 @@ export const UpdateManifestSchema = z.object({
   version: SemverSchema,
   channel: z.enum(UPDATE_CHANNELS),
   publishedAt: z.iso.datetime({ offset: true }),
+  /**
+   * When the manifest stops being valid (P8a, N288): the daemon and `install.sh` refuse a manifest after
+   * this moment, so a replayed old release (a signed one with a known flaw) does not stay installable
+   * for ever. Optional: a manifest of an earlier release does not have it and is still read.
+   */
+  expires: z.iso.datetime({ offset: true }).optional(),
   assets: z.array(ManifestAssetSchema).min(1).max(32),
   schemas: z.object({ store: z.int().min(0), telemetry: z.int().min(0) }).optional(),
   minVersion: SemverSchema.optional(),
