@@ -69,6 +69,9 @@ export function adapterManagerFor(
     adaptersDir: dataPaths(dataDir).adapters,
     install: config.clients.adapters.install,
     registry: config.clients.adapters.registry,
+    redirectHosts: config.clients.adapters.redirect_hosts,
+    redirectMax: config.clients.adapters.redirect_max,
+    tarMaxEntries: config.clients.adapters.tar_max_entries,
     find: deps.find ?? pathFinder(deps.env, { platform: deps.platform }),
     ...deps.adapters,
   });

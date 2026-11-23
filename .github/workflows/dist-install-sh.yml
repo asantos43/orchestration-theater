@@ -100,19 +100,18 @@ jobs:
           echo "XDG_RUNTIME_DIR=/run/user/$(id -u)" >> "$GITHUB_ENV"
           echo "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$(id -u)/bus" >> "$GITHUB_ENV"
 
-      # The LibreSSL of macOS cannot check Ed25519 (`openssl pkeyutl -rawin`), so the script would
-      # fall back to the executable, which has no verify-release mode yet. Homebrew's openssl@3 is
-      # on the runner image [N: not confirmed for every image]. Installing it is a download the owner
-      # has not approved, so the step fails and says so instead of installing.
-      - name: openssl 3 (macOS)
+      # The LibreSSL of macOS cannot check Ed25519 (`openssl pkeyutl -rawin`). That is not a requirement
+      # any more: install.sh falls to ssh-keygen (the .sshsig of the release) and then to the pinned
+      # SHA-256 of the manifest. Homebrew's openssl@3, when the image has it [N: not confirmed for every
+      # image], only lets the tests also exercise the openssl verifier; nothing is installed here.
+      - name: openssl 3 (macOS, optional)
         if: runner.os == 'macOS'
         run: |
           if prefix=$(brew --prefix openssl@3 2>/dev/null) && [ -x "$prefix/bin/openssl" ]; then
             echo "OT_TEST_OPENSSL=$prefix/bin/openssl" >> "$GITHUB_ENV"
             "$prefix/bin/openssl" version
           else
-            echo "::error::no openssl@3 on this runner image (installing it is not approved)"
-            exit 1
+            echo "::notice::no openssl@3 on this runner image: the openssl verifier is skipped, the others run"
           fi
 
       - name: shellcheck

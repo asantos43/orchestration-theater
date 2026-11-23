@@ -11,6 +11,10 @@ import { readJournal, writeJournal, type UpdateJournal } from './journal.js';
 import { applierArguments } from './launch.js';
 import { layoutOf } from './layout.js';
 import { recoverAtStart } from './recover.js';
+import { checkJournalTrust } from './trust.js';
+import { makeKeys } from '../release-fixture.js';
+import { parsePublicKey } from '../verify.js';
+import { writeProof } from './trust-fixture.js';
 import { composeOwnSchemas } from '../../compose.js';
 import { newestMigration } from './schemas.js';
 import {
@@ -41,6 +45,7 @@ const JOURNAL: UpdateJournal = {
   from: '0.5.0',
   to: '0.6.0',
   sha256: 'a'.repeat(64),
+  manifestSha256: 'b'.repeat(64),
   step: 'waiting',
   oldPid: 0,
   applierPid: 0,
@@ -231,7 +236,18 @@ describe('recoverAtStart', () => {
     await writeFile(layout.exe, '#!/bin/sh\n');
     await chmod(layout.exe, 0o755);
     await writeFile(layout.previousExe, '#!/bin/sh\n# old\n');
-    await writeJournal(layout.journal, { ...JOURNAL, step: 'checking', exe: layout.exe });
+    const keys = makeKeys();
+    const manifestSha256 = await writeProof(layout, keys, {
+      version: JOURNAL.to,
+      sha256: JOURNAL.sha256,
+    });
+    await writeJournal(layout.journal, {
+      ...JOURNAL,
+      manifestSha256,
+      step: 'checking',
+      exe: layout.exe,
+    });
+    const trust = { key: parsePublicKey(keys.publicPem), platform: 'linux-x64' };
     const ports = (): ApplyPorts => ({
       clock: { now: () => 5, sleep: () => Promise.resolve() },
       isAlive: () => false,
@@ -242,16 +258,85 @@ describe('recoverAtStart', () => {
       sha256: () => Promise.resolve('a'.repeat(64)),
       logger: { info: () => undefined, warn: () => undefined, error: () => undefined },
     });
-    const result = await recoverAtStart({ execPath: layout.exe, ports });
+    const result = await recoverAtStart({ execPath: layout.exe, ports, trust });
     expect(result).toEqual({ kind: 'finished', outcome: { kind: 'committed' } });
     const reading = await readJournal(layout.journal);
     expect(reading.kind === 'ok' && reading.journal.step).toBe('committed');
+  });
+
+  it('does not follow a journal that no signed manifest backs (P8a)', async () => {
+    if (process.platform === 'win32') return;
+    const dir = await temp();
+    const layout = layoutOf(join(dir, 'ot'));
+    await writeFile(layout.exe, '#!/bin/sh\n');
+    const forged = { ...JOURNAL, step: 'placed' as const, exe: layout.exe, backup: '/elsewhere' };
+    await writeJournal(layout.journal, forged);
+    const trust = { key: parsePublicKey(makeKeys().publicPem), platform: 'linux-x64' };
+    const never = (): ApplyPorts => {
+      throw new Error('the ports of a forged journal must not be built');
+    };
+    // The ports are only built after the trust is checked, so a forged journal reaches none of them.
+    const result = await recoverAtStart({ execPath: layout.exe, ports: never, trust });
+    expect(result.kind).toBe('untrusted');
+    const reading = await readJournal(layout.journal);
+    expect(reading).toEqual({ kind: 'ok', journal: forged });
+  });
+
+  it('a proof made with another key, or for another executable, is not a proof', async () => {
+    const dir = await temp();
+    const layout = layoutOf(join(dir, 'ot'));
+    const keys = makeKeys();
+    const key = parsePublicKey(keys.publicPem);
+    const platform = 'linux-x64';
+    const manifestSha256 = await writeProof(layout, keys, {
+      version: JOURNAL.to,
+      sha256: JOURNAL.sha256,
+    });
+    const journal = { ...JOURNAL, manifestSha256, exe: layout.exe };
+    expect(await checkJournalTrust({ layout, journal, key, platform })).toEqual({ ok: true });
+    const other = parsePublicKey(makeKeys().publicPem);
+    expect((await checkJournalTrust({ layout, journal, key: other, platform })).ok).toBe(false);
+    expect(
+      (await checkJournalTrust({ layout, journal, key: { state: 'placeholder' }, platform })).ok,
+    ).toBe(false);
+    expect(
+      (await checkJournalTrust({ layout, journal: { ...journal, to: '0.7.0' }, key, platform })).ok,
+    ).toBe(false);
+    expect(
+      (
+        await checkJournalTrust({
+          layout,
+          journal: { ...journal, sha256: 'c'.repeat(64) },
+          key,
+          platform,
+        })
+      ).ok,
+    ).toBe(false);
+    expect(
+      (
+        await checkJournalTrust({
+          layout,
+          journal: { ...journal, manifestSha256: 'c'.repeat(64) },
+          key,
+          platform,
+        })
+      ).ok,
+    ).toBe(false);
+    expect((await checkJournalTrust({ layout, journal, key, platform: 'win32-x64' })).ok).toBe(
+      false,
+    );
+    await clearStaging(layout);
+    expect((await checkJournalTrust({ layout, journal, key, platform })).ok).toBe(false);
   });
 
   it('is the same call as recoverInterrupted for a final journal: nothing to do', async () => {
     const dir = await temp();
     const layout = layoutOf(join(dir, 'ot'));
     await writeJournal(layout.journal, { ...JOURNAL, step: 'committed', exe: layout.exe });
-    expect(await recoverInterrupted(layout, {} as ApplyPorts, false)).toEqual({ kind: 'none' });
+    expect(
+      await recoverInterrupted(layout, {} as ApplyPorts, false, () =>
+        Promise.resolve({ ok: true }),
+      ),
+    ).toEqual({ kind: 'none' });
   });
 });

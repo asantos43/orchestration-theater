@@ -139,6 +139,24 @@ export class UpdateStaging {
     }
   }
 
+  /**
+   * The manifest and the signature stored with a version, as they were committed. The caller checks
+   * the signature before it reads the manifest; a file that cannot be read is `bad_manifest`.
+   */
+  async readManifest(version: string): Promise<{ bytes: Buffer; signature: string }> {
+    if (semver.valid(version) !== version) {
+      throw new UpdateStop('bad_manifest', 'the stored version has no valid name', version);
+    }
+    try {
+      return {
+        bytes: await readFile(join(this.dir, version, 'manifest.json')),
+        signature: await readFile(join(this.dir, version, 'manifest.json.sig'), 'utf8'),
+      };
+    } catch {
+      throw new UpdateStop('bad_manifest', 'the stored manifest cannot be read', version);
+    }
+  }
+
   /** The newest version that is stored and whole (the file is there with the size that was checked). */
   async ready(): Promise<StagedUpdate | undefined> {
     let names: string[];
