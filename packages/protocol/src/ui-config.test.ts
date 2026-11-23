@@ -43,6 +43,7 @@ describe('ui.* schemas of the terminal', () => {
       minPanelWidth: 30,
       chatStep: 2,
       scrollStep: 'half',
+      density: 'comfortable',
     });
   });
 
@@ -50,6 +51,8 @@ describe('ui.* schemas of the terminal', () => {
     expect(UiTuiLayoutConfigSchema.safeParse({ sidebarWidth: 4 }).success).toBe(false);
     expect(UiTuiLayoutConfigSchema.safeParse({ scrollStep: 'all' }).success).toBe(false);
     expect(UiTuiLayoutConfigSchema.safeParse({ chatStep: 0 }).success).toBe(false);
+    expect(UiTuiLayoutConfigSchema.safeParse({ density: 'tight' }).success).toBe(false);
+    expect(UiTuiLayoutConfigSchema.parse({ density: 'compact' }).density).toBe('compact');
     expect(UiTuiLayoutConfigSchema.safeParse({ color: 'red' }).success).toBe(false);
     expect(UiTuiLayoutConfigSchema.parse({ scrollStep: 'line' }).scrollStep).toBe('line');
   });

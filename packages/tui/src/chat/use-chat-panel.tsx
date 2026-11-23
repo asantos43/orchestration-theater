@@ -14,6 +14,7 @@ import {
   type ReactNode,
 } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useDensity } from '../layout/density-context.js';
 import { TOKEN } from '../layout/theme.js';
 import { Text } from '../layout/themed-text.js';
 import { bindAttachments, TextBox, type HistoryStore, type InputSettings } from '../input/index.js';
@@ -115,6 +116,7 @@ function errorText(error: unknown): string {
 export function useChatPanel(props: ChatPanelProps): ChatPanel {
   const { stores, config, scenarioId, keymap } = props;
   const { client } = config;
+  const spaced = useDensity().sections;
   const { t: translate, i18n } = useTranslation();
   const t = translate as unknown as Translate;
   const [, setTick] = useState(0);
@@ -626,6 +628,9 @@ export function useChatPanel(props: ChatPanelProps): ChatPanel {
     config.chat.directorFooter === 'on' && directorView !== undefined
       ? clip(directorFooter(directorView, directorKey, t), props.width)
       : undefined;
+  // In `comfortable` the line of the footer is always there (blank while the Director has nothing
+  // to say), as in the mockup: the input does not jump when the Director appears or goes away.
+  const reserveFooter = footer === undefined && config.chat.directorFooter === 'on' && spaced;
   const hint =
     showCard && !cardFocused
       ? clip(t('layout.chat.card.hint', { key: openKey, count: state.asks.length }), props.width)
@@ -648,7 +653,7 @@ export function useChatPanel(props: ChatPanelProps): ChatPanel {
     (hint === undefined ? 0 : 1) +
     (confirmLine === undefined ? 0 : 1) +
     (visible ? suggestions.length : 0) +
-    (footer === undefined ? 0 : 1);
+    (footer === undefined && !reserveFooter ? 0 : 1);
 
   const input = (
     <Box flexDirection="column" width={props.width}>
@@ -712,6 +717,7 @@ export function useChatPanel(props: ChatPanelProps): ChatPanel {
         complete={complete}
         isActive={props.active && !cardFocused && !pickerFocused && state.confirm === undefined}
       />
+      {reserveFooter && <Text> </Text>}
       {footer !== undefined && (
         <ClickTarget
           width={props.width}

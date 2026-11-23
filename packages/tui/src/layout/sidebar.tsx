@@ -4,6 +4,7 @@ import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Text } from './themed-text.js';
 import { ClickTarget } from '../mouse/index.js';
+import { edgeMargin, frameInner, useDensity } from './density-context.js';
 import { Frame } from './frame.js';
 import {
   fillBar,
@@ -123,9 +124,12 @@ function quotaColor(row: QuotaRow): string {
 
 function ExpandedQuota(props: { readonly row: QuotaRow; readonly inner: number }): ReactNode {
   const { t } = useTranslation();
+  const { pad } = useDensity();
   const { row, inner } = props;
   const color = quotaColor(row);
-  const cells = Math.max(4, inner - 2);
+  // With the margin of the frame the bars take the whole width the content has (as in the mockup);
+  // without it they were drawn two cells shorter than the border.
+  const cells = Math.max(4, pad > 0 ? inner : inner - 2);
   const values =
     row.fiveHour === undefined && row.week === undefined
       ? t('layout.sidebar.noReading')
@@ -158,15 +162,23 @@ function ScenarioLine(props: {
   readonly onClick?: (() => void) | undefined;
 }): ReactNode {
   const { t } = useTranslation();
+  const { pad } = useDensity();
   const { row, inner } = props;
   const state = t(`layout.state.${row.mark}`);
   const nameWidth = Math.max(1, inner - 4 - cellWidth(state) - 1);
+  const margin = ' '.repeat(pad);
   return (
-    <ClickTarget onClick={() => props.onClick?.()} enabled={props.onClick !== undefined}>
+    <ClickTarget
+      onClick={() => props.onClick?.()}
+      enabled={props.onClick !== undefined}
+      {...edgeMargin(pad)}
+    >
       <Text wrap="truncate" {...paint(undefined, props.cursor ? TOKEN.selected : undefined)}>
+        {margin}
         <Text color={TOKEN.accent}>{props.selected ? '▸ ' : '  '}</Text>
         <Text {...paint(MARK_COLOR[row.mark])}>{MARK_GLYPH[row.mark]}</Text>{' '}
         {fit(row.name, nameWidth)} <Text dimColor>{state}</Text>
+        {margin}
       </Text>
     </ClickTarget>
   );
@@ -179,12 +191,19 @@ function FinishedLine(props: {
   readonly onClick?: (() => void) | undefined;
 }): ReactNode {
   const { t } = useTranslation();
+  const { pad } = useDensity();
   const { row, inner } = props;
   const state = t(`layout.sidebar.finishedState.${row.outcome}`);
   const need = fit(row.need, Math.max(1, inner - 4 - cellWidth(state) - 1));
+  const margin = ' '.repeat(pad);
   return (
-    <ClickTarget onClick={() => props.onClick?.()} enabled={props.onClick !== undefined}>
+    <ClickTarget
+      onClick={() => props.onClick?.()}
+      enabled={props.onClick !== undefined}
+      {...edgeMargin(pad)}
+    >
       <Text wrap="truncate" {...paint(undefined, props.cursor ? TOKEN.selected : undefined)}>
+        {margin}
         {'  '}
         <Text
           {...paint(row.outcome === 'done' ? TOKEN.ok : undefined)}
@@ -193,6 +212,7 @@ function FinishedLine(props: {
           {row.outcome === 'done' ? '✓' : '✗'}
         </Text>{' '}
         {need} <Text dimColor>{state}</Text>
+        {margin}
       </Text>
     </ClickTarget>
   );
@@ -208,16 +228,20 @@ function SectionHead(props: {
   /** A click on the right side of the head (the `+` of the scenarios) answers with this instead. */
   readonly onRight?: (() => void) | undefined;
 }): ReactNode {
+  const { pad } = useDensity();
   const head = `${props.folded ? '▸' : '▾'} ${props.title}`;
   const line = `${fit(head, Math.max(1, props.inner - cellWidth(props.right) - 1))} ${props.right}`;
   const rightFrom = props.inner - cellWidth(props.right) - 1;
+  const margin = ' '.repeat(pad);
   return (
     <ClickTarget
       onClick={(point) => {
-        if (props.onRight !== undefined && point.x >= rightFrom) props.onRight();
+        // The box goes from border to border: the click is counted from the margin.
+        if (props.onRight !== undefined && point.x - pad >= rightFrom) props.onRight();
         else props.onClick?.();
       }}
       enabled={props.onClick !== undefined || props.onRight !== undefined}
+      {...edgeMargin(pad)}
     >
       <Text
         bold
@@ -225,7 +249,7 @@ function SectionHead(props: {
         {...paint(undefined, props.cursor ? TOKEN.selected : undefined)}
         wrap="truncate"
       >
-        {fit(line, props.inner)}
+        {`${margin}${fit(line, props.inner)}${margin}`}
       </Text>
     </ClickTarget>
   );
@@ -233,7 +257,8 @@ function SectionHead(props: {
 
 function Expanded(props: SidebarProps): ReactNode {
   const { t } = useTranslation();
-  const inner = props.width - 2;
+  const { pad } = useDensity();
+  const inner = frameInner(props.width, pad);
   const scenariosFolded = props.folded.has(SIDEBAR_SECTIONS.scenarios);
   const subsFolded = props.folded.has(SIDEBAR_SECTIONS.subscriptions);
   const quotaLegend = `█${t('layout.sidebar.fiveHour')} ━${t('layout.sidebar.week')}`;
@@ -247,7 +272,14 @@ function Expanded(props: SidebarProps): ReactNode {
         };
   return (
     <>
-      <Box flexDirection="column" flexGrow={1} overflow="hidden">
+      {/* The box that clips takes the margin back, so the rows that go from border to border are not cut; its padding gives the margin to the rest. */}
+      <Box
+        flexDirection="column"
+        flexGrow={1}
+        overflow="hidden"
+        paddingX={pad}
+        {...edgeMargin(pad)}
+      >
         <SectionHead
           title={t('layout.sidebar.scenarios')}
           right="+"
@@ -322,7 +354,11 @@ function Expanded(props: SidebarProps): ReactNode {
           </Text>
         )}
       </Box>
-      <Text dimColor>{'─'.repeat(inner)}</Text>
+      <Box {...edgeMargin(pad)}>
+        <Text dimColor wrap="truncate">
+          {'─'.repeat(inner + 2 * pad)}
+        </Text>
+      </Box>
       <ClickTarget onClick={() => props.onSettings?.()} enabled={props.onSettings !== undefined}>
         <Text wrap="truncate">
           {fit(`⚙ ${settings}`, Math.max(1, inner - (props.keys.settings?.length ?? 0) - 1))}{' '}
@@ -340,12 +376,17 @@ function Expanded(props: SidebarProps): ReactNode {
 }
 
 function Rail(props: SidebarProps): ReactNode {
+  const { pad } = useDensity();
   const inner = props.width - 2;
+  // The glyphs of the rail are one column off the border (the bars and the separators are not): the
+  // rail has no room for a margin on both sides, only for the shift, and only if the glyphs fit.
+  const shift = inner >= 3 ? pad : 0;
+  const lead = ' '.repeat(shift);
   return (
     <>
       <Box flexDirection="column" flexGrow={1} overflow="hidden">
         <ClickTarget onClick={() => props.onToggle?.()} enabled={props.onToggle !== undefined}>
-          <Text dimColor>{fit('»', inner)}</Text>
+          <Text dimColor>{fit(`${lead}»`, inner)}</Text>
         </ClickTarget>
         {props.rows.map((row) => (
           <ClickTarget
@@ -360,6 +401,7 @@ function Rail(props: SidebarProps): ReactNode {
                 props.focused && props.cursor === row.id ? TOKEN.selected : undefined,
               )}
             >
+              {lead}
               <Text
                 {...paint(props.selectedId === row.id ? TOKEN.accent : undefined)}
                 bold={props.selectedId === row.id}
@@ -367,6 +409,7 @@ function Rail(props: SidebarProps): ReactNode {
                 {fit(Array.from(row.name)[0]?.toUpperCase() ?? ' ', 1)}
               </Text>
               <Text {...paint(MARK_COLOR[row.mark])}>{MARK_GLYPH[row.mark]}</Text>
+              {shift > 0 && ' '.repeat(Math.max(0, inner - shift - 2))}
             </Text>
           </ClickTarget>
         ))}
@@ -374,7 +417,7 @@ function Rail(props: SidebarProps): ReactNode {
           onClick={() => props.onNewProject?.()}
           enabled={props.onNewProject !== undefined}
         >
-          <Text dimColor>+</Text>
+          <Text dimColor>{`${lead}+`}</Text>
         </ClickTarget>
         <Text> </Text>
         {props.quotas.map((row) => (
@@ -384,9 +427,9 @@ function Rail(props: SidebarProps): ReactNode {
         ))}
       </Box>
       <ClickTarget onClick={() => props.onSettings?.()} enabled={props.onSettings !== undefined}>
-        <Text>⚙</Text>
+        <Text>{`${lead}⚙`}</Text>
       </ClickTarget>
-      <Text color={props.live ? TOKEN.ok : TOKEN.warn}>●</Text>
+      <Text color={props.live ? TOKEN.ok : TOKEN.warn}>{`${lead}●`}</Text>
     </>
   );
 }
@@ -394,6 +437,7 @@ function Rail(props: SidebarProps): ReactNode {
 /** The side bar, whole (`expanded`) or as a rail of a few cells, with the scenarios and the quotas of the subscriptions. */
 export function Sidebar(props: SidebarProps): ReactNode {
   const { t } = useTranslation();
+  const { pad } = useDensity();
   const right = props.mode === 'expanded' ? `« ${props.keys.toggle ?? ''}`.trimEnd() : undefined;
   return (
     <ClickTarget
@@ -413,6 +457,7 @@ export function Sidebar(props: SidebarProps): ReactNode {
         active={props.focused}
         title={props.mode === 'expanded' ? t('layout.sidebar.title') : undefined}
         titleRight={right}
+        pad={props.mode === 'expanded' ? pad : 0}
         onPress={props.onFocus}
       >
         {props.mode === 'expanded' ? <Expanded {...props} /> : <Rail {...props} />}
