@@ -13,6 +13,10 @@ export type LayoutTuning = Pick<
   'sidebarWidth' | 'railWidth' | 'minChatWidth' | 'minPanelWidth' | 'chatStep'
 >;
 
+/** The bounds of the width of the side bar open, in columns (`ui.tuiLayout.sidebarWidth`, N277). */
+export const SIDEBAR_MIN_WIDTH = 16;
+export const SIDEBAR_MAX_WIDTH = 80;
+
 export interface GeometryInput {
   readonly columns: number;
   readonly rows: number;
@@ -20,6 +24,11 @@ export interface GeometryInput {
   readonly panelOpen: boolean;
   /** The width the person chose for the chat (what the store keeps). */
   readonly chatWidth: number;
+  /**
+   * The width the person chose for the side bar (what the store keeps, N277). Without it the side
+   * bar starts from `ui.tuiLayout.sidebarWidth`.
+   */
+  readonly sidebarWidth?: number | undefined;
   readonly tuning: LayoutTuning;
 }
 
@@ -41,6 +50,16 @@ export interface Geometry {
   readonly panelAbsence: PanelAbsence | undefined;
   /** The bounds the width of the chat can take now (equal when it cannot move). */
   readonly chatRange: { readonly min: number; readonly max: number };
+  /**
+   * The bounds the width of the side bar can take now (N277): from 16 to 80 columns, and never so
+   * wide that the chat falls under its minimum or, with the panel open, the panel does. Equal
+   * when it cannot move (a rail, or no side bar).
+   */
+  readonly sidebarRange: { readonly min: number; readonly max: number };
+}
+
+function clampInt(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, Math.round(value)));
 }
 
 export function computeGeometry(input: GeometryInput): Geometry {
@@ -48,7 +67,13 @@ export function computeGeometry(input: GeometryInput): Geometry {
   const columns = Math.max(1, Math.floor(input.columns));
   const rows = Math.max(3, Math.floor(input.rows));
   let mode: SidebarMode = input.sidebarCollapsed ? 'rail' : 'expanded';
-  let sidebarWidth = mode === 'rail' ? tuning.railWidth : tuning.sidebarWidth;
+  // What the person chose, or the setting the interface starts from (N277), inside the bounds of the setting.
+  const wanted = clampInt(
+    input.sidebarWidth ?? tuning.sidebarWidth,
+    SIDEBAR_MIN_WIDTH,
+    SIDEBAR_MAX_WIDTH,
+  );
+  let sidebarWidth = mode === 'rail' ? tuning.railWidth : wanted;
   // A screen too narrow for the chat beside the side bar gives the room back: whole, then rail, then nothing.
   if (mode === 'expanded' && columns - sidebarWidth < tuning.minChatWidth) {
     mode = 'rail';
@@ -57,6 +82,19 @@ export function computeGeometry(input: GeometryInput): Geometry {
   if (mode === 'rail' && columns - sidebarWidth < tuning.minChatWidth) {
     mode = 'hidden';
     sidebarWidth = 0;
+  }
+  let sidebarRange = { min: sidebarWidth, max: sidebarWidth };
+  if (mode === 'expanded') {
+    // With the panel open the side bar leaves room for the chat and for the panel at their minimums,
+    // as long as the screen has room for both beside the narrowest side bar; if not, there is no panel to keep.
+    const keepsPanel =
+      input.panelOpen && columns - SIDEBAR_MIN_WIDTH >= tuning.minChatWidth + tuning.minPanelWidth;
+    const most = Math.min(
+      SIDEBAR_MAX_WIDTH,
+      columns - tuning.minChatWidth - (keepsPanel ? tuning.minPanelWidth : 0),
+    );
+    sidebarRange = { min: SIDEBAR_MIN_WIDTH, max: Math.max(SIDEBAR_MIN_WIDTH, most) };
+    sidebarWidth = Math.min(sidebarRange.max, sidebarWidth);
   }
   const available = columns - sidebarWidth;
   const panelFits = available >= tuning.minChatWidth + tuning.minPanelWidth;
@@ -75,6 +113,7 @@ export function computeGeometry(input: GeometryInput): Geometry {
     panel: showPanel ? { x: sidebarWidth + chatWidth, width: available - chatWidth } : undefined,
     panelAbsence: showPanel ? undefined : input.panelOpen ? 'narrow' : 'closed',
     chatRange: { min: minChat, max: maxChat },
+    sidebarRange,
   };
 }
 
@@ -90,6 +129,22 @@ export function steppedChatWidth(
 ): number {
   if (geometry.panel === undefined) return geometry.chat.width;
   const { min, max } = geometry.chatRange;
+  const start = Math.min(max, Math.max(min, from));
+  return Math.min(max, Math.max(min, start + delta));
+}
+
+/**
+ * The width the side bar takes after `delta` cells more (negative: fewer), inside the bounds of
+ * this geometry (N277). A rail, or no side bar, has nothing to adjust: the result is the width as
+ * it is.
+ */
+export function steppedSidebarWidth(
+  geometry: Geometry,
+  delta: number,
+  from: number = geometry.sidebar.width,
+): number {
+  if (geometry.sidebar.mode !== 'expanded') return geometry.sidebar.width;
+  const { min, max } = geometry.sidebarRange;
   const start = Math.min(max, Math.max(min, from));
   return Math.min(max, Math.max(min, start + delta));
 }

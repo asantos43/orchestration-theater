@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MPL-2.0
-import { Box } from 'ink';
-import type { ReactNode } from 'react';
+import { Box, type DOMElement } from 'ink';
+import { useRef, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Text } from './themed-text.js';
-import { ClickTarget } from '../mouse/index.js';
+import { ClickTarget, useMouseTarget, type DragInfo } from '../mouse/index.js';
 import { edgeMargin, frameInner, useDensity } from './density-context.js';
 import { Frame } from './frame.js';
 import {
@@ -114,6 +114,17 @@ export interface SidebarProps {
   readonly onToggle?: (() => void) | undefined;
   /** [P22] A click on the `+` of the scenarios (the same as the key of `sidebar.newProject`). */
   readonly onNewProject?: (() => void) | undefined;
+  /**
+   * The right border is the edge that widens the side bar (N277): its handle `┃` is drawn and,
+   * with `onResizeDrag`, the mouse drags it. `ui.tuiLayout.sidebarEdge: off` leaves both out.
+   */
+  readonly resizable?: boolean | undefined;
+  /** The border has the focus (Tab, then the arrows). */
+  readonly edgeFocused?: boolean | undefined;
+  /** Bottom label of the frame (`◂ 30 col ▸`), shown while the border has the focus. */
+  readonly widthLabel?: string | undefined;
+  /** The border is dragged with the mouse: the same width action as the keys of the border. */
+  readonly onResizeDrag?: ((drag: DragInfo) => void) | undefined;
 }
 
 function quotaColor(row: QuotaRow): string {
@@ -439,6 +450,15 @@ export function Sidebar(props: SidebarProps): ReactNode {
   const { t } = useTranslation();
   const { pad } = useDensity();
   const right = props.mode === 'expanded' ? `« ${props.keys.toggle ?? ''}`.trimEnd() : undefined;
+  // The right border is what the mouse drags to widen or narrow the side bar (N277).
+  const edgeRef = useRef<DOMElement>(null);
+  const resizable = props.mode === 'expanded' && props.resizable === true;
+  useMouseTarget(
+    edgeRef,
+    { onDrag: props.onResizeDrag },
+    { enabled: resizable && props.onResizeDrag !== undefined },
+  );
+  const handleRows = Math.min(6, Math.max(0, props.height - 2));
   return (
     <ClickTarget
       width={props.width}
@@ -459,6 +479,17 @@ export function Sidebar(props: SidebarProps): ReactNode {
         titleRight={right}
         pad={props.mode === 'expanded' ? pad : 0}
         onPress={props.onFocus}
+        bottomLabel={resizable ? props.widthLabel : undefined}
+        edgeRef={edgeRef}
+        handle={
+          resizable
+            ? {
+                from: Math.max(0, Math.floor((props.height - 2 - handleRows) / 2)),
+                rows: handleRows,
+                active: props.edgeFocused === true,
+              }
+            : undefined
+        }
       >
         {props.mode === 'expanded' ? <Expanded {...props} /> : <Rail {...props} />}
       </Frame>

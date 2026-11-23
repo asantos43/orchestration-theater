@@ -64,6 +64,10 @@
       "narrow": "Make the chat narrower (border focused)",
       "widen": "Make the chat wider (border focused)"
     },
+    "sidebarEdge": {
+      "narrow": "Make the side bar narrower (border focused)",
+      "widen": "Make the side bar wider (border focused)"
+    },
     "sidebar": {
       "up": "Move up in the side bar",
       "down": "Move down in the side bar",
@@ -201,6 +205,9 @@
     "edge": {
       "resize": "Width"
     },
+    "sidebarEdge": {
+      "resize": "Side bar width"
+    },
     "sidebar": {
       "activate": "Open",
       "newProject": "New project",
@@ -315,6 +322,7 @@
     },
     "sidebar": {
       "title": "Navigation",
+      "widthLabel": "◂ {{cols}} col ▸",
       "scenarios": "SCENARIOS",
       "subscriptions": "SUBSCRIPTIONS",
       "finished": "FINISHED",
