@@ -5,6 +5,11 @@ name: Dist MSI
 # no tag. [proposta] Only a manual dispatch keeps the .msi as a workflow artifact (7 days), for the
 # owner to try it on a real Windows (SmartScreen, logon); the release (P9) is another job.
 #
+# P9: release.yml calls this workflow (`workflow_call`) for the rehearsal of the release. The inputs are
+# optional and empty in every other event, so the behavior of a push, a pull request or a manual
+# dispatch does not change: `version` sets the version of the executable and of the .msi, and `upload`
+# keeps the .msi as the workflow artifact `msi-win32-x64` (1 day, nothing secret) for that run.
+#
 # WiX: the pinned version below (5.0.2, the same as installer/wix/build.ps1) is installed as a .NET tool,
 # only on this runner (N249; the owner chose series 5, MS-RL, on 2026-11-22). It has no EULA to accept, and
 # no acceptance command is written here: see the license note in installer/wix/build.ps1.
@@ -24,12 +29,26 @@ on:
       - 'pnpm-lock.yaml'
   pull_request:
   workflow_dispatch:
+  workflow_call:
+    inputs:
+      version:
+        description: 'A version (x.y.z) for the executable and the .msi instead of the one of the package'
+        type: string
+        required: false
+        default: ''
+      upload:
+        description: 'Keep the .msi as the workflow artifact msi-win32-x64 (1 day)'
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: read
 
 concurrency:
-  group: dist-msi-${{ github.ref }}
+  # In a called workflow `github.workflow` is the name of the caller, so a release rehearsal and the
+  # push of the same ref do not cancel each other.
+  group: dist-msi-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 env:
@@ -93,7 +112,9 @@ jobs:
       # The single executable of P1 (as dist-sea.yml builds it) and the launcher of P2.
       - name: Build the single executable (win32-x64)
         shell: bash
-        run: node tools/release/dist/cli.js build --target win32-x64 --out dist/sea
+        env:
+          OT_RELEASE_VERSION: ${{ inputs.version }}
+        run: node tools/release/dist/cli.js build --target win32-x64 --out dist/sea ${OT_RELEASE_VERSION:+--version "$OT_RELEASE_VERSION"}
       - name: Build the launcher
         working-directory: native/job-launcher
         run: cargo build --release --locked
@@ -112,7 +133,12 @@ jobs:
         env:
           DOTNET_ROLL_FORWARD: Major
           DOTNET_CLI_TELEMETRY_OPTOUT: '1'
-        run: ./installer/wix/build.ps1
+          OT_RELEASE_VERSION: ${{ inputs.version }}
+        run: |
+          # Empty outside the release rehearsal: build.ps1 then reads the version of the config.
+          $extra = @()
+          if ($env:OT_RELEASE_VERSION) { $extra = @('-Version', $env:OT_RELEASE_VERSION) }
+          ./installer/wix/build.ps1 @extra
       - name: Install, check, uninstall, check
         env:
           MSI: ${{ steps.build.outputs.msi }}
@@ -129,3 +155,12 @@ jobs:
           name: otheater-msi
           path: ${{ steps.build.outputs.msi }}
           retention-days: 7
+      # Release rehearsal (P9): the .msi for the manifest job. This run only: one day, no secret.
+      - name: Keep the package for the rehearsal
+        if: inputs.upload == true
+        uses: actions/upload-artifact@v4
+        with:
+          name: msi-win32-x64
+          path: ${{ steps.build.outputs.msi }}
+          if-no-files-found: error
+          retention-days: 1
