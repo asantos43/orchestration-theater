@@ -88,6 +88,16 @@ describe('the notices of the managed ACP adapters (P13)', () => {
   });
 });
 
+describe('the notices of the code host (Phase 11, P13)', () => {
+  it('have their own kinds', () => {
+    for (const kind of ['delivery_without_pr', 'code_host_unavailable']) {
+      expect(DAEMON_NOTICE_KINDS).toContain(kind);
+      const notice = { kind, subject: 'play/p1/integration', detail: 'adapters.code_host is none' };
+      expect(validateEventPayload('daemon.notice', 1, notice)).toEqual(notice);
+    }
+  });
+});
+
 describe('the /v1/updates routes', () => {
   it('are in the registry, with the methods and paths', () => {
     expect(Object.values(UPDATE_ROUTES).map((r) => [r.id, r.method, r.path])).toEqual([
