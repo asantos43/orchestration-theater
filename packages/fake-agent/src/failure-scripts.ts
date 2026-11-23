@@ -174,7 +174,11 @@ export function flushStdout(): Promise<void> {
   });
 }
 
-/** `SIGKILL` on itself. Never returns in practice. */
+/**
+ * `SIGKILL` on itself. Never returns in practice. On Windows, which has no signals, Node ends the
+ * process with `TerminateProcess` (exit code 1, and the parent sees `signal` null): it still dies at
+ * once, with nothing flushed after this call, but not "by signal".
+ */
 export function killSelf(): Promise<never> {
   process.kill(process.pid, 'SIGKILL');
   // The signal is delivered when the process next runs: nothing after this line may happen.
@@ -198,7 +202,11 @@ export function stallForever(lifeMs: number): Promise<never> {
   return new Promise<never>(() => undefined);
 }
 
-/** Installs a handler that swallows each signal (the process then ends only with `SIGKILL`). */
+/**
+ * Installs a handler that swallows each signal (the process then ends only with `SIGKILL`). POSIX
+ * only in effect: on Windows a `kill` is a `TerminateProcess` that no handler sees, so
+ * `ignore-term` cannot hold the process there.
+ */
 export function ignoreSignals(signals: readonly NodeJS.Signals[]): void {
   for (const signal of signals) {
     process.on(signal, () => undefined);

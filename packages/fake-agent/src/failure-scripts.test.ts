@@ -26,6 +26,11 @@ import { parseScriptSpec, ScriptError, SCRIPT_NAMES } from './scripts.js';
 
 const CLI = fileURLToPath(new URL('../dist/cli.js', import.meta.url));
 const onLinux = process.platform === 'linux';
+// Windows has no POSIX signals. `process.kill(pid, 'SIGKILL')` (also on itself) is a
+// TerminateProcess with exit code 1, so the dead process reports `code` 1 and `signal` null; and
+// nothing can ignore SIGTERM there. The tests that need a real signal are skipped on Windows, and
+// the ones that only need "it died by force" accept `forcedDeath`.
+const onWindows = process.platform === 'win32';
 
 let sandbox: string;
 let cwd: string;
@@ -43,11 +48,23 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
-  for (const pid of grandchildren.splice(0)) killIfAlive(pid);
-  for (const child of agents.splice(0)) {
+  const left = grandchildren.splice(0);
+  for (const pid of left) killIfAlive(pid);
+  // The agents and the grandchildren have the session directory as their cwd: on Windows a
+  // directory in use cannot be removed (EBUSY), so wait until every process is really gone.
+  const gone = agents.splice(0).map((child) => {
+    if (child.exitCode !== null || child.signalCode !== null) return Promise.resolve();
+    const exited = new Promise<void>((done) => {
+      child.once('exit', () => {
+        done();
+      });
+    });
     if (child.pid !== undefined) killIfAlive(child.pid);
-  }
-  await rm(sandbox, { recursive: true, force: true });
+    return Promise.race([exited, sleep(10_000)]);
+  });
+  await Promise.all(gone);
+  for (const pid of left) await until(() => !isAlive(pid), 10_000).catch(() => undefined);
+  await rm(sandbox, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 });
 });
 
 function isAlive(pid: number): boolean {
@@ -79,6 +96,20 @@ const sleep = (ms: number): Promise<void> =>
 interface Exit {
   readonly code: number | null;
   readonly signal: NodeJS.Signals | null;
+}
+
+/**
+ * Checks that the process ended by force, as `SIGKILL` ends it: on POSIX by the signal; on Windows
+ * (no signals) by an exit code other than 0 and no signal.
+ */
+function expectForcedDeath(exit: Exit): void {
+  if (onWindows) {
+    expect(exit.signal).toBeNull();
+    expect(exit.code).not.toBeNull();
+    expect(exit.code).not.toBe(0);
+  } else {
+    expect(exit.signal).toBe('SIGKILL');
+  }
 }
 
 interface Running {
@@ -256,7 +287,7 @@ describe('die', () => {
   it('kills itself with SIGKILL after N chunks, and the peer saw all of them', async () => {
     await withSession({}, async (s) => {
       const turn = outcome(prompt(s, '#script:die {"afterChunks":2}'));
-      expect((await s.running.exited).signal).toBe('SIGKILL');
+      expectForcedDeath(await s.running.exited);
       await turn.done;
       expect(s.text()).toBe('die chunk 1\ndie chunk 2\n');
       expect(turn.state.error).toBeDefined();
@@ -267,7 +298,7 @@ describe('die', () => {
   it('dies as the turn opens when afterChunks is 0', async () => {
     await withSession({}, async (s) => {
       const turn = outcome(prompt(s, '#script:die'));
-      expect((await s.running.exited).signal).toBe('SIGKILL');
+      expectForcedDeath(await s.running.exited);
       await turn.done;
       expect(s.text()).toBe('');
     });
@@ -276,7 +307,7 @@ describe('die', () => {
   it('as the default script with at "open", the process dies before it serves anything', async () => {
     const running = start({ FAKE_AGENT_SCRIPT: 'die {"at":"open"}' });
     const exit = await running.exited;
-    expect(exit.signal).toBe('SIGKILL');
+    expectForcedDeath(exit);
     expect(isAlive(running.pid)).toBe(false);
   });
 });
@@ -306,13 +337,15 @@ describe('stall', () => {
   it('ends itself with SIGKILL after lifeMs, so a failed test leaves no orphan', async () => {
     await withSession({}, async (s) => {
       void outcome(prompt(s, '#script:stall {"lifeMs":400}'));
-      expect((await s.running.exited).signal).toBe('SIGKILL');
+      expectForcedDeath(await s.running.exited);
     });
   });
 });
 
+// POSIX only: Windows has no SIGTERM to ignore (`kill` is a TerminateProcess that no handler sees),
+// so the script cannot do what it promises there. `ignore-term on Windows` says what happens.
 describe('ignore-term', () => {
-  it('survives SIGTERM and ends only with SIGKILL', async () => {
+  it.skipIf(onWindows)('survives SIGTERM and ends only with SIGKILL', async () => {
     await withSession({}, async (s) => {
       const turn = outcome(prompt(s, '#script:ignore-term {"lifeMs":20000}'));
       await until(() => s.text().includes('ignoring SIGTERM'));
@@ -326,16 +359,33 @@ describe('ignore-term', () => {
     });
   });
 
-  it('as the default script it ignores SIGTERM from the start of the process', async () => {
-    await withSession({ FAKE_AGENT_SCRIPT: 'ignore-term {"lifeMs":20000}' }, async (s) => {
-      // The session is open: the process is up and serving, no turn has run.
-      s.running.child.kill('SIGTERM');
-      await sleep(400);
-      expect(s.running.hasExited()).toBe(false);
-      s.running.child.kill('SIGKILL');
-      expect((await s.running.exited).signal).toBe('SIGKILL');
-    });
-  });
+  it.skipIf(onWindows)(
+    'as the default script it ignores SIGTERM from the start of the process',
+    async () => {
+      await withSession({ FAKE_AGENT_SCRIPT: 'ignore-term {"lifeMs":20000}' }, async (s) => {
+        // The session is open: the process is up and serving, no turn has run.
+        s.running.child.kill('SIGTERM');
+        await sleep(400);
+        expect(s.running.hasExited()).toBe(false);
+        s.running.child.kill('SIGKILL');
+        expect((await s.running.exited).signal).toBe('SIGKILL');
+      });
+    },
+  );
+
+  it.runIf(onWindows)(
+    'on Windows SIGTERM cannot be ignored: the kill ends the process',
+    async () => {
+      await withSession({}, async (s) => {
+        void outcome(prompt(s, '#script:ignore-term {"lifeMs":20000}'));
+        await until(() => s.text().includes('ignoring SIGTERM'));
+        s.running.child.kill('SIGTERM');
+        const exit = await s.running.exited;
+        expect(exit.code === 0 && exit.signal === null).toBe(false);
+        expect(isAlive(s.running.pid)).toBe(false);
+      });
+    },
+  );
 });
 
 describe('spawn-child', () => {
@@ -358,15 +408,17 @@ describe('spawn-child', () => {
       const turn = outcome(
         prompt(s, '#script:spawn-child {"after":"die","lifeMs":20000,"file":"gc.pid"}'),
       );
-      expect((await s.running.exited).signal).toBe('SIGKILL');
+      expectForcedDeath(await s.running.exited);
       await turn.done;
       const pid = Number((await readFile(join(stateDir, 'gc.pid'), 'utf8')).trim());
       grandchildren.push(pid);
       expect(pidOf(s.text(), 'grandchild')).toBe(pid);
       expect(isAlive(s.running.pid)).toBe(false);
-      expect(isAlive(pid)).toBe(true);
+      // POSIX: the grandchild lives on, an orphan. Windows: libuv may put a child that is not
+      // `detached` in a job object that ends with the agent, so nothing is promised about it.
+      if (!onWindows) expect(isAlive(pid)).toBe(true);
       // The pid file is what a test uses to end it.
-      process.kill(pid, 'SIGKILL');
+      if (isAlive(pid)) process.kill(pid, 'SIGKILL');
       await until(() => !isAlive(pid));
     });
   });

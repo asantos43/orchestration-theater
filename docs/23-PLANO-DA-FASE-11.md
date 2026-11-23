@@ -184,6 +184,7 @@ O que o sistema faz com provedor fora do ar, com Executor travado e com perfil v
   - `slow {chunks, intervalMs}`: `slow i/n` a cada intervalo; um cancel encerra na hora [V].
   - `fail-auth`, `fail-quota {resetsAt?, message?}`, `fail-transient`: ver a tabela abaixo.
 - **Higiene:** todo processo que um script deixa vivo se encerra sozinho (`lifeMs` de 100 ms a 60 s; o `stall` e o `ignore-term` dão `SIGKILL` em si ao fim, o neto sai pelo próprio temporizador). Os testes ainda matam por pid o agente e o neto, e conferem que o neto some junto do grupo [V]. Os scripts novos não usam rede nem `PATH`: o neto sobe por `process.execPath` [V: leitura e `grep` de `failure-scripts.ts`; o resto do `fake-agent` tem scripts de rede que já existiam].
+- **Windows (CI `cross`, 2026-11-23):** não há sinal POSIX. `process.kill(pid, 'SIGKILL')` em si mesmo vira `TerminateProcess` com código 1 e `signal` nulo, e ninguém ignora `SIGTERM`. Os testes de morte aceitam "código diferente de 0, sem sinal" no Windows; os de `ignore-term` só rodam em POSIX (no Windows, um teste confere que o `kill` o encerra); o neto órfão de `spawn-child` não é conferido no Windows. A limpeza dos testes agora espera o fim dos processos antes de apagar o `cwd` (antes dava `EBUSY`). [V no Linux; N no Windows até a CI confirmar]
 
 **Para o P4: o erro de cada `fail-*`** (tudo `RequestError` do ACP, na ponta do `session/prompt`):
 
