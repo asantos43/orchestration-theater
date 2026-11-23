@@ -226,6 +226,150 @@ describe('installAdapter', () => {
   });
 });
 
+describe('installAdapter: redirects and archives of a hostile registry', () => {
+  const REGISTRY = 'https://registry.test';
+  const ARCHIVE = tarballPath('fake-acp', '1.2.3');
+
+  /** A `fetch` that never touches the network: `routes` maps a URL to its answer. */
+  function fakeFetch(routes: Record<string, () => Response>): {
+    fetch: typeof fetch;
+    calls: string[];
+  } {
+    const calls: string[] = [];
+    const fake = ((input: URL | string, init?: RequestInit) => {
+      const url = String(input);
+      calls.push(url);
+      expect(init?.redirect).toBe('manual');
+      const route = routes[url];
+      return Promise.resolve(route === undefined ? new Response(null, { status: 404 }) : route());
+    }) as typeof fetch;
+    return { fetch: fake, calls };
+  }
+
+  const redirect =
+    (to: string, status = 302) =>
+    (): Response =>
+      new Response(null, { status, headers: { location: to } });
+
+  function served(adapter: FixtureAdapter): () => Response {
+    const tarball = adapter.tarballs.get(ARCHIVE);
+    if (tarball === undefined) throw new Error(`the fixture has no tarball for ${ARCHIVE}`);
+    return () => new Response(new Uint8Array(tarball), { status: 200 });
+  }
+
+  function base(adapter: FixtureAdapter, fetchFn: typeof fetch): InstallOptions {
+    return {
+      lock: adapter.lock,
+      adaptersDir: dir,
+      registry: REGISTRY,
+      platform: LINUX,
+      retryDelayMs: 0,
+      fetch: fetchFn,
+    };
+  }
+
+  const FIRST = `${REGISTRY}${ARCHIVE}`;
+
+  it('follows a redirect to a host of clients.adapters.redirect_hosts and checks the sha512 at the end', async () => {
+    const adapter = fixtureAdapter();
+    const { fetch: fake, calls } = fakeFetch({
+      [FIRST]: redirect('https://cdn.test/a.tgz'),
+      'https://cdn.test/a.tgz': served(adapter),
+    });
+    const result = await installAdapter({ ...base(adapter, fake), redirectHosts: ['cdn.test'] });
+    expect(result.status).toBe('installed');
+    expect(calls).toEqual([FIRST, 'https://cdn.test/a.tgz']);
+  });
+
+  it('follows a redirect inside the registry host (relative Location) with no list', async () => {
+    const adapter = fixtureAdapter();
+    const { fetch: fake } = fakeFetch({
+      [FIRST]: redirect('/moved/a.tgz', 301),
+      [`${REGISTRY}/moved/a.tgz`]: served(adapter),
+    });
+    expect((await installAdapter(base(adapter, fake))).status).toBe('installed');
+  });
+
+  it('refuses a redirect to a host that is not allowed, and never asks that host', async () => {
+    const adapter = fixtureAdapter();
+    const { fetch: fake, calls } = fakeFetch({ [FIRST]: redirect('https://evil.test/a.tgz') });
+    await expect(installAdapter(base(adapter, fake))).rejects.toMatchObject({
+      code: 'redirect',
+      message: expect.stringContaining('clients.adapters.redirect_hosts') as unknown,
+    });
+    expect(calls).toEqual([FIRST]);
+  });
+
+  it('refuses a redirect to plain http, even to a listed host, and one with credentials', async () => {
+    const adapter = fixtureAdapter();
+    for (const to of ['http://cdn.test/a.tgz', 'https://user:pw@cdn.test/a.tgz']) {
+      const { fetch: fake } = fakeFetch({ [FIRST]: redirect(to) });
+      await expect(
+        installAdapter({ ...base(adapter, fake), redirectHosts: ['cdn.test'] }),
+      ).rejects.toMatchObject({ code: 'redirect' });
+    }
+  });
+
+  it('stops after clients.adapters.redirect_max hops, and 0 refuses every redirect', async () => {
+    const adapter = fixtureAdapter();
+    const { fetch: loop, calls } = fakeFetch({ [FIRST]: redirect(FIRST) });
+    await expect(installAdapter({ ...base(adapter, loop), redirectMax: 2 })).rejects.toMatchObject({
+      code: 'redirect',
+    });
+    expect(calls).toHaveLength(3);
+    const { fetch: once } = fakeFetch({ [FIRST]: redirect(`${REGISTRY}/b.tgz`) });
+    await expect(installAdapter({ ...base(adapter, once), redirectMax: 0 })).rejects.toMatchObject({
+      code: 'redirect',
+    });
+  });
+
+  it('refuses a redirect with no Location', async () => {
+    const adapter = fixtureAdapter();
+    const { fetch: fake } = fakeFetch({ [FIRST]: () => new Response(null, { status: 302 }) });
+    await expect(installAdapter(base(adapter, fake))).rejects.toMatchObject({ code: 'redirect' });
+  });
+
+  it.each(['a.js', 'A.JS'])(
+    'refuses a tarball that repeats a path (%s), even in another case, and leaves nothing',
+    async (second) => {
+      const adapter = fixtureAdapter([
+        {
+          path: 'node_modules/dup',
+          name: 'dup',
+          version: '1.0.0',
+          files: [
+            { path: 'a.js', content: '1' },
+            { path: second, content: '2' },
+          ],
+        },
+      ]);
+      const { options } = await setup(adapter);
+      await expect(installAdapter(options)).rejects.toMatchObject({
+        code: 'archive',
+        message: expect.stringContaining('twice') as unknown,
+      });
+      expect(await isInstalled(adapterDir(dir, adapter.lock), adapter.lock)).toBe(false);
+    },
+  );
+
+  it('refuses a tarball with more entries than clients.adapters.tar_max_entries', async () => {
+    const adapter = fixtureAdapter([
+      {
+        path: 'node_modules/many',
+        name: 'many',
+        version: '1.0.0',
+        files: Array.from({ length: 6 }, (_, i) => ({ path: `f${String(i)}.js`, content: 'x' })),
+      },
+    ]);
+    const { options } = await setup(adapter);
+    await expect(installAdapter({ ...options, tarMaxEntries: 4 })).rejects.toMatchObject({
+      code: 'archive',
+      message: expect.stringContaining('entries') as unknown,
+    });
+    expect((await installAdapter({ ...options, tarMaxEntries: 100 })).status).toBe('installed');
+  });
+});
+
 describe('tarballUrl', () => {
   it('builds the registry layout, scoped or not, whatever host the lock names', () => {
     const entry = {
