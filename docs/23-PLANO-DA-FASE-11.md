@@ -78,7 +78,7 @@ Conferido no código em 2026-11-22, no commit `3c84693` (a main depois do PR #31
 |---|---|---|---|---|
 | P0 | Plano e decisões (este documento) | nada | todos os que dependem só dele | feito |
 | P1 | Harness de caos: `faults.inject`, pontos de queda, censo de processos, invariantes e o workflow de caos | P0 | P2, P8, P9 | a fazer |
-| P2 | `fake-agent`: modos de falha (morrer, travar, ignorar `SIGTERM`, deixar neto, erros tipados, lentidão) | P0 | P1, P8, P9 | a fazer |
+| P2 | `fake-agent`: modos de falha (morrer, travar, ignorar `SIGTERM`, deixar neto, erros tipados, lentidão) | P0 | P1, P8, P9 | feito |
 | P3 | Caos A: daemon morto no meio da peça e queda de energia simulada (processos e store rasgado) | P1, P2, D8 | P4, P5, P6, P7, P10 | a fazer |
 | P4 | Caos B: Executor travado, perfil expirado e provedor fora do ar | P1, P2 | P3, P5, P6, P7, P10 | a fazer |
 | P5 | Disco cheio: a política `disk.*`, o erro tipado e o caos | P1, D2 | P3, P4, P6, P7, P10 | a fazer |
@@ -174,7 +174,34 @@ O que o sistema faz com provedor fora do ar, com Executor travado e com perfil v
 
 **Aceite:** cada script faz o que diz, medido por um teste que usa o processo de verdade; o `fake-agent` continua sem tocar rede nem `PATH`.
 
-**Como ficou:** a preencher.
+**Como ficou:** feito em 2026-11-23. Código em `fake-agent/src/failure-scripts.ts` (esquemas zod, erros e ajudantes), `scripts.ts`, `agent.ts`, `cli.ts`, `index.ts`; testes em `fake-agent/src/failure-scripts.test.ts` (22, com o `dist/cli.js` de verdade) e em `adapters/session-acp/src/acp-e2e.test.ts` (7 casos novos, ponta a ponta pelo `AcpTransport`).
+
+- **Scripts** (por `FAKE_AGENT_SCRIPT` ou pela diretiva `#script:<nome> {json}`):
+  - `die {afterChunks, at}`: `SIGKILL` em si mesmo depois de N chunks (`die chunk N`, já escoados no stdout) ou no início do turno. Com `at: 'open'` e **só** como script padrão (`FAKE_AGENT_SCRIPT`) o processo morre ao subir, antes de ler o primeiro pedido; na diretiva vale o mesmo que `afterChunks: 0` [V].
+  - `stall {chunks, lifeMs}`: vivo e mudo, stdout aberto, ignora `session/cancel` e sobrevive ao EOF do stdin; só `SIGTERM`/`SIGKILL` o encerram [V].
+  - `ignore-term {signals, lifeMs}`: o mesmo, ignorando `SIGTERM` (e opcionalmente `SIGINT`/`SIGHUP`); só `SIGKILL` encerra. Como script padrão as assinaturas valem desde a subida [V].
+  - `spawn-child {file, lifeMs, detached, after}`: neto em `node -e` no `cwd` da sessão, com o pid em `$FAKE_AGENT_STATE_DIR/<file>` (padrão `grandchild.pid`) e dito num chunk (`grandchild pid N`). Depois o turno faz `after`: `end_turn`, `stall` ou `die` (o neto fica sem pai). `detached: true` põe o neto em grupo próprio, fora de um `kill(-pgid)`; o padrão fica no grupo do agente. Sem `FAKE_AGENT_STATE_DIR` o turno falha com `-32603` [V].
+  - `slow {chunks, intervalMs}`: `slow i/n` a cada intervalo; um cancel encerra na hora [V].
+  - `fail-auth`, `fail-quota {resetsAt?, message?}`, `fail-transient`: ver a tabela abaixo.
+- **Higiene:** todo processo que um script deixa vivo se encerra sozinho (`lifeMs` de 100 ms a 60 s; o `stall` e o `ignore-term` dão `SIGKILL` em si ao fim, o neto sai pelo próprio temporizador). Os testes ainda matam por pid o agente e o neto, e conferem que o neto some junto do grupo [V]. Os scripts novos não usam rede nem `PATH`: o neto sobe por `process.execPath` [V: leitura e `grep` de `failure-scripts.ts`; o resto do `fake-agent` tem scripts de rede que já existiam].
+
+**Para o P4: o erro de cada `fail-*`** (tudo `RequestError` do ACP, na ponta do `session/prompt`):
+
+| Script | código | mensagem (padrão) | `data` | `kind` normalizado pelo Claude, Codex, OpenCode |
+|---|---|---|---|---|
+| `fail-auth` | `-32000` | `Authentication required: please run /login` | `{script, codexErrorInfo: 'unauthorized'}` | `auth_required` nos três [V: rodado contra os três normalizadores] |
+| `fail-quota` | `-32001` | `Claude AI usage limit reached` (com `\|<epoch s>` se houver `resetsAt`) | `{type: 'QuotaExhausted', codexErrorInfo: 'usageLimitExceeded', resetsAt?}` | `quota_exhausted` nos três; com `resetsAt` os três devolvem o instante em ms [V] |
+| `fail-transient` | `-32603` | `Overloaded: API Error 529 overloaded_error` | `{script, codexErrorInfo: 'serverOverloaded'}` | `transient` nos três [V] |
+
+- A forma é **uma só** por script, escolhida para cada normalizador ler pelo caminho que ele tem (código, texto ou `codexErrorInfo`), em vez de três formas por cliente. O `normalizeFakeError` do `FakeClientAdapter` só conhece a cota: `fail-auth` e `fail-transient` chegam a ele como `unknown` [V: rodado] e, pelo `typedErrorOf`, viram `Transient` [V: leitura]. Quem quiser o tipo certo no daemon usa o adaptador real do cliente, ou compõe o `fake-agent` por trás de um deles [V: o `acp-e2e.test.ts` confere só que o erro é tipado e que não é `QuotaExhausted`].
+- **Lacuna do perfil vencido:** não há causa `profile_expired` em `INTERRUPTION_CAUSES`, e o protocolo não ganhou uma (é decisão do P4). Hoje o `auth_required` vira `PermissionDenied` (`typedErrorOf`) e o `#classify` do `attempt-runner` o põe na causa `permission`, a mesma de uma permissão negada [V: leitura]. O `fail-auth` é a forma mais próxima do login vencido que existe agora.
+- **O `data` de `fail-quota` tem um campo a mais** (`codexErrorInfo`) que o `quotaExhaustedDataSchema` estrito não aceita, então o `limitHitOf` do daemon não lê o `resetsAt` de um erro cru; o erro tipado de um adaptador guarda o `resetsAt` em `cause`. Se o P4 precisar do instante no caminho do `fake-agent` puro, o conserto é afrouxar o schema ou tirar o campo (e perder o Codex) [V: leitura; o caminho do `limitHitOf` com este erro não foi rodado].
+
+**Não conferido:**
+- [N] a conferência dos três normalizadores contra as formas dos `fail-*` foi rodada à mão (script descartável) e **não** virou teste: um adaptador não pode importar o `fake-agent` nem outro adaptador, e o daemon só importa adaptadores em `compose.ts` (regras `adapter-isolation` e `daemon-adapters-only-in-compose`). O teste que a mantém precisa de um lugar permitido (por exemplo, um teste em cada `client-*` com a forma escrita à mão); fica para o P4 ou para um passo próprio.
+- [N] Windows: o `SIGKILL` em si mesmo, o `detached` do neto e o `ignore-term` (no Windows `SIGTERM` não é entregue como no Linux) não foram rodados.
+- [N] os scripts `die`, `stall`, `ignore-term` e `spawn-child` **não** entram na suíte de conformidade do `AgentSession`: o contrato pede `prompts.hang` e `prompts.fail`, que já existem, e `crash` é o do harness; os modos novos são exercidos no `acp-e2e.test.ts` e no `failure-scripts.test.ts`. O `fail-quota` também não substituiu o `prompts.quota` (`quota-signal`), porque este testa o descarte silencioso dos sinais de cota.
+- A suíte inteira de lint (`eslint .`) estourou o heap do Node (4 GB) neste computador; o `eslint` rodou limpo sobre `packages/fake-agent/src` e sobre o `acp-e2e.test.ts`.
 
 ### P3. Caos A: daemon morto e queda de energia
 
