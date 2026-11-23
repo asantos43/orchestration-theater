@@ -48,7 +48,7 @@ O resumo por componente está em [docs/02-NUCLEO-COMUM.md](docs/02-NUCLEO-COMUM.
 
 | Arquivo | Conteúdo |
 |---|---|
-| [arquitetura.md](docs/framework-ideas/arquitetura.md) | **Documento-base de construção** (v0.92, 2026-11-22): princípios, componentes, modelo de dados, stack, estrutura do repositório, fases, riscos, decisões |
+| [arquitetura.md](docs/framework-ideas/arquitetura.md) | **Documento-base de construção** (v0.93, 2026-11-23): princípios, componentes, modelo de dados, stack, estrutura do repositório, fases, riscos, decisões |
 | [framework_multiagentes.md](docs/framework-ideas/framework_multiagentes.md) | O pipeline teatral, passo a passo |
 | [framework_multiagentes_orquestrador_e_executores.md](docs/framework-ideas/framework_multiagentes_orquestrador_e_executores.md) | As entidades Executor e Orquestrador |
 | [principais-papeis.md](docs/framework-ideas/principais-papeis.md) | Os papéis e suas responsabilidades |
@@ -80,6 +80,7 @@ O resumo por componente está em [docs/02-NUCLEO-COMUM.md](docs/02-NUCLEO-COMUM.
 | [20-PLANO-DA-FASE-9.md](docs/20-PLANO-DA-FASE-9.md) | Plano de passos da Fase 9 (plugins e fluxos por configuração), com a dependência candidata, paralelismo, aceite de cada passo e as decisões N232 a N241 |
 | [21-PLANO-DA-FASE-10.md](docs/21-PLANO-DA-FASE-10.md) | Plano de passos da Fase 10 (distribuição: executável único, instaladores, serviço de logon, atualização assinada e release com portão do R1), com a dependência, paralelismo, aceite de cada passo, o comando da chave Ed25519 e as perguntas N250 a N255 |
 | [23-PLANO-DA-FASE-11.md](docs/23-PLANO-DA-FASE-11.md) | Plano de passos da Fase 11 (endurecimento: testes de caos, idempotência de integração e PR, revisão de segurança e das portas, guia de adaptadores e plugins), com como simular cada falha sem nada real, os invariantes do aceite, as chaves de configuração propostas e as perguntas D1 a D9 |
+| [24-DESENHO-DO-MOTOR-DE-WORKFLOWS.md](docs/24-DESENHO-DO-MOTOR-DE-WORKFLOWS.md) | Desenho da Fase 11b (depois da Fase 11): motor de workflows configuráveis em que a peça teatral é uma definição entre outras, com definições em YAML, vínculo por cenário com ciclo de vida, editor e API, pacotes e os workflows prontos de issues do GitHub, revisão de PR e conserto de CI (N291 a N298) |
 | [reference/phoenix.md](docs/reference/phoenix.md) | Receita do Arize Phoenix opcional (ELv2, só uso local): importar o ATIF exportado e, por um Collector, o OTLP; revisada contra a documentação pública em 2026-11-21, com [S], [V] e [N] |
 | [FONTES.md](docs/FONTES.md) | Links consultados e grau de confirmação |
 | [adr/](docs/adr/) | Registros das decisões de arquitetura (ADRs): 0001, projeto próprio sem fork (N1); 0002, TUI em Ink (N11) |
