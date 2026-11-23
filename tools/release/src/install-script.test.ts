@@ -45,7 +45,8 @@ describe('embedPublicKey', () => {
     expect(() => embedPublicKey('echo hi\n', publicPem)).toThrow(/markers/);
   });
 
-  it('writes the file with the execute bit', async () => {
+  // Windows has no POSIX mode bits; the script is published from the Linux runner.
+  it.skipIf(process.platform === 'win32')('writes the file with the execute bit', async () => {
     const { publicPem } = generateEphemeralKey();
     const key = path.join(dir, 'public.pem');
     const out = path.join(dir, 'out.sh');

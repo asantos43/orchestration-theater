@@ -34,8 +34,10 @@ describe('the release commands, as the workflow runs them', () => {
   it('makes a key, assembles, signs and verifies a release, and refuses it once a file changes', async () => {
     const keys = path.join(dir, 'keys');
     expect(await run('ephemeral-key', '--out', keys)).toBe(0);
-    // The private half is for the runner alone.
-    expect((await stat(path.join(keys, 'ephemeral-private.pem'))).mode & 0o077).toBe(0);
+    // The private half is for the runner alone (Windows has no POSIX mode bits to check).
+    if (process.platform !== 'win32') {
+      expect((await stat(path.join(keys, 'ephemeral-private.pem'))).mode & 0o077).toBe(0);
+    }
 
     const manifest = path.join(dir, 'manifest.json');
     expect(await run('assemble', '--dir', dir, '--version', '1.2.3', '--channel', 'stable')).toBe(
