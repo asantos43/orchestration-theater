@@ -1522,6 +1522,7 @@ O patch fica, com a versão do Ink travada em 8.0.0: se a versão mudar, o patch
 | `ui.tuiLayout.minChatWidth` e `minPanelWidth` **[proposta]** | 30 | inteiro de 20 a 200 |
 | `ui.tuiLayout.chatStep` **[proposta]** | 2 | inteiro de 1 a 20 |
 | `ui.tuiLayout.scrollStep` **[proposta]** | `half` | `page`, `half`, `line` |
+| `ui.tuiLayout.density` | `comfortable` | `comfortable` (margens e alinhamento do mockup: 1 coluna de margem dentro de cada moldura, seções do painel com linha em branco e recuo, abas e dicas nos lugares do mockup), `compact` (a tela sem margens, como era antes); lida na partida (N258, 2026-11-22) |
 | `ui.input.paste.mode` **[proposta]** | `marker` | `marker`, `inline` |
 | `ui.input.paste.lines` e `paste.chars` **[proposta]** | 10 e 2.000 | inteiros |
 | `ui.input.dropPaths` **[proposta]** | `attach` | `attach`, `text` |
