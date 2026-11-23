@@ -23,7 +23,7 @@ import {
 
 /**
  * The layout of one interface in the client (P12 of docs/17): the preferences of the person
- * (side bar, width of the chat, open tabs, collapsed sections) in a zustand `vanilla` store, kept
+ * (side bar, width of the side bar and of the chat, open tabs, collapsed sections) in a zustand `vanilla` store, kept
  * by a {@link LayoutPersistence}. Browser-safe. [proposta] The rules:
  * - the first state is the default of the interface, so a screen can draw before the read ends;
  * - a change is made on the spot and saved after `writeDelayMs` of quiet: a drag of the edge of the
@@ -228,6 +228,9 @@ export class LayoutStore {
       version: current.version,
     };
     next.chatWidth = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, Math.round(next.chatWidth)));
+    // The width of the side bar is optional: `undefined` takes it away (the setting of the interface applies again).
+    if (next.sidebarWidth === undefined) delete next.sidebarWidth;
+    else next.sidebarWidth = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, Math.round(next.sidebarWidth)));
     next.openTabs = tail([...new Set(next.openTabs)], 32);
     next.collapsedSections = tail([...new Set(next.collapsedSections)], 128);
     const parsed = LayoutPreferencesSchema.safeParse(next);
@@ -251,6 +254,11 @@ export class LayoutStore {
 
   setChatWidth(width: number): boolean {
     return this.update({ chatWidth: width });
+  }
+
+  /** The width of the side bar when it is open (N277); `undefined` goes back to the setting of the interface. */
+  setSidebarWidth(width: number | undefined): boolean {
+    return this.update({ sidebarWidth: width });
   }
 
   /** Opens a tab at the end of the list (nothing changes if it is open). */
@@ -280,6 +288,7 @@ export class LayoutStore {
     return this.update({
       sidebarCollapsed: fresh.sidebarCollapsed,
       chatWidth: fresh.chatWidth,
+      sidebarWidth: undefined,
       openTabs: fresh.openTabs,
       collapsedSections: fresh.collapsedSections,
     });
