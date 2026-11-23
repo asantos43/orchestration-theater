@@ -27,6 +27,16 @@ import {
 } from '@otheater/protocol';
 import { z } from 'zod';
 import { playEscape } from './escape-scripts.js';
+import {
+  authError,
+  dieAfterFlush,
+  ignoreSignals,
+  pause,
+  quotaError,
+  stallForever,
+  startGrandchild,
+  transientError,
+} from './failure-scripts.js';
 import { McpClient, type SessionMcpServer } from './mcp-client.js';
 import { type FakeOtel, type OtelTurn } from './otel.js';
 import { directorHangs, directorQuotaFailure, playRolePlay } from './role-play.js';
@@ -120,6 +130,9 @@ function configOptionsOf(session: Session): SessionConfigOption[] {
     options: option.values.map((value) => ({ value, name: value })),
   }));
 }
+
+/** How long `spawn-child` with `after: 'stall'` keeps the agent mute at most (the grandchild ends sooner). */
+const MAX_STALL_AFTER_SPAWN_MS = 60_000;
 
 const CANCELLED: PromptResponse = { stopReason: 'cancelled' };
 const END_TURN: PromptResponse = { stopReason: 'end_turn' };
@@ -667,6 +680,75 @@ async function playDeaf(
   return new Promise<PromptResponse>(() => undefined);
 }
 
+/** `die`: the process kills itself with `SIGKILL` after the chunks, flushed so the peer sees them. */
+async function playDie(
+  turn: TurnContext,
+  script: Extract<Script, { name: 'die' }>,
+): Promise<PromptResponse> {
+  const chunks = script.at === 'open' ? 0 : script.afterChunks;
+  for (let sent = 1; sent <= chunks; sent += 1) {
+    await message(turn, `die chunk ${String(sent)}\n`);
+  }
+  return dieAfterFlush();
+}
+
+/** `stall`: the chunks, then nothing for good. A `session/cancel` is not answered. */
+async function playStall(
+  turn: TurnContext,
+  script: Extract<Script, { name: 'stall' | 'ignore-term' }>,
+  chunks: number,
+): Promise<PromptResponse> {
+  for (let sent = 1; sent <= chunks; sent += 1) {
+    await message(turn, `stall chunk ${String(sent)}\n`);
+  }
+  return stallForever(script.lifeMs);
+}
+
+/** `ignore-term`: arms the signals, says so, and stalls. */
+async function playIgnoreTerm(
+  turn: TurnContext,
+  script: Extract<Script, { name: 'ignore-term' }>,
+): Promise<PromptResponse> {
+  ignoreSignals(script.signals);
+  await message(turn, `ignoring ${script.signals.join(', ')}\n`);
+  return playStall(turn, script, 0);
+}
+
+/**
+ * `spawn-child`: a grandchild that outlives the agent, its pid in `$FAKE_AGENT_STATE_DIR` and in a
+ * chunk. The library of the fake agent keeps no default folder for it: without the variable the
+ * turn fails (a pid nobody can read is a process nobody can end).
+ */
+async function playSpawnChild(
+  turn: TurnContext,
+  script: Extract<Script, { name: 'spawn-child' }>,
+): Promise<PromptResponse> {
+  const stateDir = process.env.FAKE_AGENT_STATE_DIR;
+  if (stateDir === undefined || stateDir === '') {
+    throw new RequestError(-32603, 'spawn-child needs FAKE_AGENT_STATE_DIR', {
+      script: 'spawn-child',
+    });
+  }
+  const pid = await startGrandchild({ script, cwd: turn.session.cwd, stateDir });
+  await message(turn, `grandchild pid ${String(pid)}\n`);
+  if (script.after === 'die') return dieAfterFlush();
+  if (script.after === 'stall') return stallForever(MAX_STALL_AFTER_SPAWN_MS);
+  return END_TURN;
+}
+
+/** `slow`: the chunks with an interval; a cancel stops it between two of them. */
+async function playSlow(
+  turn: TurnContext,
+  script: Extract<Script, { name: 'slow' }>,
+): Promise<PromptResponse> {
+  for (let sent = 1; sent <= script.chunks; sent += 1) {
+    if (turn.signal.aborted) return CANCELLED;
+    await message(turn, `slow ${String(sent)}/${String(script.chunks)}\n`);
+    if (sent < script.chunks && !(await pause(script.intervalMs, turn.signal))) return CANCELLED;
+  }
+  return turn.signal.aborted ? CANCELLED : END_TURN;
+}
+
 async function playQuotaSignal(
   turn: TurnContext,
   script: Extract<Script, { name: 'quota-signal' }>,
@@ -774,6 +856,22 @@ function play(turn: TurnContext, script: Script): Promise<PromptResponse> {
       return playRolePlayScript(turn, script);
     case 'fail':
       return Promise.reject(new RequestError(-32603, script.message, { script: 'fail' }));
+    case 'die':
+      return playDie(turn, script);
+    case 'stall':
+      return playStall(turn, script, script.chunks);
+    case 'ignore-term':
+      return playIgnoreTerm(turn, script);
+    case 'spawn-child':
+      return playSpawnChild(turn, script);
+    case 'slow':
+      return playSlow(turn, script);
+    case 'fail-auth':
+      return Promise.reject(authError(script));
+    case 'fail-quota':
+      return Promise.reject(quotaError(script));
+    case 'fail-transient':
+      return Promise.reject(transientError(script));
     case 'probe':
       return playProbe(turn, script);
     case 'escape':
