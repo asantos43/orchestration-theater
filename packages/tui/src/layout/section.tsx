@@ -26,12 +26,21 @@ export interface SectionProps {
   readonly right?: string | undefined;
   readonly width: number;
   readonly control: SectionControl;
+  /**
+   * Columns the content (not the header) is indented: the caller gives its children `width - indent`.
+   * 0 (the default) is the section as it was; the mockup's is 2.
+   */
+  readonly indent?: number | undefined;
+  /** Blank rows after the section, folded or not: 0 (the default) is none; the mockup's is 1. */
+  readonly gap?: number | undefined;
   readonly children?: ReactNode;
 }
 
 /** `▾ title ........ right` and, when it is not folded, its content. */
 export function Section(props: SectionProps): ReactNode {
   const { id, width, control } = props;
+  const indent = Math.max(0, props.indent ?? 0);
+  const gap = Math.max(0, props.gap ?? 0);
   const folded = control.folded.has(id);
   const onCursor = control.cursor === id;
   const headRef = useRef<DOMElement>(null);
@@ -62,7 +71,15 @@ export function Section(props: SectionProps): ReactNode {
           {fit(line, width)}
         </Text>
       </Box>
-      {!folded && props.children}
+      {!folded &&
+        (indent === 0 ? (
+          props.children
+        ) : (
+          <Box flexDirection="column" width={width} paddingLeft={indent}>
+            {props.children}
+          </Box>
+        ))}
+      {gap > 0 && <Box height={gap} width={width} />}
     </Box>
   );
 }

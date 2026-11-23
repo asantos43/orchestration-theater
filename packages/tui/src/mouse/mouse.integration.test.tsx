@@ -2,12 +2,14 @@
 import { Text } from 'ink';
 import { afterEach, describe, expect, it } from 'vitest';
 import { cleanupApps, renderApp, waitFor, type RenderedApp } from '../ink.test-support.js';
-import { fakeOnline, seedStores } from '../layout.test-support.js';
+import { fakeOnline, seedStores, settingsWith } from '../layout.test-support.js';
 import { Section } from '../layout/section.js';
 import type { TabContentMap } from '../layout/tab-content.js';
-import { DEFAULT_UI_SETTINGS } from '../settings.js';
 import { MOUSE_DISABLE_SEQUENCE } from './modes.js';
 import { sgrReport } from './sgr.js';
+
+/** The screen without the margins: the positions of these tests are the ones of the borders. */
+const COMPACT_SETTINGS = settingsWith({});
 
 /**
  * The mouse over the whole app (N34, N36): the terminal modes on mount and off on exit, the reports
@@ -55,7 +57,7 @@ interface Opened {
 }
 
 async function open(
-  settings = DEFAULT_UI_SETTINGS,
+  settings = COMPACT_SETTINGS,
   size = { columns: 140, rows: 30 },
 ): Promise<Opened> {
   const online = fakeOnline();
@@ -149,10 +151,10 @@ describe('the terminal modes', () => {
   });
 
   it('ui.mouse wheel leaves out the drag, and off writes nothing', async () => {
-    const wheelOnly = await open({ ...DEFAULT_UI_SETTINGS, mouse: 'wheel' });
+    const wheelOnly = await open({ ...COMPACT_SETTINGS, mouse: 'wheel' });
     expect(wheelOnly.writes).toEqual(['\x1b[?1000h\x1b[?1006h']);
     cleanupApps();
-    const off = await open({ ...DEFAULT_UI_SETTINGS, mouse: 'off' });
+    const off = await open({ ...COMPACT_SETTINGS, mouse: 'off' });
     expect(off.writes).toEqual([]);
   });
 });
@@ -234,7 +236,7 @@ describe('the clicks', () => {
   });
 
   it('are left alone with ui.mouse wheel, which only has the wheel', async () => {
-    const { app } = await open({ ...DEFAULT_UI_SETTINGS, mouse: 'wheel' });
+    const { app } = await open({ ...COMPACT_SETTINGS, mouse: 'wheel' });
     const frame = await click(app, locate(app.frame(), '⚙ Settings'));
     expect(frame).not.toContain('First section');
     const scrolled = await wheel(app, locate(frame, 'message number 25'), 'up');
@@ -313,7 +315,7 @@ describe('the focus by a press', () => {
   });
 
   it('is left alone with ui.mouse wheel', async () => {
-    const { app } = await open({ ...DEFAULT_UI_SETTINGS, mouse: 'wheel' });
+    const { app } = await open({ ...COMPACT_SETTINGS, mouse: 'wheel' });
     const frame = await click(app, locate(app.frame(), 'panel row 3'));
     expect(bar(frame)).toContain('PageUp  Scroll');
   });
@@ -322,7 +324,7 @@ describe('the focus by a press', () => {
 describe('the clicks of the terminal of the Claude desktop', () => {
   // The panel appears after the TUI started: the size goes from 120x30 to 213x83 by a resize.
   async function openResized(): Promise<Opened> {
-    const opened = await open(DEFAULT_UI_SETTINGS, { columns: 120, rows: 30 });
+    const opened = await open(COMPACT_SETTINGS, { columns: 120, rows: 30 });
     opened.app.resize(213, 83);
     await opened.app.settle();
     return opened;
@@ -364,5 +366,98 @@ describe('the clicks of the terminal of the Claude desktop', () => {
     await send(app, sgrReport({ action: 'release', button: 'left', ...end }));
     const base64 = Buffer.from('message number 25', 'utf8').toString('base64');
     expect(writes).toContain(`\x1b]52;c;${base64}\x07`);
+  });
+});
+
+/**
+ * `ui.tuiLayout.density: comfortable` (N258): a column of margin inside each frame. The areas of the
+ * mouse are the ones the person sees, so a click lands on the tab, the section or the line it points
+ * at, and the margin itself is not part of a tab.
+ */
+describe('the clicks, with the margin of comfortable', () => {
+  const COMFORTABLE = settingsWith({ density: 'comfortable' });
+
+  it('on the tabs: change, close, open the picker and hide the panel', async () => {
+    const { app } = await open(COMFORTABLE);
+    await send(app, F5);
+    let frame = await app.waitForText('First section');
+    // The tab of the overview is behind the settings one: a click on its label brings it back.
+    frame = await click(app, locate(frame, 'Overview'));
+    expect(frame).toContain('Long section');
+    frame = await click(app, locate(frame, 'Settings ✕', 0));
+    expect(frame).toContain('First section');
+    // The close mark of the settings tab.
+    const close = locate(frame, 'Settings ✕');
+    frame = await click(app, { col: close.col + 'Settings '.length, row: close.row });
+    expect(frame).not.toContain('Settings ✕');
+    frame = await click(app, locate(frame, '+ Alt+A'));
+    expect(frame).toContain('Open a tab');
+    await send(app, '\x1b');
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    frame = await click(app, locate(await app.settle(), '⟩'));
+    expect(frame).not.toContain('Long section');
+  });
+
+  it('on the first and the last cell of a tab, and not on the margin before the first', async () => {
+    const { app } = await open(COMFORTABLE);
+    await send(app, F5);
+    let frame = await app.waitForText('First section');
+    const overview = locate(frame, 'Overview');
+    // The cell before the tab is the margin of the frame: it is not a tab, so nothing changes.
+    frame = await click(app, { col: overview.col - 2, row: overview.row });
+    expect(frame).toContain('First section');
+    // The first cell of the tab (its leading blank) is the tab of the overview.
+    frame = await click(app, { col: overview.col - 1, row: overview.row });
+    expect(frame).toContain('Long section');
+    // The last cell of the label.
+    frame = await click(app, locate(frame, 'Settings ✕'));
+    expect(frame).toContain('First section');
+    frame = await click(app, {
+      col: locate(frame, 'Overview').col + 'Overview'.length - 1,
+      row: overview.row,
+    });
+    expect(frame).toContain('Long section');
+  });
+
+  it('on a section header: folds it, and a second click opens it', async () => {
+    const { app } = await open(COMFORTABLE);
+    await send(app, F5);
+    let frame = await app.waitForText('First section');
+    frame = await click(app, locate(frame, 'First section'));
+    expect(frame).not.toContain('first body');
+    expect(frame).toContain('second body');
+    frame = await click(app, locate(frame, 'First section'));
+    expect(frame).toContain('first body');
+  });
+
+  it('on a scenario of the side bar: the line goes from border to border, the margin included', async () => {
+    const { app } = await open(COMFORTABLE);
+    const frame = app.frame();
+    const target = locate(frame, 'Mobile app');
+    const line = (frame.split('\n')[target.row] ?? '').slice(0, 30);
+    expect(line.startsWith('│   ! Mobile app')).toBe(true);
+    // The margin cell (column 1) is part of the line: a click on it puts the cursor on the scenario,
+    // and Enter opens it.
+    await click(app, { col: 1, row: target.row });
+    const chosen = await send(app, '\r');
+    expect(chosen).toContain('▸ ! Mobile app');
+  });
+
+  it('on the settings line of the side bar, which has its glyph after the margin', async () => {
+    const { app } = await open(COMFORTABLE);
+    const frame = await click(app, locate(app.frame(), '⚙ Settings'));
+    expect(frame).toContain('First section');
+  });
+
+  it('on the + of the scenarios header, and not on the cell before it', async () => {
+    const { app } = await open(COMFORTABLE);
+    const frame = app.frame();
+    const head = locate(frame, '▾ SCENARIOS');
+    const plus = (frame.split('\n')[head.row] ?? '').indexOf('+');
+    // The cell before the + is the header of the section (a click folds it), not the button.
+    const folded = await click(app, { col: plus - 3, row: head.row });
+    expect(folded).toContain('▸ SCENARIOS');
+    const opened = await click(app, { col: plus, row: head.row });
+    expect(opened).toContain('New project');
   });
 });

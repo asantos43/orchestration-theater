@@ -27,6 +27,7 @@ describe('parseUiSettings', () => {
         minPanelWidth: 30,
         chatStep: 2,
         scrollStep: 'half',
+        density: 'comfortable',
       },
       trajectories: { open: 'last', keep: 5000, diffLines: 200, follow: 'latest' },
       chat: {
@@ -122,6 +123,17 @@ describe('parseUiSettings', () => {
       scrollStep: 'line',
     });
     expect(parseUiSettings({ keymap: { preset: 'vim' } }).keymap.preset).toBe('agents');
+  });
+
+  it('reads ui.tuiLayout.density and falls back to comfortable', () => {
+    expect(parseUiSettings({}).tuiLayout.density).toBe('comfortable');
+    expect(parseUiSettings({ tuiLayout: { density: 'compact' } }).tuiLayout.density).toBe(
+      'compact',
+    );
+    expect(parseUiSettings({ tuiLayout: { density: 'tight' } }).tuiLayout.density).toBe(
+      'comfortable',
+    );
+    expect(parseUiSettings({ tuiLayout: { density: 4 } }).tuiLayout.density).toBe('comfortable');
   });
 
   it('reads valid values', () => {

@@ -2,6 +2,7 @@
 import { Box } from 'ink';
 import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useDensity } from './density-context.js';
 import { useTheme } from './theme-context.js';
 import { Text } from './themed-text.js';
 import type { Link } from './data.js';
@@ -10,7 +11,7 @@ import { clip } from './text.js';
 import { TOKEN } from './theme.js';
 import type { UpdateHint } from './use-update-status.js';
 
-/** The mark of the product, which is not translated. */
+/** The mark of the product, which is not translated; `comfortable` has the margin of the mockup before it. */
 const BRAND = ' ◆ ot';
 
 export interface HeaderProps {
@@ -45,12 +46,15 @@ export function Header(props: HeaderProps): ReactNode {
         ? props.scenarioName
         : `${props.scenarioName} › ${props.play}`;
   const palette = useTheme();
+  const { pad } = useDensity();
   const daemon = t('layout.header.daemon', { address: props.address });
-  const room = Math.max(0, width - daemon.length - 6 - 4);
+  // The margin is taken from both ends: `pad` before the brand and `pad` more after the daemon.
+  const room = Math.max(0, width - daemon.length - 6 - 4 - 2 * pad);
   return (
     <Box width={width} height={1} backgroundColor={palette.resolve(TOKEN.header)}>
       <Text color={TOKEN.headerText} wrap="truncate">
         <Text color={TOKEN.headerKey} bold>
+          {' '.repeat(pad)}
           {BRAND}
         </Text>
         {' │ '}
@@ -84,7 +88,8 @@ export function Header(props: HeaderProps): ReactNode {
       <Box flexGrow={1} />
       <Text color={TOKEN.headerText} wrap="truncate">
         {daemon} <Text color={props.link === 'live' ? TOKEN.ok : TOKEN.warn}>●</Text>
-        {props.link === 'live' ? '' : ` ${t(`layout.link.${props.link}`)}`}{' '}
+        {props.link === 'live' ? '' : ` ${t(`layout.link.${props.link}`)}`}
+        {' '.repeat(1 + pad)}
       </Text>
     </Box>
   );

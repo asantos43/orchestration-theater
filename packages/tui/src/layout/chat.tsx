@@ -4,6 +4,7 @@ import { useMemo, useRef, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Text } from './themed-text.js';
 import { useMouseTarget, type DragInfo } from '../mouse/index.js';
+import { edgeMargin, frameInner, useDensity } from './density-context.js';
 import { Frame } from './frame.js';
 import { ScrollList, type ListLine } from './scroll-list.js';
 import { breakLine, wrapText } from './text.js';
@@ -103,7 +104,8 @@ export function chatMessageRows(height: number, inputRows: number = INPUT_ROWS):
 /** The chat in full height: title, state, the messages (a window over the list), and the input. */
 export function Chat(props: ChatProps): ReactNode {
   const { t } = useTranslation();
-  const inner = Math.max(1, props.width - 2);
+  const { pad } = useDensity();
+  const inner = Math.max(1, frameInner(props.width, pad));
   const rows = chatMessageRows(props.height, props.inputRows);
   const { messages } = props;
   const lines = useMemo(
@@ -141,6 +143,7 @@ export function Chat(props: ChatProps): ReactNode {
       title={t('layout.chat.title')}
       bottomLabel={props.widthLabel}
       edgeRef={edgeRef}
+      pad={pad}
       onPress={props.onFocus}
       handle={
         props.resizable
@@ -158,7 +161,11 @@ export function Chat(props: ChatProps): ReactNode {
       <Text dimColor wrap="truncate">
         {props.stateLine}
       </Text>
-      <Text dimColor>{'─'.repeat(inner)}</Text>
+      <Box {...edgeMargin(pad)}>
+        <Text dimColor wrap="truncate">
+          {'─'.repeat(inner + 2 * pad)}
+        </Text>
+      </Box>
       {messages.length === 0 ? (
         <Box height={rows} flexDirection="column">
           <Text dimColor wrap="truncate">
@@ -175,7 +182,11 @@ export function Chat(props: ChatProps): ReactNode {
           onOffset={props.onOffset}
         />
       )}
-      <Text dimColor>{'─'.repeat(inner)}</Text>
+      <Box {...edgeMargin(pad)}>
+        <Text dimColor wrap="truncate">
+          {'─'.repeat(inner + 2 * pad)}
+        </Text>
+      </Box>
       {props.input}
     </Frame>
   );

@@ -108,7 +108,7 @@ export interface RenderAppOptions {
 }
 
 /**
- * The settings the tests start from: the defaults, with the first-run assistant (P17) off. A real
+ * The settings the tests start from: the defaults (with `compact` density), with the first-run assistant (P17) off. A real
  * daemon with no configuration says `firstRunNeeded`, which would take the screen of every test
  * that is not about the assistant; the tests that are about it ask for `open: 'auto'`. The sign-in
  * panel does not open the browser (`login.browser: off`): a test about that gives a fake opener.
@@ -116,6 +116,9 @@ export interface RenderAppOptions {
 export const TEST_UI_SETTINGS: UiSettings = {
   ...DEFAULT_UI_SETTINGS,
   setup: { ...DEFAULT_UI_SETTINGS.setup, open: 'never' },
+  // The tests that compare an exact screen are about the screen without the margins of the mockup
+  // (`compact`); the ones about the margins ask for `density: 'comfortable'` (N258).
+  tuiLayout: { ...DEFAULT_UI_SETTINGS.tuiLayout, density: 'compact' },
   // The sign-in panel would start the browser of the machine that runs the tests.
   login: { browser: 'off' },
 };

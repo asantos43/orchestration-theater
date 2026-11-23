@@ -14,15 +14,21 @@ export interface Hint {
   readonly text: string;
 }
 
-/** `^B Lateral  ^J Painel`: the hints that fit in `width`, from the first; what does not fit is left out. */
+/**
+ * `^B Lateral  ^J Painel`: the hints that fit in `width`, from the first; what does not fit is left
+ * out. `bare` is the hint line of a panel in the mockup: the chip is the key alone, with no blank
+ * cell around it, and the line starts at its first cell (the margin of the frame is already there).
+ */
 export function Hints(props: {
   readonly width: number;
   readonly hints: readonly Hint[];
+  readonly bare?: boolean | undefined;
 }): ReactNode {
+  const bare = props.bare === true;
   const shown: Hint[] = [];
-  let used = 1;
+  let used = bare ? 0 : 1;
   for (const hint of props.hints) {
-    const cost = cellWidth(hint.label) + 2 + cellWidth(hint.text) + 3;
+    const cost = cellWidth(hint.label) + (bare ? 0 : 2) + cellWidth(hint.text) + 3;
     if (used + cost > props.width) break;
     shown.push(hint);
     used += cost;
@@ -30,11 +36,11 @@ export function Hints(props: {
   return (
     <Box width={props.width} height={1}>
       <Text wrap="truncate">
-        {' '}
+        {bare ? '' : ' '}
         {shown.map((hint) => (
           <Text key={hint.id}>
             <Text color={TOKEN.key} bold backgroundColor={TOKEN.keyBackground}>
-              {` ${hint.label} `}
+              {bare ? hint.label : ` ${hint.label} `}
             </Text>
             <Text dimColor hint>{` ${hint.text}  `}</Text>
           </Text>
