@@ -73,6 +73,18 @@ export interface SqliteStoreDiagnostics {
 }
 
 /**
+ * Callbacks around the commit of every transaction, for the chaos tests of Phase 11: the daemon
+ * passes them only when `faults.inject` armed a plan, so a normal start hands the store nothing.
+ * `beforeCommit` runs after the body of the transaction and before Kysely commits it (a kill there
+ * leaves the transaction uncommitted); `afterCommit` runs once the commit has returned. A hook that
+ * rejects rolls the transaction back (`beforeCommit`) or rejects the call (`afterCommit`).
+ */
+export interface StoreCommitHooks {
+  readonly beforeCommit?: (() => Promise<void>) | undefined;
+  readonly afterCommit?: (() => Promise<void>) | undefined;
+}
+
+/**
  * The SQLite adapter of the `Store` port (architecture 5.18 and section 7): Kysely on
  * `better-sqlite3` or `node:sqlite`, WAL, versioned migrations.
  *
@@ -117,6 +129,7 @@ export class SqliteStore implements Store, StoreMaintenance {
   readonly #reader: Kysely<StoreDatabase>;
   readonly #backups = new Set<Promise<unknown>>();
   #tail: Promise<unknown> = Promise.resolve();
+  readonly #hooks: StoreCommitHooks | undefined;
   #closed = false;
   #closing: Promise<void> | undefined;
 
@@ -129,9 +142,11 @@ export class SqliteStore implements Store, StoreMaintenance {
       writer: Kysely<StoreDatabase>;
       reader: Kysely<StoreDatabase>;
     },
+    hooks?: StoreCommitHooks,
   ) {
     this.config = config;
     this.#clock = clock;
+    this.#hooks = hooks;
     this.#writerRaw = connections.writerRaw;
     this.#readerRaw = connections.readerRaw;
     this.#writer = connections.writer;
@@ -186,6 +201,7 @@ export class SqliteStore implements Store, StoreMaintenance {
   static async open(
     input: SqliteStoreConfigInput,
     clock: Pick<Clock, 'now'>,
+    hooks?: StoreCommitHooks,
   ): Promise<SqliteStore> {
     const parsed = SqliteStoreConfigSchema.safeParse(input);
     if (!parsed.success) {
@@ -221,7 +237,12 @@ export class SqliteStore implements Store, StoreMaintenance {
       readerRaw.exec(`PRAGMA busy_timeout = ${String(busyTimeoutMs)}`);
       reader = new Kysely<StoreDatabase>({ dialect: new SqliteDialect({ database: readerRaw }) });
 
-      return new SqliteStore({ ...config, path }, clock, { writerRaw, readerRaw, writer, reader });
+      return new SqliteStore(
+        { ...config, path },
+        clock,
+        { writerRaw, readerRaw, writer, reader },
+        hooks,
+      );
     } catch (error) {
       // `destroy()` only closes a database whose Kysely driver already started: close both here.
       await Promise.allSettled([writer?.destroy(), reader?.destroy()]);
@@ -248,7 +269,7 @@ export class SqliteStore implements Store, StoreMaintenance {
     try {
       // Kysely commits when the callback resolves, and on a rejection rolls back and rethrows the
       // very same error object (typed errors cross the port untouched).
-      return await this.#writer.transaction().execute(async (trx) => {
+      const result = await this.#writer.transaction().execute(async (trx) => {
         // One reading of the clock for everything the transaction writes (N177).
         const instant = transactionInstant(this.#clock);
         const events = new TransactionEventLog(trx, instant);
@@ -256,7 +277,9 @@ export class SqliteStore implements Store, StoreMaintenance {
         const tables = new TransactionTables(trx);
         const aggregates = createStoreAggregates(tables.factory, instant);
         try {
-          return await fn({ events, attempts, now: () => instant.now(), ...aggregates });
+          const value = await fn({ events, attempts, now: () => instant.now(), ...aggregates });
+          await this.#hooks?.beforeCommit?.();
+          return value;
         } finally {
           // From here on a leaked handle is refused, even while the commit is still running.
           events.finish();
@@ -264,6 +287,8 @@ export class SqliteStore implements Store, StoreMaintenance {
           tables.finish();
         }
       });
+      await this.#hooks?.afterCommit?.();
+      return result;
     } catch (error) {
       throw toStoreError(error);
     }

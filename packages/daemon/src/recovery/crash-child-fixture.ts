@@ -2,16 +2,19 @@
 // Shared by the `kill -9` test only (excluded from the build of the package).
 
 /**
- * The program of the daemon the `kill -9` test starts as a CHILD process (an ES module, run with
- * `node`). It imports the compiled packages, so `pnpm build` comes first. What it takes from the
- * environment:
+ * The program of the daemon the chaos harness starts as a CHILD process (an ES module, run with
+ * `node`; `chaos/harness.ts` writes it to the folder of the run and starts it). It imports the
+ * compiled packages, so `pnpm build` comes first. What it takes from the environment:
  * - `OT_CHILD_MODE`: `first` opens a chat and sends the Producer's message; `resume` only starts
  *   and waits for the play to end;
  * - `OT_CHILD_DATA_DIR`, `OT_CHILD_REPO`, `OT_CHILD_JOURNAL`, `OT_CHILD_STATE_DIR`: the folders;
+ * - `OT_CHILD_LEDGER`: the file where it writes, with `fsync`, the id of every event and side effect
+ *   it has seen committed (the ledger of I2 and I8);
+ * - `OT_CHILD_INJECT`: the value of `faults.inject` (default `env`; a test sets `off` to prove nothing fires);
  * - `OT_CHILD_DAEMON_DIST`, `OT_CHILD_CORE_TESTING`, `OT_CHILD_FAKE_AGENT`: where the compiled code is;
- * - `OT_TEST_CRASH_AT=open_pr:after`: the code host opens the pull request, writes it down, tells
- *   the test (`CRASHPOINT <json>` on stdout) and never answers: the effect has started and has no
- *   end, which is the moment the test kills the daemon.
+ * - `OT_TEST_CRASH_AT=<point>[:<detail>][#n]`: with `faults.inject: env` in its config (the one key
+ *   this program sets for it), the daemon kills itself at that named point (`chaos/crash-points.ts`)
+ *   after writing `CRASHPOINT <json>` on stdout, with the pids of its live clients.
  *
  * The code host is the fake one, whose state lives in memory only; here every call that changes it
  * is written to a journal file first and replayed when the next daemon starts, so the code host
@@ -20,7 +23,7 @@
  */
 export const CRASH_CHILD_SCRIPT = String.raw`
 import { execFileSync } from 'node:child_process';
-import { appendFileSync, existsSync, readFileSync } from 'node:fs';
+import { appendFileSync, closeSync, existsSync, fsyncSync, openSync, readFileSync } from 'node:fs';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { pathToFileURL } from 'node:url';
 
@@ -31,6 +34,7 @@ const { startDaemon } = await import(pathToFileURL(dist + '/daemon.js').href);
 const { defaultLauncher, productionClients } = await import(pathToFileURL(dist + '/compose.js').href);
 const { parseConfig } = await import(pathToFileURL(dist + '/config.js').href);
 const { createSilentLogger } = await import(pathToFileURL(dist + '/logger.js').href);
+const { setCrashDescriber } = await import(pathToFileURL(dist + '/chaos/crash-points.js').href);
 
 const fake = new testing.FakeCodeHost();
 let daemon;
@@ -72,12 +76,6 @@ const codeHost = {
   async openPullRequest(opts) {
     const pull = await fake.openPullRequest(opts);
     journal({ op: 'openPullRequest', opts });
-    if (env.OT_TEST_CRASH_AT === 'open_pr:after') {
-      const rows = await daemon.store.sessions.list({ states: ['active'] });
-      const pids = rows.map((row) => row.pid).filter((pid) => typeof pid === 'number');
-      process.stdout.write('CRASHPOINT ' + JSON.stringify({ pids }) + '\n');
-      await new Promise(() => undefined);
-    }
     return pull;
   },
   findPullRequest: (opts) => fake.findPullRequest(opts),
@@ -109,6 +107,8 @@ const config = parseConfig(
     '    client: fake',
     '    profile: one',
     '    model: fake-model',
+    'faults:',
+    '  inject: ' + (env.OT_CHILD_INJECT ?? 'env'),
   ].join('\n'),
 );
 daemon = await startDaemon({
@@ -136,6 +136,51 @@ daemon = await startDaemon({
   ],
   logger: createSilentLogger(),
   version: '0.0.0-test',
+});
+
+// The ledger: what this process has seen committed, written and fsynced before anything else can
+// count it as confirmed. A poll sees only committed rows, so a kill never leaves one out.
+let lastEventId = 0;
+const seenEffects = new Set();
+let polling = Promise.resolve();
+function confirmNew() {
+  polling = polling
+    .then(async () => {
+      const lines = [];
+      for (;;) {
+        const batch = await daemon.store.events.readFrom(lastEventId, 500);
+        if (batch.length === 0) break;
+        for (const event of batch) {
+          lines.push(JSON.stringify({ kind: 'event', id: event.id, type: event.type }));
+          lastEventId = event.id;
+        }
+      }
+      for (const row of await daemon.store.sideEffects.list({})) {
+        if (seenEffects.has(row.idempotencyKey)) continue;
+        seenEffects.add(row.idempotencyKey);
+        lines.push(JSON.stringify({ kind: 'side_effect', key: row.idempotencyKey }));
+      }
+      if (lines.length === 0 || env.OT_CHILD_LEDGER === undefined) return;
+      const fd = openSync(env.OT_CHILD_LEDGER, 'a');
+      try {
+        appendFileSync(fd, lines.join('\n') + '\n');
+        fsyncSync(fd);
+      } finally {
+        closeSync(fd);
+      }
+    })
+    .catch(() => undefined);
+  return polling;
+}
+setInterval(() => void confirmNew(), 20).unref();
+
+// What the crash line carries: the pids of the live clients (the harness checks its census against
+// them) and the last poll of the ledger. A store busy in a commit makes the reads wait, and the
+// kill does not wait for the describer for more than a couple of seconds.
+setCrashDescriber(async () => {
+  await confirmNew();
+  const rows = await daemon.store.sessions.list({ states: ['active'] });
+  return { pids: rows.map((row) => row.pid).filter((pid) => typeof pid === 'number') };
 });
 process.stdout.write('STARTED\n');
 
