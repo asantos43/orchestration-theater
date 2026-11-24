@@ -15,6 +15,7 @@ export const alias = {
   '@otheater/daemon': `${import.meta.dirname}/packages/daemon/src/index.ts`,
   '@otheater/client/node': `${import.meta.dirname}/packages/client/src/node/index.ts`,
   '@otheater/client': `${import.meta.dirname}/packages/client/src/index.ts`,
+  '@otheater/protocol/quota': `${import.meta.dirname}/packages/protocol/src/quota.ts`,
   '@otheater/protocol': `${import.meta.dirname}/packages/protocol/src/index.ts`,
   '@otheater/adapter-store-sqlite': `${import.meta.dirname}/packages/adapters/store-sqlite/src/index.ts`,
   '@otheater/adapter-telemetry-sqlite': `${import.meta.dirname}/packages/adapters/telemetry-sqlite/src/index.ts`,
