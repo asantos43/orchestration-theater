@@ -11,11 +11,12 @@ import {
 } from '@otheater/core';
 import { buildDaemonEvent, type ToolOutcome } from '@otheater/protocol';
 import { buildClientEnv } from '../clients.js';
-import type { ToolsConfig } from '../config.js';
+import type { DaemonConfig, ToolsConfig } from '../config.js';
 import type { Logger } from '../logger.js';
 import type { CommandConfiner } from '../sandbox-wiring.js';
 import { ToolFailure, type ToolCall } from '../mcp/handlers.js';
 import type { Env } from '../paths.js';
+import type { HostResolver } from './private-address.js';
 import { Semaphore } from './semaphore.js';
 import { StepGate } from './step-gate.js';
 import { resolveToolSettings, type ToolSettings } from './settings.js';
@@ -25,6 +26,11 @@ export interface ToolsDeps {
   readonly store: Pick<Store, 'attempts' | 'plays' | 'scenarios' | 'sideEffects'>;
   /** The global `tools` block; a project and a scenario override it per call. */
   readonly config: ToolsConfig;
+  /**
+   * The global `shell` block (`shell.node_inline`, `shell.http_get.block_private`). Global only: a
+   * project and a scenario cannot widen it. Left out, the defaults of the block apply (`deny`, `on`).
+   */
+  readonly shell?: DaemonConfig['shell'] | undefined;
   /** `undefined` on a platform with no launcher: the command tools then answer `unavailable`. */
   readonly launcher: ProcessLauncher | undefined;
   readonly vcs: Vcs;
@@ -41,6 +47,8 @@ export interface ToolsDeps {
   readonly logger?: Logger | undefined;
   /** `fetch` of `http_get`; the global one by default. A test hands in a double. */
   readonly fetch?: typeof fetch | undefined;
+  /** How `http_get` resolves a name for `shell.http_get.block_private`; the system resolver by default. */
+  readonly resolveHost?: HostResolver | undefined;
 }
 
 /** A refusal by the rules of the tool (argv, path, domain): nothing ran. Outcome `refused`. */

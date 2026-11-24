@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
-import { chmod, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { constants } from 'node:fs';
+import { lstat, open, readFile, rename, rm } from 'node:fs/promises';
 import {
   ApiDiscoverySchema,
   DaemonIdSchema,
@@ -14,7 +15,8 @@ import type { Logger } from '../logger.js';
  * The three small files of the daemon API in the data folder (P3 of docs/17; decisions N165, N166
  * and N168): `daemon-id`, `api-token` and `api.json`. All are written atomically (a temporary
  * file with the mode, then a rename) so a reader never sees half of one. The mode `0600` does not
- * apply on Windows, where the data folder is private to the user by its place.
+ * apply on Windows, where the data folder is private to the user by its place (and `O_NOFOLLOW` does
+ * not exist there: the Windows behaviour is the one these files always had).
  */
 
 const FILE_MODE = 0o600;
@@ -27,13 +29,46 @@ export function generateApiToken(): string {
 /** A token the daemon accepts to reuse from `api-token`: base64url text, at least 32 characters. */
 const TOKEN_FORMAT = /^[A-Za-z0-9_-]{32,}$/;
 
-/** Writes `text` to `path` atomically, with mode 0600. */
+/**
+ * Writes `text` to `path` atomically, with mode 0600. The temporary file has a name nobody can guess
+ * (random, next to the target), is created with `O_EXCL` (a file or a link that is already there is an
+ * error, never written through) and `O_NOFOLLOW`, and gets its mode on the open descriptor, so there is
+ * no moment where it is readable by others or where a link planted in the data folder redirects the write.
+ * The rename then replaces `path` itself, even when `path` is a link (the link is replaced, not followed).
+ */
 export async function writePrivateFile(path: string, text: string): Promise<void> {
-  const temporary = `${path}.${String(process.pid)}.tmp`;
-  await writeFile(temporary, text, { mode: FILE_MODE });
-  // A leftover temporary file of this pid keeps its old mode under `writeFile`: set it anyway.
-  await chmod(temporary, FILE_MODE);
-  await rename(temporary, path);
+  const temporary = `${path}.${String(process.pid)}.${randomBytes(8).toString('hex')}.tmp`;
+  const flags =
+    constants.O_WRONLY |
+    constants.O_CREAT |
+    constants.O_EXCL |
+    ((constants.O_NOFOLLOW as number | undefined) ?? 0);
+  const handle = await open(temporary, flags, FILE_MODE);
+  try {
+    try {
+      // `open` is subject to the umask, which only removes bits; the descriptor says the exact mode.
+      await handle.chmod(FILE_MODE);
+      await handle.writeFile(text, 'utf8');
+    } finally {
+      await handle.close();
+    }
+    await rename(temporary, path);
+  } catch (error) {
+    await rm(temporary, { force: true }).catch(() => undefined);
+    throw error;
+  }
+}
+
+/**
+ * Whether `path` is a regular file (not a link) that only its owner can read or write. Where POSIX
+ * modes do not exist (Windows) a regular file is enough.
+ */
+async function isPrivateRegularFile(path: string): Promise<boolean> {
+  const info = await lstat(path).catch(() => undefined);
+  if (!info?.isFile()) return false;
+  if (process.platform === 'win32') return true;
+  const uid = process.getuid?.();
+  return (info.mode & 0o077) === 0 && (uid === undefined || info.uid === uid);
 }
 
 async function readText(path: string): Promise<string | undefined> {
@@ -72,10 +107,20 @@ export async function readDaemonId(path: string): Promise<DaemonId | undefined> 
  * The token of this start. `persistent` reuses the one in `api-token` when it is well formed;
  * otherwise (and always with `per_start`) a new one is made and written.
  */
-export async function loadOrCreateApiToken(path: string, mode: ApiTokenMode): Promise<string> {
+export async function loadOrCreateApiToken(
+  path: string,
+  mode: ApiTokenMode,
+  logger?: Logger,
+): Promise<string> {
   if (mode === 'persistent') {
-    const existing = (await readText(path))?.trim();
-    if (existing !== undefined && TOKEN_FORMAT.test(existing)) return existing;
+    // A token that someone else could have read (a mode looser than 0600, another owner) or that
+    // sits behind a link is not reused: it is as good as published, so a new one replaces it.
+    if (await isPrivateRegularFile(path)) {
+      const existing = (await readText(path))?.trim();
+      if (existing !== undefined && TOKEN_FORMAT.test(existing)) return existing;
+    } else if ((await lstat(path).catch(() => undefined)) !== undefined) {
+      logger?.warn('api-token is not a private regular file; a new token was made');
+    }
   }
   const token = generateApiToken();
   await writePrivateFile(path, `${token}\n`);

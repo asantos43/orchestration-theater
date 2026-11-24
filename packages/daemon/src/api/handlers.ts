@@ -34,6 +34,12 @@ export interface ApiCall<Route extends AnyApiRoute> {
   /** Aborts when the client goes away or the daemon stops. */
   readonly signal: AbortSignal;
   /**
+   * The epoch of the API token this request was let in with (`ApiServer.tokenEpoch`). A handler that
+   * acts after an `await` for something that outlives the call (a ticket, a socket) hands it back to
+   * the thing that checks it. Absent on a route that is let in by a ticket and not by the token.
+   */
+  readonly tokenEpoch?: number;
+  /**
    * Only on a route of kind `websocket` (P7): upgrades the connection and hands the socket to
    * `events`. It resolves to the `Response` the handler returns. Call it only after the route
    * accepted the request: a refusal is a plain `Response`, and the upgrade never happens.

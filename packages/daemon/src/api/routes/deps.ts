@@ -99,6 +99,8 @@ export interface CommandRouteDeps {
   readonly reloader?: ConfigReloader | undefined;
   /** `api.idempotency_ttl`, read at each command. */
   readonly idempotencyTtlMs: () => number;
+  /** `api.idempotency_max_entries`, read at each command. */
+  readonly idempotencyMaxEntries?: () => number;
   /** The Producer's channel: opens scenarios, attaches files and answers decisions. */
   readonly channel?: ProducerChannel | undefined;
   readonly runner?: PlayRunner | undefined;

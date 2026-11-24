@@ -166,6 +166,23 @@ describe('confineArgv', () => {
     expect(await refusal(confineArgv(host, root, ['cat', '--', '../x']))).toBe('path_escapes');
   });
 
+  it('confines the value glued to a short option (-f/path, -I../x)', async () => {
+    expect(await refusal(confineArgv(host, root, ['cat', '-f/etc/passwd']))).toBe('path_escapes');
+    expect(await refusal(confineArgv(host, root, ['cat', '-I../outside']))).toBe('path_escapes');
+    expect(await refusal(confineArgv(host, root, ['cat', '-C..']))).toBe('path_escapes');
+    expect(await refusal(confineArgv(host, root, ['cat', '-f~/x']))).toBe('path_escapes');
+    expect(await refusal(confineArgv(host, root, ['cat', '-ffile-link/x']))).toBe(
+      'symlink_escapes',
+    );
+    expect(await refusal(confineArgv(host, root, ['cat', '-f=../x']))).toBe('path_escapes');
+  });
+
+  it('lets a short option with a harmless or inside value through', async () => {
+    await confineArgv(host, root, ['git', 'log', '-n5', '-C', '-p', '-1']);
+    await confineArgv(host, root, ['rg', '-Isrc/a.ts', '-i']);
+    await confineArgv(host, root, ['cat', `-f${join(root, 'src')}`]);
+  });
+
   it('refuses the home folder', async () => {
     expect(await refusal(confineArgv(host, root, ['cat', '~/.ssh/id_ed25519']))).toBe(
       'path_escapes',

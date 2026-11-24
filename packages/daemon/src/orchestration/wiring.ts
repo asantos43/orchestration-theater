@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
+import { homedir } from 'node:os';
 import type { PromptSource, Registries } from '@otheater/core';
 import type { Composition } from '../compose.js';
 import type { DaemonConfig } from '../config.js';
@@ -9,6 +10,7 @@ import type { QuotaService } from '../quota/service.js';
 import { PlayRunner } from '../pipeline/index.js';
 import { ConventionConfirmer } from '../project/confirm.js';
 import { PromptDispatcher } from '../prompt-dispatcher.js';
+import { attachmentRootsPolicy } from '../scenarios/attachment-roots.js';
 import {
   AttachmentService,
   ChatFlow,
@@ -225,6 +227,14 @@ export function startOrchestration(input: OrchestrationInput): Orchestration {
     limits: () => ({
       maxSize: config.scenarios.attachment_max_size,
       readMax: config.scenarios.attachment_read_max,
+    }),
+    roots: attachmentRootsPolicy({
+      config: () => config.security.attachment_roots,
+      store,
+      worktrees: paths.worktrees,
+      env: process.env,
+      platform: process.platform,
+      homedir: homedir(),
     }),
   });
   const consult = new ConsultService({
