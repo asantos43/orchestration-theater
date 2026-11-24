@@ -3,6 +3,8 @@ import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { FakeClock } from '@otheater/core/testing';
 import { describe, expect, it } from 'vitest';
+import { armFaults, disarmFaults } from './chaos/crash-points.js';
+import { parseFailSpec } from './chaos/faults.js';
 import { createLogger } from './logger.js';
 import { RotatingFile, rotateChain } from './log-rotation.js';
 import { makeTempDataDir } from './test-helpers.js';
@@ -22,6 +24,34 @@ async function withDir(run: (dir: string) => Promise<void>): Promise<void> {
 const names = async (dir: string): Promise<string[]> => (await readdir(dir)).sort();
 
 describe('RotatingFile', () => {
+  it('tells the owner of the file when a line cannot be written (a full disk), and loses only that line', async () => {
+    await withDir(async (dir) => {
+      const path = join(dir, 'daemon.log');
+      const told: unknown[] = [];
+      const file = new RotatingFile({
+        path,
+        mode: 0o600,
+        maxBytes: 1000,
+        keep: 1,
+        onWriteError: (error) => {
+          told.push(error);
+          throw new Error('a report that breaks must not break the log');
+        },
+      });
+      armFaults({ crash: [], fail: [parseFailSpec('fs.write:log=ENOSPC')] });
+      try {
+        file.write(line('lost'));
+      } finally {
+        disarmFaults();
+      }
+      file.write(line('kept'));
+      file.end();
+      expect(told).toHaveLength(1);
+      expect((told[0] as { code?: string }).code).toBe('ENOSPC');
+      expect(await readFile(path, 'utf8')).toBe(line('kept'));
+    });
+  });
+
   it('rotates when a line would pass the size, newest copy first', async () => {
     await withDir(async (dir) => {
       const path = join(dir, 'daemon.log');

@@ -3,6 +3,7 @@ import {
   Conflict,
   InvalidInput,
   NotFound,
+  hasErrorCode,
   isOTheaterError,
   type Clock,
   type PlayRecord,
@@ -53,6 +54,12 @@ export interface PlayRunnerOptions {
    * to the queue. It must not wait for long work (start it and return); an error is logged.
    */
   readonly onFinish?: (play: PlayRecord) => void;
+  /**
+   * Told when a full disk hit a play (Phase 11, P5): a transition that could not be saved (`send`
+   * rejects with `DiskFull`, the play stays in the state it had) or an effect that could not start.
+   * The disk guard keeps the id and calls `resume` when the space is back. Must not throw.
+   */
+  readonly onDiskFull?: ((playId: string) => void) | undefined;
 }
 
 export interface NewPlayInput {
@@ -130,6 +137,7 @@ export class PlayRunner {
   readonly #effects: PlayEffects;
   readonly #logger: PlayRunnerLogger;
   readonly #onFinish: ((play: PlayRecord) => void) | undefined;
+  readonly #onDiskFull: ((playId: string) => void) | undefined;
   readonly #queues = new Map<string, Promise<void>>();
   readonly #timers = new Map<string, Map<string, ArmedDeadline>>();
   readonly #fired = new Set<Promise<void>>();
@@ -147,6 +155,7 @@ export class PlayRunner {
     this.#effects = options.effects;
     this.#logger = options.logger ?? NO_LOGGER;
     this.#onFinish = options.onFinish;
+    this.#onDiskFull = options.onDiskFull;
   }
 
   /** Creates the play in NEED, with its first snapshot, and writes `play.created`. */
@@ -200,7 +209,7 @@ export class PlayRunner {
         }),
       );
     }
-    return this.#enqueue(playId, async () => {
+    const sent = this.#enqueue(playId, async () => {
       if (this.#closed) throw new Conflict('The play runner is closed');
       const record = await this.#load(playId);
       if (isFinalState(record.state)) {
@@ -283,6 +292,10 @@ export class PlayRunner {
       }
       if (finished) this.#notifyFinish(updated);
       return updated;
+    });
+    return sent.catch((error: unknown) => {
+      this.#diskFull(playId, error);
+      throw error;
     });
   }
 
@@ -425,7 +438,18 @@ export class PlayRunner {
           'play effect not started',
         );
         this.#notice('effect_not_started', scope.playId, scope.scenarioId, effect.type, error);
+        this.#diskFull(scope.playId, error);
       }
+    }
+  }
+
+  /** A `DiskFull` that hit the play: the disk guard resumes it when the space is back. */
+  #diskFull(playId: string, error: unknown): void {
+    if (!hasErrorCode(error, 'DISK_FULL')) return;
+    try {
+      this.#onDiskFull?.(playId);
+    } catch (told) {
+      this.#logger.warn({ playId, err: told }, 'the full disk was not told about the play');
     }
   }
 

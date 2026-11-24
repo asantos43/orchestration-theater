@@ -3,6 +3,7 @@ import { mkdir } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import {
   AdapterUnavailable,
+  DiskFull,
   autoCommitAggregates,
   createStoreAggregates,
   InvalidInput,
@@ -82,6 +83,12 @@ export interface SqliteStoreDiagnostics {
 export interface StoreCommitHooks {
   readonly beforeCommit?: (() => Promise<void>) | undefined;
   readonly afterCommit?: (() => Promise<void>) | undefined;
+  /**
+   * Told, after the transaction rolled back, of the typed error the call rejects with (Phase 11,
+   * P5): the daemon hears a `DiskFull` here, whoever made the write. It must not throw nor wait.
+   * Unlike the two above, the daemon passes it on every start.
+   */
+  readonly onFailure?: ((error: unknown) => void) | undefined;
 }
 
 /**
@@ -290,7 +297,17 @@ export class SqliteStore implements Store, StoreMaintenance {
       await this.#hooks?.afterCommit?.();
       return result;
     } catch (error) {
-      throw toStoreError(error);
+      const typed = toStoreError(error);
+      this.#told(typed);
+      throw typed;
+    }
+  }
+
+  #told(error: unknown): void {
+    try {
+      this.#hooks?.onFailure?.(error);
+    } catch {
+      // The hook must not change what the caller gets.
     }
   }
 
@@ -324,6 +341,67 @@ export class SqliteStore implements Store, StoreMaintenance {
         fullfsync: number('fullfsync') === 1,
         checkpointFullfsync: number('checkpoint_fullfsync') === 1,
       });
+    });
+  }
+
+  /**
+   * Asks whether a write would find room now, without leaving anything behind (Phase 11, P5): it
+   * checks the pages the cap (`max_page_count`) still allows, then commits a write of one value
+   * the database already has (`user_version`), which makes SQLite write to the WAL and the file
+   * system. Resolves when both pass; rejects with `DiskFull` (or the error of the failed write).
+   */
+  probeWrite(minFreePages = 16): Promise<void> {
+    if (this.#closed) return Promise.reject(this.#closedError());
+    return this.#enqueue(() => {
+      const db = this.#writerRaw;
+      const room =
+        Number(readPragma(db, 'max_page_count')) -
+        Number(readPragma(db, 'page_count')) +
+        Number(readPragma(db, 'freelist_count'));
+      if (room < minFreePages) {
+        return Promise.reject(
+          new DiskFull(`The database has room for ${String(room)} more pages (max_page_count)`),
+        );
+      }
+      const version = Number(readPragma(db, 'user_version'));
+      try {
+        db.exec('BEGIN IMMEDIATE');
+        db.exec(`PRAGMA user_version = ${String(version)}`);
+        db.exec('COMMIT');
+      } catch (error) {
+        try {
+          db.exec('ROLLBACK');
+        } catch {
+          // No transaction was left open.
+        }
+        const translated = toStoreError(error);
+        return Promise.reject(
+          translated instanceof Error ? translated : new Error(String(translated)),
+        );
+      }
+      return Promise.resolve();
+    });
+  }
+
+  /**
+   * Lets the database grow by `pages` more pages and no further (`PRAGMA max_page_count` set to the
+   * size it has now plus `pages`), or lifts the cap with `undefined`. A write that needs more pages
+   * fails with `SQLITE_FULL`, which {@link toStoreError} turns into `DiskFull`. The cap is per
+   * connection, so it is set on the write connection: the one every write goes through. It is how
+   * the chaos tests of Phase 11 (P5) fill a database without a full disk. Resolves with the cap
+   * now in force, in pages.
+   */
+  limitGrowth(pages: number | undefined): Promise<number> {
+    if (this.#closed) return Promise.reject(this.#closedError());
+    return this.#enqueue(() => {
+      const db = this.#writerRaw;
+      this.#defaultMaxPages ??= Number(readPragma(db, 'max_page_count'));
+      const wanted =
+        pages === undefined
+          ? this.#defaultMaxPages
+          : Number(readPragma(db, 'page_count')) + Math.max(0, Math.floor(pages));
+      db.exec(`PRAGMA max_page_count = ${String(wanted)}`);
+      return Promise.resolve(Number(readPragma(db, 'max_page_count')));
     });
   }
 
@@ -384,6 +462,8 @@ export class SqliteStore implements Store, StoreMaintenance {
   #closedError(): AdapterUnavailable {
     return new AdapterUnavailable('The store is closed');
   }
+
+  #defaultMaxPages: number | undefined;
 
   /** Runs `job` after everything queued before it, whatever their outcome. */
   #enqueue<T>(job: () => Promise<T>): Promise<T> {

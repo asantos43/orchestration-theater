@@ -94,6 +94,12 @@ import {
 } from './telemetry/retention-config.js';
 import { IdeasConfigSchema } from './ideas/settings.js';
 import { DEFAULT_FAULT_PLAN_FILE, FAULT_INJECT_MODES } from './chaos/faults.js';
+import {
+  DEFAULT_DISK_CHECK_EVERY,
+  DEFAULT_DISK_MIN_FREE,
+  DISK_NOTIFY_MODES,
+  DISK_ON_FULL_MODES,
+} from './disk/settings.js';
 import { withProfileEntries } from './profile-entries-config.js';
 import {
   ExecutorsConfigSchema,
@@ -3236,6 +3242,23 @@ export const DaemonConfigSchema = z
       .strictObject({
         inject: z.enum(FAULT_INJECT_MODES).default('off'),
         plan_file: z.string().min(1).default(DEFAULT_FAULT_PLAN_FILE),
+      })
+      .prefault({}),
+    /**
+     * The full disk (Phase 11, P5; N279; `disk/settings.ts` has the long text of each key).
+     * - `on_full`: `pause` (default, N279), `stop` or `continue`.
+     * - `min_free`: the free space below which the disk counts as full, or `off`. [proposta]
+     * - `notify`: `once` (default), `every_hour` or `off`. [proposta]
+     * - `check_every`: how often the space is read and the way back is tried. [proposta]
+     */
+    disk: z
+      .strictObject({
+        on_full: z.enum(DISK_ON_FULL_MODES).default('pause'),
+        min_free: z
+          .union([z.literal('off').transform(() => null), SizeSchema])
+          .prefault(DEFAULT_DISK_MIN_FREE),
+        notify: z.enum(DISK_NOTIFY_MODES).default('once'),
+        check_every: DurationSchema.prefault(DEFAULT_DISK_CHECK_EVERY),
       })
       .prefault({}),
   })
