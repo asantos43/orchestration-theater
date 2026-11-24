@@ -437,9 +437,10 @@ if [ "$level" = phase10 ]; then
   [ -z "$sea_node" ] || sea_args=(--node "$sea_node")
   set +e
   {
-    "${cli[@]}" ephemeral-key --out "$work/key"
-    timeout "$build_timeout" "${cli[@]}" build --target linux-x64 --out "$work/n" --version 1.0.0 --public-key "$work/key/ephemeral-public.pem" "${sea_args[@]}"
-    timeout "$build_timeout" "${cli[@]}" build --target linux-x64 --out "$work/n1" --version 1.0.1 --public-key "$work/key/ephemeral-public.pem" "${sea_args[@]}"
+    # Each step needs the one before: a failed build stops here, instead of testing a leftover binary.
+    "${cli[@]}" ephemeral-key --out "$work/key" &&
+    timeout "$build_timeout" "${cli[@]}" build --target linux-x64 --out "$work/n" --version 1.0.0 --public-key "$work/key/ephemeral-public.pem" "${sea_args[@]}" &&
+    timeout "$build_timeout" "${cli[@]}" build --target linux-x64 --out "$work/n1" --version 1.0.1 --public-key "$work/key/ephemeral-public.pem" "${sea_args[@]}" &&
     timeout "$run_timeout" "${cli[@]}" acceptance \
       --exe-n "$work/n/linux-x64/otheater" --version-n 1.0.0 \
       --exe-n1 "$work/n1/linux-x64/otheater" --version-n1 1.0.1 \
