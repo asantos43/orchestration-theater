@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 import { describe, expect, it } from 'vitest';
+import { LAUNCH_MARKER_ENV } from '@otheater/core';
 import { FakeClock, FakeProcessLauncher, InMemoryStore } from '@otheater/core/testing';
 import { createSilentLogger } from '../logger.js';
 import { RecordingSituations } from '../test-helpers.js';
@@ -75,6 +76,39 @@ describe('TrackingLauncher', () => {
       quietSituations,
     ).launch({ cmd: 'fake-agent', args: [], cwd: '/tmp', env: {} });
     expect(quietSituations.recorded).toEqual([]);
+  });
+
+  it('writes the row before the process starts and hands its id to the child as the launch marker (Phase 11, P3)', async () => {
+    const clock = new FakeClock();
+    const store = new InMemoryStore({ clock });
+    const inner = new FakeProcessLauncher();
+    let rowsWhenLaunched = -1;
+    const realLaunch = inner.launch.bind(inner);
+    inner.launch = async (opts) => {
+      rowsWhenLaunched = (await store.sessions.list({ states: ['active'] })).length;
+      return realLaunch(opts);
+    };
+    const launcher = new TrackingLauncher(inner, store, clock, createSilentLogger());
+    await launcher.launch({ cmd: 'fake-agent', args: [], cwd: '/tmp', env: { KEEP: '1' } });
+    expect(rowsWhenLaunched).toBe(1);
+    const [row] = await store.sessions.list({ states: ['active'] });
+    expect(row?.id).toMatch(/^proc-/);
+    const env = inner.launched[0]?.options.env;
+    expect(env?.[LAUNCH_MARKER_ENV]).toBe(row?.id);
+    expect(env?.KEEP).toBe('1');
+  });
+
+  it('closes the row of a launch that failed, so no live row names a process that never was', async () => {
+    const clock = new FakeClock();
+    const store = new InMemoryStore({ clock });
+    const inner = new FakeProcessLauncher();
+    inner.launch = () => Promise.reject(new Error('spawn failed'));
+    const launcher = new TrackingLauncher(inner, store, clock, createSilentLogger());
+    await expect(
+      launcher.launch({ cmd: 'fake-agent', args: [], cwd: '/tmp', env: {} }),
+    ).rejects.toThrow('spawn failed');
+    expect(await store.sessions.list({ states: ['active'] })).toEqual([]);
+    expect(await store.sessions.list({ states: ['closed'] })).toHaveLength(1);
   });
 
   it('keeps the identity and the capabilities of the launcher it wraps', () => {

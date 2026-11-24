@@ -11,7 +11,8 @@
     "src/**/*-fixture.ts",
     "src/chaos/harness.ts",
     "src/chaos/census.ts",
-    "src/chaos/invariants.ts"
+    "src/chaos/invariants.ts",
+    "src/chaos/torn-store.ts"
   ],
   "references": [
     { "path": "../core/tsconfig.src.json" },

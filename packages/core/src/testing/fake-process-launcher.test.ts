@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 import { describe, expect, it } from 'vitest';
-import { supportsOrphanKill } from '../ports/process-launcher.js';
+import { LAUNCH_MARKER_ENV, supportsOrphanKill } from '../ports/process-launcher.js';
 import { FakeProcessLauncher } from './fake-process-launcher.js';
 
 describe('FakeProcessLauncher orphan capability', () => {
@@ -37,5 +37,24 @@ describe('FakeProcessLauncher orphan capability', () => {
     const result = await launcher.killOrphan({ pid: process.pid, startedAt: started ?? 0 });
     expect(result.matched).toBe(true);
     expect(launcher.running).toHaveLength(0);
+  });
+
+  it('finds the planted orphans and the processes it launched that carry a launch marker', async () => {
+    const launcher = new FakeProcessLauncher();
+    launcher.plantOrphan(31_337, 5_000, 'row-a');
+    launcher.plantOrphan(31_338, 5_000);
+    const process = await launcher.launch({
+      cmd: 'x',
+      args: [],
+      cwd: '/tmp',
+      env: { [LAUNCH_MARKER_ENV]: 'row-b' },
+    });
+    await launcher.launch({ cmd: 'x', args: [], cwd: '/tmp', env: {} });
+    expect(await launcher.findMarked()).toEqual([
+      { marker: 'row-a', pid: 31_337, startedAt: 5_000 },
+      { marker: 'row-b', pid: process.pid, startedAt: launcher.launched[0]?.startedAt },
+    ]);
+    await launcher.killOrphan({ pid: 31_337, startedAt: 5_000 });
+    expect((await launcher.findMarked()).map((entry) => entry.marker)).toEqual(['row-b']);
   });
 });

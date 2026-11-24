@@ -99,6 +99,7 @@ import { startTelemetry, type TelemetryRuntime } from './telemetry/runtime.js';
 import { traceResourceExtras } from './telemetry/reparent.js';
 import { TelemetryStatusService } from './telemetry/status.js';
 import { OrchestrationHandlers } from './orchestration/handlers.js';
+import { startStalledPlays } from './orchestration/open-play.js';
 import { loadCrossCheckNotices } from './orchestration/cross-check-notices.js';
 import { deprecationWarnings } from './orchestration/role-executors.js';
 import { ScenarioHandlers } from './scenarios/handlers.js';
@@ -820,6 +821,7 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     launcher: composition.launcher,
     logger,
     situations: composition.situations,
+    orphans: config.recovery.orphans,
   });
   const quotaPrepare: (() => Promise<readonly ProfileRef[]>)[] = [];
   // The runner holds the baton port from the start; the orchestration binds the real one (P18, P16b).
@@ -978,6 +980,22 @@ async function run(input: RunInput): Promise<DaemonHandle> {
   // The machines of the plays come back from their snapshots; the orders were recomputed by
   // `directives.start()` above (it emits the transitions the stop made it miss).
   const resumed = (await orchestration?.runner.resumeAll()) ?? { resumed: [], refused: [] };
+  // A play the daemon died too early to start (killed between its creation and START) is in NEED
+  // and has no effect to dispatch again: start it now (see `startStalledPlays`).
+  if (orchestration !== undefined) {
+    await startStalledPlays(
+      { ...orchestration.opening, store },
+      resumed.resumed,
+      (playId, error) => {
+        logger.warn({ playId, err: error }, 'stalled play not started');
+        composition.situations.record('recovery.notice', {
+          kind: 'play_not_started',
+          subject: situationSubject(playId),
+          detail: situationText(error),
+        });
+      },
+    );
+  }
   await store.events.append(
     buildDaemonEvent(
       'daemon.recovered',
