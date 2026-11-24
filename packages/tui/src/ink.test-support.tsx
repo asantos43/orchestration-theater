@@ -40,11 +40,15 @@ export function plain(text: string): string {
   return text.replace(/\x1b\[[0-9;?]*[A-Za-z]|\x1b\]8;[^\x07\x1b]*(?:\x07|\x1b\\)/g, '');
 }
 
-/** Waits (in real time, in short steps) until `read` gives a value, or fails with `what`. */
+/**
+ * Waits (in real time, in short steps) until `read` gives a value, or fails with `what`. The
+ * deadline is long because the Windows runner of the CI is several times slower; a wait that is
+ * met returns at once, so it costs nothing when the test passes.
+ */
 export async function waitFor<T>(
   read: () => T | undefined | false,
   what: string,
-  timeoutMs = 4000,
+  timeoutMs = 15_000,
 ): Promise<T> {
   const deadline = Date.now() + timeoutMs;
   for (;;) {
