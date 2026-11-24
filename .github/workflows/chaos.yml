@@ -10,6 +10,13 @@ name: Chaos
 # - `paths` (default): on a pull request that touches the paths below, on a dispatch, and every night;
 # - `nightly`: on a dispatch and every night, never on a pull request;
 # - `off`: on a dispatch only (the nightly run is skipped too).
+#
+# How many jobs share the suite (CI under 10 min, owner, 2026-11-24): the repository variable
+# OT_CHAOS_SHARDS, from 1 to 10, default 6. With one job the suite took 32 min on PR #330 (1922 s of
+# tests, 1068 s of them in power-loss and 603 s in daemon-killed). Each job runs
+# tools/ci/chaos-shard.sh <index>/<count>: the long files split their cases (named points and random
+# instants) among the jobs, the other files are spread whole, and the jobs together run every case
+# once, with the same seeds and the same 50 instants (OT_CHAOS_INSTANTS) as before.
 on:
   # Main runs after each merge that touches the paths below. A pull request is decided by the job
   # `changes` (a `paths:` filter on the event would leave a pending status when nothing matches).
@@ -52,6 +59,7 @@ jobs:
       - id: decide
         env:
           MODE: ${{ vars.OT_CHAOS_CI || 'paths' }}
+          SHARDS: ${{ vars.OT_CHAOS_SHARDS || '6' }}
         run: |
           changed=$(git diff --name-only HEAD^1 HEAD)
           echo "$changed"
@@ -65,7 +73,11 @@ jobs:
             nightly|off) run=false ;;
             *) echo "::error::OT_CHAOS_CI=$MODE: use paths, nightly or off"; exit 1 ;;
           esac
-          echo "touched=$touched run=$run (mode $MODE)"
+          case "$SHARDS" in
+            [1-9] | 10) ;;
+            *) echo "::error::OT_CHAOS_SHARDS=$SHARDS: use a number from 1 to 10"; exit 1 ;;
+          esac
+          echo "touched=$touched run=$run (mode $MODE, $SHARDS shards)"
           echo "run=$run" >> "$GITHUB_OUTPUT"
 
   # Decides whether a push or a schedule runs. A dispatch always runs.
@@ -78,6 +90,7 @@ jobs:
       - id: decide
         env:
           MODE: ${{ vars.OT_CHAOS_CI || 'paths' }}
+          SHARDS: ${{ vars.OT_CHAOS_SHARDS || '6' }}
           EVENT: ${{ github.event_name }}
         run: |
           case "$MODE" in
@@ -86,7 +99,11 @@ jobs:
             off) run=false ;;
             *) echo "::error::OT_CHAOS_CI=$MODE: use paths, nightly or off"; exit 1 ;;
           esac
-          echo "event=$EVENT run=$run (mode $MODE)"
+          case "$SHARDS" in
+            [1-9] | 10) ;;
+            *) echo "::error::OT_CHAOS_SHARDS=$SHARDS: use a number from 1 to 10"; exit 1 ;;
+          esac
+          echo "event=$EVENT run=$run (mode $MODE, $SHARDS shards)"
           echo "run=$run" >> "$GITHUB_OUTPUT"
 
   chaos:
@@ -98,8 +115,14 @@ jobs:
         (github.event_name == 'pull_request' && needs.changes.outputs.run == 'true') ||
         ((github.event_name == 'push' || github.event_name == 'schedule') && needs.mode.outputs.run == 'true')
       ) }}
+    name: chaos ${{ matrix.shard }}/${{ vars.OT_CHAOS_SHARDS || '6' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # 1..OT_CHAOS_SHARDS: the expressions have no range, so a table picks the list.
+        shard: ${{ fromJSON('[[],[1],[1,2],[1,2,3],[1,2,3,4],[1,2,3,4,5],[1,2,3,4,5,6],[1,2,3,4,5,6,7],[1,2,3,4,5,6,7,8],[1,2,3,4,5,6,7,8,9],[1,2,3,4,5,6,7,8,9,10]]')[fromJSON(vars.OT_CHAOS_SHARDS || '6')] }}
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -111,4 +134,4 @@ jobs:
       # The child daemon runs the build output (packages/daemon/dist/).
       - run: pnpm -s build
       # The harness prints its seed to stderr; a failed run is repeated with OT_CHAOS_SEED=<seed>.
-      - run: pnpm test:chaos
+      - run: bash tools/ci/chaos-shard.sh "${{ matrix.shard }}/${{ vars.OT_CHAOS_SHARDS || '6' }}"

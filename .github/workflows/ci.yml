@@ -16,15 +16,56 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # Build, lint, the tests (all or the affected ones, OT_TEST_CI) and verify. On a pull request it
-  # waits for `changes` and does not run when the PR only touches documentation and the mode is
-  # `light` (job `docs` below). On a push to main and on a
-  # dispatch, `changes` is skipped and this job always runs.
+  # Build, lint, prettier, verify and the checks of the launcher, without the tests (job `linux-tests`).
+  # On a pull request it waits for `changes` and does not run when the PR only touches documentation
+  # and the mode is `light` (job `docs` below). On a push to main and on a dispatch, `changes` is
+  # skipped and this job always runs.
+  # CI under 10 min (owner, 2026-11-24): with the tests in the same job it took 16 to 19 min (PRs
+  # #330 and #332: 197 s of build, lint and prettier, then 687 to 841 s of tests). Now the tests run
+  # in shards beside it.
   linux:
     needs: [changes]
     # `!cancelled()`: on a push or a dispatch the job `changes` is skipped, and a skipped need would
     # skip this one.
     if: ${{ !cancelled() && (github.event_name != 'pull_request' || needs.changes.outputs.full == 'true') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # `pnpm verify` reads the crates of native/ offline: the sources must be in the cache first.
+      - run: cargo fetch --locked
+        working-directory: native/job-launcher
+      # The typed lint (`eslint .`) passed the default ~2 GB heap of Node on a runner (PR #55).
+      # `pnpm check` in steps: the tests run in the job `linux-tests` (OT_TEST_CI, OT_TEST_SHARDS).
+      - run: pnpm build && pnpm lint && pnpm format:check
+        env:
+          NODE_OPTIONS: --max-old-space-size=6144
+      - run: pnpm verify
+      - run: cargo fmt --check
+        working-directory: native/job-launcher
+      - run: cargo clippy --locked --all-targets -- -D warnings
+        working-directory: native/job-launcher
+      - run: cargo test --locked
+        working-directory: native/job-launcher
+
+  # The tests on linux (all or the affected ones, OT_TEST_CI), split among the jobs of a matrix (CI
+  # under 10 min, owner, 2026-11-24): the repository variable OT_TEST_SHARDS, from 1 to 10, default
+  # 4, says how many; each job runs its part of the list (`vitest --shard`, OT_TEST_SHARD of
+  # tools/ci/test-affected.sh), and together they run the whole list. Same conditions as `linux`.
+  linux-tests:
+    needs: [changes]
+    if: ${{ !cancelled() && (github.event_name != 'pull_request' || needs.changes.outputs.full == 'true') }}
+    name: linux-tests ${{ matrix.shard }}/${{ vars.OT_TEST_SHARDS || '4' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # 1..OT_TEST_SHARDS: the expressions have no range, so a table picks the list.
+        shard: ${{ fromJSON('[[],[1],[1,2],[1,2,3],[1,2,3,4],[1,2,3,4,5],[1,2,3,4,5,6],[1,2,3,4,5,6,7],[1,2,3,4,5,6,7,8],[1,2,3,4,5,6,7,8,9],[1,2,3,4,5,6,7,8,9,10]]')[fromJSON(vars.OT_TEST_SHARDS || '4')] }}
     runs-on: ubuntu-latest
     steps:
       # Depth 2: on a pull request HEAD^1 is the tip of the base branch (tools/ci/test-affected.sh).
@@ -52,37 +93,33 @@ jobs:
       # It runs the binary of the package the lockfile pins (1.64.1): a bare `npx` at the root does not
       # see it and would fetch the latest version of the package from the registry.
       - run: pnpm --filter @otheater/adapter-browser-playwright exec playwright-core install chromium
-      # `pnpm verify` reads the crates of native/ offline: the sources must be in the cache first.
+      # The tests of tools/verify read the crates of native/ offline.
       - run: cargo fetch --locked
         working-directory: native/job-launcher
-      # The typed lint (`eslint .`) passed the default ~2 GB heap of Node on a runner (PR #55).
-      # OT_REQUIRE_SANDBOX=1: the acceptance tests of the sandbox fail, not skip, if bwrap does not run.
-      # OT_REQUIRE_TMUX=1 [proposta]: the same for the smoke test of the TUI, which fails, not skips,
-      # if tmux or the build is missing.
-      # OT_REQUIRE_PTY=1 (owner, N271): the click test in a real pty (pty.focus.test.ts) fails, not
-      # skips, if Python 3 or the build is missing. Only here: on macOS it failed with no known cause.
-      # `pnpm check` in steps, so that the tests can run only where the change reaches (OT_TEST_CI).
-      - run: pnpm build && pnpm lint && pnpm format:check
+      # The tests that run dist/ need the build.
+      - run: pnpm build
         env:
           NODE_OPTIONS: --max-old-space-size=6144
       # The tests (owner, 2026-11-21): the repository variable OT_TEST_CI picks the mode on a pull
       # request: `affected` (default: the tests the module graph reaches from the changed files, plus
       # those that run dist/, and the whole suite when a global file changes; tools/ci/test-affected.sh)
       # or `full`. A push to main and a dispatch always run the whole suite.
+      # OT_REQUIRE_SANDBOX=1: the acceptance tests of the sandbox fail, not skip, if bwrap does not run.
+      # OT_REQUIRE_TMUX=1 [proposta]: the same for the smoke test of the TUI, which fails, not skips,
+      # if tmux or the build is missing.
+      # OT_REQUIRE_PTY=1 (owner, N271): the click test in a real pty (pty.focus.test.ts) fails, not
+      # skips, if Python 3 or the build is missing. Only here: on macOS it failed with no known cause.
       - run: bash tools/ci/test-affected.sh HEAD^1
         env:
           NODE_OPTIONS: --max-old-space-size=6144
           OT_TEST_CI: ${{ github.event_name == 'pull_request' && (vars.OT_TEST_CI || 'affected') || 'full' }}
+          OT_TEST_SHARD: ${{ matrix.shard }}/${{ vars.OT_TEST_SHARDS || '4' }}
+          # How the files split (tools/ci/src/duration-shard.ts): `duration` (default, by
+          # tools/ci/test-timings.json) or `hash` (the vitest split).
+          OT_TEST_SHARD_MODE: ${{ vars.OT_TEST_SHARD_MODE || 'duration' }}
           OT_REQUIRE_SANDBOX: '1'
           OT_REQUIRE_TMUX: '1'
           OT_REQUIRE_PTY: '1'
-      - run: pnpm verify
-      - run: cargo fmt --check
-        working-directory: native/job-launcher
-      - run: cargo clippy --locked --all-targets -- -D warnings
-        working-directory: native/job-launcher
-      - run: cargo test --locked
-        working-directory: native/job-launcher
 
   # Decides what a pull request runs. A PR is "docs only" when every changed path is under docs/
   # (except docs/reference/, whose api-routes.json the tests check against the code), spikes/ or
@@ -113,6 +150,9 @@ jobs:
           DOCS_MODE: ${{ vars.OT_DOCS_CI || 'light' }}
           LINT_MODE: ${{ vars.OT_CROSS_LINT || 'off' }}
           TESTS_MODE: ${{ vars.OT_CROSS_TESTS || 'os' }}
+          TEST_SHARDS: ${{ vars.OT_TEST_SHARDS || '4' }}
+          CROSS_SHARDS: ${{ vars.OT_CROSS_SHARDS || '4' }}
+          SHARD_MODE: ${{ vars.OT_TEST_SHARD_MODE || 'duration' }}
         run: |
           changed=$(git diff --name-only HEAD^1 HEAD)
           echo "$changed"
@@ -142,6 +182,18 @@ jobs:
           case "$TESTS_MODE" in
             os | all) ;;
             *) echo "::error::OT_CROSS_TESTS=$TESTS_MODE: use os or all"; exit 1 ;;
+          esac
+          # The number of shards of `linux-tests` and of `cross` (OT_TEST_SHARDS, OT_CROSS_SHARDS),
+          # read by their matrices; checked here so that a typo fails with a message.
+          for pair in "OT_TEST_SHARDS=$TEST_SHARDS" "OT_CROSS_SHARDS=$CROSS_SHARDS"; do
+            case "${pair#*=}" in
+              [1-9] | 10) ;;
+              *) echo "::error::$pair: use a number from 1 to 10"; exit 1 ;;
+            esac
+          done
+          case "$SHARD_MODE" in
+            duration | hash) ;;
+            *) echo "::error::OT_TEST_SHARD_MODE=$SHARD_MODE: use duration or hash"; exit 1 ;;
           esac
           if printf '%s\n' "$changed" | grep -qE '^(packages/protocol/src/atif/|packages/daemon/src/atif/|packages/daemon/src/phase8-acceptance\.e2e\.test\.ts|tools/atif-validate/)'; then
             atif=true
@@ -213,10 +265,14 @@ jobs:
     needs: [changes]
     # `!cancelled()`: on a dispatch the job `changes` is skipped, and a skipped need would skip this one.
     if: ${{ !cancelled() && (github.event_name == 'workflow_dispatch' || needs.changes.outputs.cross == 'true') }}
+    name: cross (${{ matrix.os }}, ${{ matrix.shard }}/${{ vars.OT_CROSS_SHARDS || '4' }})
     strategy:
       fail-fast: false
       matrix:
         os: [windows-latest, macos-latest]
+        # The tests split among OT_CROSS_SHARDS jobs per system (1 to 10, default 4; CI under 10 min,
+        # owner, 2026-11-24): the macOS job took 13 to 17 min with them in one job (PRs #330, #332).
+        shard: ${{ fromJSON('[[],[1],[1,2],[1,2,3],[1,2,3,4],[1,2,3,4,5],[1,2,3,4,5,6],[1,2,3,4,5,6,7],[1,2,3,4,5,6,7,8],[1,2,3,4,5,6,7,8,9],[1,2,3,4,5,6,7,8,9,10]]')[fromJSON(vars.OT_CROSS_SHARDS || '4')] }}
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -252,7 +308,11 @@ jobs:
           NODE_OPTIONS: --max-old-space-size=6144
           OT_TEST_CI: ${{ github.event_name == 'pull_request' && (vars.OT_TEST_CI || 'affected') || 'full' }}
           OT_CROSS_TESTS: ${{ github.event_name == 'pull_request' && (vars.OT_CROSS_TESTS || 'os') || 'all' }}
+          OT_TEST_SHARD: ${{ matrix.shard }}/${{ vars.OT_CROSS_SHARDS || '4' }}
+          OT_TEST_SHARD_MODE: ${{ vars.OT_TEST_SHARD_MODE || 'duration' }}
+      # Once per system: it reads the tree, not the part of the tests.
       - run: pnpm verify
+        if: ${{ matrix.shard == 1 }}
 
   # Real test of the Windows Job Object launcher (N58): only here the integration tests run.
   windows-launcher:
