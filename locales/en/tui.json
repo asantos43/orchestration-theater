@@ -1134,7 +1134,8 @@
       "account": "Account",
       "preset": "Preset",
       "executors": "Executors",
-      "review": "Review"
+      "review": "Review",
+      "accounts": "New account"
     },
     "loading": "Reading the assistant...",
     "loadFailed": "Could not open the assistant: {{message}}",
@@ -1148,7 +1149,8 @@
       "account": "Pick the account to bring into the roles.",
       "preset": "Pick the preset of the roles.",
       "executors": "Register Executors by API or local model and set the spending cap of each API account.",
-      "review": "This is what will be written. Nothing is written before you confirm."
+      "review": "This is what will be written. Nothing is written before you confirm.",
+      "accounts": "Add an account of a client (a subscription) and log in to it now, or continue without one: you can add accounts later in the Settings tab or with ot profile add."
     },
     "detect": {
       "clients": "Clients on this machine: {{list}}",
@@ -1187,7 +1189,10 @@
       "hintConfirm": "y confirms, any other key cancels",
       "yes": "y",
       "badExecutor": "Write <account> <model> [effort].",
-      "badBudget": "Write <day> <month>: numbers above zero, or - for no cap."
+      "badBudget": "Write <day> <month>: numbers above zero, or - for no cap.",
+      "account": "Account of {{client}} as: {{form}}",
+      "badAccount": "Write {{form}}.",
+      "confirmNotice": "{{provider}} already has {{existing}}. Add another? y/n"
     },
     "review": {
       "preset": "Preset: {{preset}}",
@@ -1217,7 +1222,22 @@
       "cancelled": "Run cancelled. Nothing was written.",
       "close": "{{key}} closes the assistant."
     },
-    "gateFailed": "Could not check whether the first run is needed: {{message}}"
+    "gateFailed": "Could not check whether the first run is needed: {{message}}",
+    "accounts": {
+      "clients": "Clients",
+      "row": "{{client}}{{state}}",
+      "installed": "  (installed)",
+      "missing": "  (not found)",
+      "added": "Added in this run: {{list}}",
+      "keys": "{{add}} adds an account of the client under the cursor, {{next}} continues without adding.",
+      "result": {
+        "added": "Account added: {{profile}}.",
+        "loggedIn": "Account added: {{profile}}. It already has a login.",
+        "loginDone": "Account added: {{profile}}. The sign-in ended with code {{code}}.",
+        "loginFailed": "Account added: {{profile}}. The sign-in could not run: {{message}}. To try again: {{command}}",
+        "failed": "The account was not added: {{message}}"
+      }
+    }
   },
   "plugins": {
     "scope": {

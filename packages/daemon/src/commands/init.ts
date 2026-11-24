@@ -15,7 +15,9 @@ import { runServiceCommand, type ServiceCommandDeps } from './service.js';
  * `ot init` (Phase 10, P6; architecture 5.7 and 10; N121, N254). The minimum command, with no
  * question in the terminal: (1) the logon service, (2) the daemon up and its API answering, (3) a
  * look at the commands of the Executors, (4) the terminal interface, which opens its setup assistant
- * by itself when no configuration exists (`ui.setup.open`).
+ * by itself when no configuration exists (`ui.setup.open`). The assistant has its own step to add an
+ * account and log in to it (N274, 2026-11-22); with no interface (`--no-tui`, no terminal) the
+ * summary shows `ot profile add` instead.
  *
  * A step that fails ends the command with the reason and the command that repeats that step; what
  * was done before stays (nothing is undone). Step 3 never installs an official client (N254): it
@@ -259,12 +261,16 @@ export async function runInitCommand(
   context.out(t(missing === 0 ? 'init.allFound' : 'init.someMissing', { count: missing }));
 
   // 4. The interface, which opens the assistant of the first run by itself.
+  // N274: the step that adds an account lives in the assistant of the interface; without it, the
+  // summary shows the command that does the same.
   if (options.noTui) {
     context.out(t('init.doneNoTui'));
+    context.out(t('init.addAccountHint'));
     return EXIT_OK;
   }
   if (deps.openTui === undefined) {
     context.out(t('init.noTerminal'));
+    context.out(t('init.addAccountHint'));
     return EXIT_OK;
   }
   context.out(t('init.stepTui', { step: 4, total }));

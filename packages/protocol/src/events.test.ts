@@ -113,6 +113,7 @@ describe('daemon event registry', () => {
       'profile.login.started',
       'profile.login.completed',
       'profile.login.failed',
+      'profile.login.skipped',
       'executor.changed',
       'daemon.notice',
       'recovery.notice',

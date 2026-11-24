@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 import { ApiRequestError, deriveShortcutBar, type UiBarItem } from '@otheater/client';
-import type { SetupRunView } from '@otheater/protocol';
+import type { AddProfileBody, SetupRunView } from '@otheater/protocol';
 import { Box, useWindowSize } from 'ink';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -11,17 +11,24 @@ import { Frame } from '../layout/frame.js';
 import { ShortcutBar } from '../layout/shortcut-bar.js';
 import { fit, wrapText } from '../layout/text.js';
 import { TOKEN, paint } from '../layout/theme.js';
+import { useSuspendTerminal } from '../mouse/index.js';
 import { useRenderControl } from '../render-control.js';
 import { fieldStep } from '../tabs/settings/field.js';
-import { errorText } from '../tabs/settings/index.js';
+import { errorText, runInTerminal } from '../tabs/settings/index.js';
 import type { SetupApi, SetupFlow } from './api.js';
 import { setupLines, type SetupLine } from './lines.js';
 import {
+  accountClients,
+  accountFormOf,
+  accountsCursorMoved,
+  accountsCursorStart,
   atFirstStep,
   draftKey,
   executorsItem,
   initialDraft,
   isFinished,
+  loginCommandOf,
+  parseAccountLine,
   parseBudgetLine,
   parseExecutorLine,
   reordered,
@@ -63,11 +70,19 @@ type Mode =
   | { readonly kind: 'idle' }
   | {
       readonly kind: 'prompt';
-      readonly purpose: 'executor' | 'budget';
+      readonly purpose: 'executor' | 'budget' | 'account';
+      /** The account of the cap (`budget`), or the client of the new account (`account`). */
       readonly profileId: string;
       readonly value: string;
     }
-  | { readonly kind: 'confirmCancel' };
+  | { readonly kind: 'confirmCancel' }
+  /** A second subscription of one provider: the daemon wants the notice accepted (N127). */
+  | {
+      readonly kind: 'confirmNotice';
+      readonly body: AddProfileBody;
+      readonly provider: string;
+      readonly existing: readonly string[];
+    };
 
 interface State {
   readonly load: 'loading' | 'ready' | 'failed';
@@ -77,6 +92,12 @@ interface State {
   readonly mode: Mode;
   readonly busy: boolean;
   readonly message: { readonly text: string; readonly tone: Tone } | undefined;
+  /** The step that adds an account (N274) is on screen, or it is behind the person. */
+  readonly stage: 'accounts' | 'steps';
+  /** The client under the cursor of that step. */
+  readonly accountsCursor: number;
+  /** The accounts added in this run. */
+  readonly added: readonly string[];
 }
 
 const IDLE: Mode = { kind: 'idle' };
@@ -94,11 +115,28 @@ const FIRST: State = {
   mode: IDLE,
   busy: false,
   message: undefined,
+  stage: 'steps',
+  accountsCursor: 0,
+  added: [],
 };
 
 /** The hints of the bar that make sense at the step on screen. */
-function relevantBar(item: UiBarItem, step: string | undefined, finished: boolean): boolean {
+function relevantBar(
+  item: UiBarItem,
+  step: string | undefined,
+  finished: boolean,
+  accounts: boolean,
+): boolean {
   if (finished) return item.id === 'setup.advance';
+  if (accounts) {
+    return ![
+      'setup.toggle',
+      'setup.edit',
+      'setup.remove',
+      'setup.moveUp',
+      'setup.moveDown',
+    ].includes(item.id);
+  }
   switch (item.id) {
     case 'setup.toggle':
       return step === 'detect';
@@ -115,6 +153,9 @@ export function SetupScreen(props: SetupScreenProps): ReactNode {
   const { t } = useTranslation();
   const { columns, rows } = useWindowSize();
   const { afterKey } = useRenderControl();
+  const suspendTerminal = useSuspendTerminal();
+  // The step that adds an account exists in the first run, when the API has the routes for it.
+  const accountsOn = flow === 'first_run' && api.accounts !== undefined;
 
   const [state, setState] = useState<State>(FIRST);
   const ref = useRef<State>(FIRST);
@@ -174,9 +215,14 @@ export function SetupScreen(props: SetupScreenProps): ReactNode {
           if (run === null) throw error;
         }
       }
+      // The first step of the run is the one the step that adds an account stands before.
+      update({
+        stage: accountsOn && run.state === 'active' && run.step === 'detect' ? 'accounts' : 'steps',
+        accountsCursor: accountsCursorStart(run.prompt),
+      });
       show(
         run,
-        resumed
+        resumed && !(accountsOn && run.step === 'detect')
           ? {
               text: t('setup.resumed', { step: t(`setup.step.${run.step}`) }),
               tone: 'warn',
@@ -268,13 +314,121 @@ export function SetupScreen(props: SetupScreenProps): ReactNode {
       return;
     }
     if (atFirstStep(run)) {
-      onClose('left');
+      // Behind the detection stands the step that adds an account; the run has nothing before it.
+      if (accountsOn && ref.current.stage === 'steps') update({ stage: 'accounts' });
+      else onClose('left');
       return;
     }
     void command(run, () => api.back(run.id));
   };
 
+  /** Shows the run as the daemon holds it now (the accounts it lists changed), with a message. */
+  const refresh = async (message: NonNullable<State['message']>): Promise<void> => {
+    try {
+      const overview = await api.overview();
+      const active = overview.flows.find((entry) => entry.flow === flow)?.active ?? null;
+      if (!alive.current) return;
+      if (active !== null) {
+        show(active, message);
+        return;
+      }
+    } catch {
+      // The account was added all the same: say it; the list is read again with the reload key.
+    }
+    update({ busy: false, message });
+  };
+
+  /**
+   * Logs in to the account just added, the same login as the key L of Settings › Assinaturas: a
+   * client that needs a terminal is run with the terminal handed over (`useSuspendTerminal`, so the
+   * mouse comes back). [proposta] A login the daemon runs itself (`started`) is not followed here,
+   * because this screen has no events: it is cancelled and run in the terminal instead.
+   */
+  const loginOf = async (profileId: string): Promise<NonNullable<State['message']>> => {
+    const accounts = api.accounts;
+    const command = loginCommandOf(profileId);
+    try {
+      if (accounts === undefined) throw new Error('no accounts API');
+      const started = await accounts.startLogin(profileId);
+      if (started.status === 'started') await accounts.cancelLogin(profileId);
+      const runLocal = accounts.runLocal ?? runInTerminal;
+      const exit: { code: number | null } = { code: null };
+      await suspendTerminal(async () => {
+        exit.code = await runLocal(started.status === 'local' ? started.command : command);
+      });
+      return {
+        text: t('setup.accounts.result.loginDone', { profile: profileId, code: String(exit.code) }),
+        tone: exit.code === 0 ? 'ok' : 'warn',
+      };
+    } catch (error) {
+      return {
+        text: t('setup.accounts.result.loginFailed', {
+          profile: profileId,
+          message: errorText(error),
+          command,
+        }),
+        tone: 'error',
+      };
+    }
+  };
+
+  /** Adds the subscription account and logs in to it at once (N274). */
+  const addAccount = async (body: AddProfileBody): Promise<void> => {
+    const accounts = api.accounts;
+    if (accounts === undefined) return;
+    update({ busy: true, message: undefined, mode: IDLE });
+    let message: NonNullable<State['message']>;
+    try {
+      const result = await accounts.addProfile(body);
+      if (!alive.current) return;
+      if (result.status === 'needs_notice') {
+        update({
+          busy: false,
+          mode: {
+            kind: 'confirmNotice',
+            body,
+            provider: result.notice.provider,
+            existing: result.notice.existing,
+          },
+        });
+        return;
+      }
+      const profileId = result.profile.id;
+      update({ added: [...ref.current.added, profileId] });
+      message =
+        result.login === 'logged_in'
+          ? { text: t('setup.accounts.result.loggedIn', { profile: profileId }), tone: 'ok' }
+          : await loginOf(profileId);
+    } catch (error) {
+      if (!alive.current) return;
+      update({
+        busy: false,
+        message: {
+          text: t('setup.accounts.result.failed', { message: errorText(error) }),
+          tone: 'error',
+        },
+      });
+      return;
+    }
+    await refresh(message);
+  };
+
   const submitPrompt = (current: Extract<Mode, { kind: 'prompt' }>, draft: Draft): void => {
+    if (current.purpose === 'account') {
+      const account = parseAccountLine(current.profileId, current.value);
+      if (account === undefined) {
+        update({ mode: IDLE });
+        say(t('setup.prompt.badAccount', { form: accountFormOf(current.profileId) }), 'warn');
+        return;
+      }
+      void addAccount({
+        client: current.profileId,
+        name: account.name,
+        kind: 'token_plan',
+        provider: account.provider,
+      });
+      return;
+    }
     if (current.purpose === 'executor') {
       const executor = parseExecutorLine(current.value);
       if (executor === undefined) {
@@ -292,6 +446,42 @@ export function SetupScreen(props: SetupScreenProps): ReactNode {
       return;
     }
     update({ mode: IDLE, draft: withBudget(draft, budget), message: undefined });
+  };
+
+  /** The keys of the step that adds an account. */
+  const onAccountsKey = (run: SetupRunView, name: string): void => {
+    const cursor = ref.current.accountsCursor;
+    switch (name) {
+      case 'advance':
+        update({ stage: 'steps' });
+        return;
+      case 'back':
+        onClose('left');
+        return;
+      case 'itemPrev':
+        update({ accountsCursor: accountsCursorMoved(cursor, run.prompt, -1) });
+        return;
+      case 'itemNext':
+        update({ accountsCursor: accountsCursorMoved(cursor, run.prompt, 1) });
+        return;
+      case 'add': {
+        const entry = accountClients(run.prompt)[cursor];
+        if (entry !== undefined) {
+          update({
+            mode: { kind: 'prompt', purpose: 'account', profileId: entry.client, value: '' },
+          });
+        }
+        return;
+      }
+      case 'reload':
+        void reread(run);
+        return;
+      case 'cancel':
+        update({ mode: { kind: 'confirmCancel' } });
+        return;
+      default:
+        return;
+    }
   };
 
   const onKey = (event: KeyEvent): void => {
@@ -313,6 +503,13 @@ export function SetupScreen(props: SetupScreenProps): ReactNode {
       }
       return;
     }
+    if (mode.kind === 'confirmNotice') {
+      update({ mode: IDLE });
+      if ((event.combo ?? '').toUpperCase() === t('setup.prompt.yes').toUpperCase()) {
+        void addAccount({ ...mode.body, acceptNotice: true });
+      }
+      return;
+    }
     if (mode.kind === 'prompt') {
       const step = fieldStep(mode.value, event.combo, event.data);
       if (step.done === 'cancel') update({ mode: IDLE });
@@ -325,6 +522,10 @@ export function SetupScreen(props: SetupScreenProps): ReactNode {
     if (!action?.startsWith('setup.')) return;
     if (current.message !== undefined) update({ message: undefined });
     const draft = current.draft;
+    if (accountsOn && current.stage === 'accounts' && run.step === 'detect' && !isFinished(run)) {
+      onAccountsKey(run, action.slice('setup.'.length));
+      return;
+    }
     switch (action.slice('setup.'.length)) {
       case 'advance':
         advance(run, draft);
@@ -385,6 +586,8 @@ export function SetupScreen(props: SetupScreenProps): ReactNode {
   // What it draws.
   const { run, draft, mode, message } = state;
   const finished = run !== undefined && isFinished(run);
+  const onAccounts =
+    accountsOn && state.stage === 'accounts' && run?.step === 'detect' && !finished;
   const closeKey = keyLabel(keymap, 'setup.advance') ?? '';
   const innerWidth = Math.max(1, columns - 2);
   const innerHeight = Math.max(1, rows - 1 - 2);
@@ -396,11 +599,26 @@ export function SetupScreen(props: SetupScreenProps): ReactNode {
       text:
         mode.purpose === 'executor'
           ? t('setup.prompt.executor')
-          : t('setup.prompt.budget', { profile: mode.profileId }),
+          : mode.purpose === 'account'
+            ? t('setup.prompt.account', {
+                client: mode.profileId,
+                form: accountFormOf(mode.profileId),
+              })
+            : t('setup.prompt.budget', { profile: mode.profileId }),
       color: TOKEN.accent,
     });
     head.push({ key: 'p.value', text: `> ${mode.value}▏` });
     head.push({ key: 'p.hint', text: t('setup.prompt.hintEnter'), dim: true });
+  } else if (mode.kind === 'confirmNotice') {
+    head.push({
+      key: 'n.q',
+      text: t('setup.prompt.confirmNotice', {
+        provider: mode.provider,
+        existing: mode.existing.join(', '),
+      }),
+      color: TOKEN.warn,
+    });
+    head.push({ key: 'n.hint', text: t('setup.prompt.hintConfirm'), dim: true });
   } else if (mode.kind === 'confirmCancel') {
     head.push({ key: 'c.q', text: t('setup.prompt.confirmCancel'), color: TOKEN.warn });
     head.push({ key: 'c.hint', text: t('setup.prompt.hintConfirm'), dim: true });
@@ -428,8 +646,25 @@ export function SetupScreen(props: SetupScreenProps): ReactNode {
     head.push({ key: 'busy', text: t('setup.busy'), dim: true });
   }
 
-  const body: SetupLine[] = run === undefined ? [] : setupLines({ run, draft, t, closeKey });
-  if (run !== undefined && !finished && atFirstStep(run)) {
+  const body: SetupLine[] =
+    run === undefined
+      ? []
+      : setupLines({
+          run,
+          draft,
+          t,
+          closeKey,
+          accounts: accountsOn
+            ? {
+                active: onAccounts,
+                cursor: state.accountsCursor,
+                added: state.added,
+                addKey: keyLabel(keymap, 'setup.add') ?? '',
+                nextKey: keyLabel(keymap, 'setup.advance') ?? '',
+              }
+            : undefined,
+        });
+  if (run !== undefined && !finished && atFirstStep(run) && (!accountsOn || onAccounts)) {
     body.push({ key: 'gap.leave', text: '' });
     body.push({
       key: 'leave',
@@ -460,7 +695,7 @@ export function SetupScreen(props: SetupScreenProps): ReactNode {
   const first = Math.max(0, cursorLine - Math.max(1, innerHeight - 1));
 
   const bar = deriveShortcutBar(keymap.registry, keymap.keymap, ['setup']).filter((item) =>
-    relevantBar(item, run?.step, finished),
+    relevantBar(item, run?.step, finished, onAccounts),
   );
 
   return (
@@ -473,7 +708,10 @@ export function SetupScreen(props: SetupScreenProps): ReactNode {
         titleRight={
           run === undefined
             ? undefined
-            : t('setup.stepOf', { n: stepNumber(run), total: run.steps.length })
+            : t('setup.stepOf', {
+                n: accountsOn ? (onAccounts ? 1 : stepNumber(run) + 1) : stepNumber(run),
+                total: run.steps.length + (accountsOn ? 1 : 0),
+              })
         }
       >
         <Box flexDirection="column" width={innerWidth}>
