@@ -79,6 +79,17 @@ run('the census of processes', () => {
     expect(sessionEntries(join(runDir, 'absent.sqlite'))).toEqual([]);
   });
 
+  it('finds no sessions in a store killed before its schema was written', () => {
+    const empty = join(runDir, 'empty.sqlite');
+    writeFileSync(empty, '');
+    expect(sessionEntries(empty)).toEqual([]);
+    const other = join(runDir, 'other.sqlite');
+    const db = new DatabaseSync(other);
+    db.exec('CREATE TABLE unrelated (id TEXT)');
+    db.close();
+    expect(sessionEntries(other)).toEqual([]);
+  });
+
   it('reads the pid files, one pid per line, ignoring other files and bad lines', () => {
     const dir = join(runDir, 'state', 'pids');
     mkdirSync(dir, { recursive: true });

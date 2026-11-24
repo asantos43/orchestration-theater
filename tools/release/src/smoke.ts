@@ -426,10 +426,36 @@ async function checkModes(executable: string, sandbox: Sandbox): Promise<string>
  * adapters under `<data>/adapters/` are. A stand-in script: the real adapters are not downloaded here.
  */
 async function checkRunAdapter(executable: string, sandbox: Sandbox): Promise<string> {
-  const entry = path.join(sandbox.root, 'fake-adapter.mjs');
+  // A small module tree on disk, as a managed adapter is: the entry script, a sibling module it imports
+  // by a relative specifier, a package under `node_modules` resolved through its ESM `exports`, a
+  // dynamic `import()` and `import.meta.url`. Nothing is downloaded; every file is written here.
+  const dir = path.join(sandbox.root, 'fake-adapter');
+  const pkg = path.join(dir, 'node_modules', 'fake-dep');
+  mkdirSync(pkg, { recursive: true });
+  writeFileSync(
+    path.join(pkg, 'package.json'),
+    JSON.stringify({
+      name: 'fake-dep',
+      version: '0.0.0',
+      type: 'module',
+      exports: { '.': './index.js' },
+    }),
+  );
+  writeFileSync(path.join(pkg, 'index.js'), "export const dep = 'dep-ok';\n");
+  writeFileSync(path.join(dir, 'sibling.mjs'), "export const sibling = 'sibling-ok';\n");
+  writeFileSync(path.join(dir, 'lazy.mjs'), "export default 'lazy-ok';\n");
+  const entry = path.join(dir, 'fake-adapter.mjs');
   writeFileSync(
     entry,
-    "await Promise.resolve();\nconsole.log('adapter-ok ' + process.argv.slice(2).join(' '));\n",
+    [
+      "import { sibling } from './sibling.mjs';",
+      "import { dep } from 'fake-dep';",
+      'await Promise.resolve();',
+      "const lazy = (await import('./lazy.mjs')).default;",
+      "const here = import.meta.url.endsWith('/fake-adapter.mjs') ? 'url-ok' : 'url-bad';",
+      "console.log(['adapter-ok', process.argv.slice(2).join(' '), sibling, dep, lazy, here].join(' '));",
+      '',
+    ].join('\n'),
   );
   const ran = await run(
     executable,
@@ -437,7 +463,10 @@ async function checkRunAdapter(executable: string, sandbox: Sandbox): Promise<st
     sandbox.env,
     30_000,
   );
-  if (ran.code !== 0 || !ran.stdout.includes('adapter-ok one two')) {
+  if (
+    ran.code !== 0 ||
+    !ran.stdout.includes('adapter-ok one two sibling-ok dep-ok lazy-ok url-ok')
+  ) {
     throw new Error(`run-adapter ended with ${String(ran.code)}: ${ran.stderr.trim()}`);
   }
   const missing = await run(
@@ -449,7 +478,7 @@ async function checkRunAdapter(executable: string, sandbox: Sandbox): Promise<st
   if (missing.code !== EXIT_ADAPTER_FAILED) {
     throw new Error(`run-adapter with no script ended with ${String(missing.code)}`);
   }
-  return `run-adapter loads an ES module with top-level await and its arguments; a missing script exits ${String(EXIT_ADAPTER_FAILED)}`;
+  return `run-adapter loads an ES module from disk (top-level await, a sibling, a package by its exports, a dynamic import, import.meta.url) with its arguments; a missing script exits ${String(EXIT_ADAPTER_FAILED)}`;
 }
 
 /** Runs the acceptance of the executable and logs one line per step. */
