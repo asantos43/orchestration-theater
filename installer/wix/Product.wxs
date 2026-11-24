@@ -41,7 +41,11 @@
 
     <StandardDirectory Id="LocalAppDataFolder">
       <Directory Id="OtProgramsDir" Name="Programs">
-        <Directory Id="INSTALLFOLDER" Name="OTheater" />
+        <Directory Id="INSTALLFOLDER" Name="OTheater">
+          <!-- Made by the updates (the applier), not by this package: see OtUpdateLeftovers below. -->
+          <Directory Id="OtPreviousDir" Name="previous" />
+          <Directory Id="OtStagingDir" Name="staging" />
+        </Directory>
       </Directory>
     </StandardDirectory>
 
@@ -71,6 +75,30 @@
           <RegistryValue Name="Version" Type="string" Value="$(SemVer)" KeyPath="yes" />
           <RegistryValue Name="InstallDir" Type="string" Value="[INSTALLFOLDER]" />
         </RegistryKey>
+      </Component>
+
+      <!--
+        What the updates leave beside ot.exe (N303; packages/daemon/src/updates/apply/layout.ts, journal.ts,
+        trust.ts, main.ts): the journal and its temporary file, the log of the applier, the copy of the
+        old executable, and the staged executable with its two proofs. Windows Installer removes only the
+        files it installed, and a folder that is not empty is never removed (RemoveFolder), so without
+        these the install folder would stay after an uninstall that came after an update. They are named
+        one by one (the only pattern is the temporary journal, `update-state.json.<pid>.tmp`), so a file
+        of the user in the folder stays, and the folder with it. Core WiX elements only: no extension.
+        The folders `previous` and `staging` go before the install folder (RemoveFolders removes the
+        deepest first). The same list is in installer/install.sh (remove_update_leftovers).
+      -->
+      <Component Id="OtUpdateLeftovers" Directory="INSTALLFOLDER" Guid="3C5F0E5A-6D0B-4B58-9E0D-6B7A0C2E41F7">
+        <RemoveFile Id="OtRmJournal" Directory="INSTALLFOLDER" Name="update-state.json" On="uninstall" />
+        <RemoveFile Id="OtRmJournalTemp" Directory="INSTALLFOLDER" Name="update-state.json.*.tmp" On="uninstall" />
+        <RemoveFile Id="OtRmApplyLog" Directory="INSTALLFOLDER" Name="update-apply.log" On="uninstall" />
+        <RemoveFile Id="OtRmPreviousExe" Directory="OtPreviousDir" Name="ot.exe" On="uninstall" />
+        <RemoveFile Id="OtRmStagingExe" Directory="OtStagingDir" Name="ot.exe" On="uninstall" />
+        <RemoveFile Id="OtRmStagingManifest" Directory="OtStagingDir" Name="manifest.json" On="uninstall" />
+        <RemoveFile Id="OtRmStagingSignature" Directory="OtStagingDir" Name="manifest.json.sig" On="uninstall" />
+        <RemoveFolder Id="OtRmPreviousDir" Directory="OtPreviousDir" On="uninstall" />
+        <RemoveFolder Id="OtRmStagingDir" Directory="OtStagingDir" On="uninstall" />
+        <RegistryValue Root="HKCU" Key="Software\OTheater\Installer" Name="UpdateLeftovers" Type="integer" Value="1" KeyPath="yes" />
       </Component>
 
       <!-- %LOCALAPPDATA%\Programs may not exist: it goes away on uninstall only if it is empty. -->
