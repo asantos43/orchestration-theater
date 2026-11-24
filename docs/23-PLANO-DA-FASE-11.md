@@ -84,7 +84,7 @@ Conferido no código em 2026-11-22, no commit `3c84693` (a main depois do PR #31
 | P5 | Disco cheio: a política `disk.*`, o erro tipado e o caos | P1, D2 | P3, P4, P6, P7, P10 | a fazer |
 | P6 | Caos C: atualização de adaptador e atualização do aplicativo, com processos mortos de verdade | P1 | P3, P4, P5, P7, P10 | a fazer |
 | P7 | Idempotência de integração e de PR: queda em cada fronteira do efeito | P1, P2 | P3, P4, P5, P6, P10 | a fazer |
-| P8 | Revisão de segurança da API e das cascas (D3) | P0 | P1, P2, P9 | a fazer |
+| P8 | Revisão de segurança da API e das cascas (D3) | P0 | P1, P2, P9 | feito |
 | P9 | Revisão das portas (R16) (D4) | P0 | P1, P2, P8 | feito |
 | P10 | Documentação: o guia de adaptadores e plugins (D5), com exemplo que roda | P9 | P3 a P7 | a fazer |
 | P11 | Roteiro de caos do dono (nível manual) e, se a D1 mandar, a VM | P3, P4, P5, P6, P7 | P12 (a parte automática) | a fazer |
@@ -146,7 +146,7 @@ Toda regra ou padrão novo vira chave, com padrão e modos. Tudo **[proposta]**;
 | `disk.min_free` | tamanho (`256MB`), `off` | `256MB` | P5 | Espaço livre abaixo do qual o daemon age **antes** de a escrita falhar |
 | `disk.notify` | `once`, `every_hour`, `off` | `once` | P5 | Quantas vezes avisar o Producer enquanto o disco está cheio |
 | `recovery.orphans` | `kill`, `report` | `kill` (o que o código faz hoje) | P3 | Hoje a morte do órfão é fixa em `reconcile.ts`. O P3 confere se já é chave; se não for, vira `kill` (padrão) ou `report` (só relata, para depuração) |
-| `security.*` | a definir pelo P8 | a definir | P8 | O que a revisão achar e for regra nova (limite de corpo, limite de pedidos, expiração de token) entra como chave, nunca como constante |
+| `security.*` e afins | `security.attachment_roots.mode`: `list`, `any`; `shell.node_inline`: `deny`, `allow`; `shell.http_get.block_private`: `on`, `off`; `updates.manifest_expiry`: `enforce`, `require`, `off`; limites numéricos `api.max_json_depth`, `api.chat.max_tickets`, `api.chat.max_sockets`, `api.chat.max_queued_messages`, `api.idempotency_max_entries`, `clients.adapters.redirect_hosts`, `redirect_max`, `tar_max_entries` | `list` (raízes project, worktrees, documents, downloads); `deny`; `on`; `enforce`; 64, 64, 32, 256, 10000, `[]`, 3, 20000 | P8 | Feito no P8 (P8a e P8b): o que a revisão achou e era regra nova virou chave, nunca constante (N287, N290; docs/09, "Revisão da Fase 11") |
 | `adapters.code_host` | `auto`, `github`, `none`, `fake` | `auto` (proposta do P13; a N289 não fixou o padrão) | P13 | Qual `CodeHost` o daemon monta. `auto`: GitHub quando o remoto `origin` do repositório está em github.com e há credencial; senão, sem hospedagem (a entrega termina na branch local, com aviso). `github`: sempre o adaptador do GitHub. `none`: nunca hospeda. `fake`: hospedagem em memória, com diário, para os testes ponta a ponta |
 
 O que o sistema faz com provedor fora do ar, com Executor travado e com perfil vencido já é política por causa (§5.16) e já tem chaves (`limits.*`, `resume.*`). O caos **testa** essas políticas. Se achar uma lacuna, o PR do P4 propõe a chave na seção "Como ficou".
@@ -345,7 +345,7 @@ O resultado é a seção "Revisão da Fase 11" no [docs/09](09-ISOLAMENTO-E-SEGU
 
 **Aceite:** relatório entregue; todo achado alto e médio reproduzido tem teste e conserto, ou uma decisão para o dono; nenhum achado fica sem marca.
 
-**Como ficou:** a preencher.
+**Como ficou:** (2026-11-23; o P8 foi dividido em P8a, a cadeia de suprimento, e P8b, a API e as cascas). O P8b consertou 11 achados, todos reproduzidos por teste (a tabela está no [docs/09](09-ISOLAMENTO-E-SEGURANCA.md), "Revisão da Fase 11"): anexo por caminho preso a raízes (N287), época do token na rotação, teto de tickets, soquetes e fila do chat, profundidade do JSON, caminhos redigidos nos erros, arquivos privados (token e pasta de dados), teto da idempotência, redator do log, `confineArgv` com a opção curta colada, `node -e` e parentes (N290) e `http_get` recusando endereço privado. As chaves novas, todas de reinício: `security.attachment_roots` (`list`/`any`, padrão `list`), `shell.node_inline` (`deny`/`allow`, `deny`), `shell.http_get.block_private` (`on`/`off`, `on`), `api.max_json_depth` (64), `api.chat.max_tickets` (64), `api.chat.max_sockets` (32), `api.chat.max_queued_messages` (256) e `api.idempotency_max_entries` (10000); testes em `config.test.ts`. A `/security-review` não achou nada acima do corte; três observações abaixo dele, duas consertadas. [N] ficaram: o DNS rebinding no `http_get`, o agrupamento de opções curtas, o Windows (ACL e pastas realocadas), e o servidor MCP, o OTLP e o ambiente dos plugins, que não foram revisados a fundo. As linhas das decisões N287 e N290 do `docs/13` ficam com quem registra. Os achados do P8a (cadeia de suprimento) estão na mesma tabela do docs/09, com o teste no PR dele.
 
 ### P9. Revisão das portas
 

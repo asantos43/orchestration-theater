@@ -17,6 +17,9 @@ import { ApiFailure } from '../handlers.js';
  *   sends at once never run the command twice;
  * - the answers are kept for `api.idempotency_ttl` (24 hours by default; `0` remembers nothing), read
  *   from the clock of the daemon, and swept as the cache is used;
+ * - at most `api.idempotency_max_entries` keys are held (kept answers and runs going): a new key past
+ *   it drops the OLDEST kept answers first, so a client that sends a new key for every request cannot
+ *   grow the memory of the daemon; a run that is going is never dropped;
  * - the memory is the daemon's: a restart forgets the keys. The alternative, a table of the store,
  *   would need a migration and a change to every store adapter of the core for a window of one day;
  *   the commands that a restart could let run twice are the ones that make a new record (`openScenario`,
@@ -28,6 +31,9 @@ import { ApiFailure } from '../handlers.js';
 
 /** What a replayed answer is marked with, so a client can tell it from the first run. */
 export const IDEMPOTENCY_REPLAYED_HEADER = 'idempotency-replayed';
+
+/** [proposta] The ceiling of `api.idempotency_max_entries` when the cache is made with none. */
+const DEFAULT_MAX_ENTRIES = 10_000;
 
 /** How long a swept cache waits before it sweeps again, in milliseconds of the clock. */
 const SWEEP_EVERY_MS = 60_000;
@@ -68,6 +74,8 @@ export interface IdempotencyCacheOptions {
   readonly clock: Clock;
   /** How long an answer is kept, in milliseconds; `0` keeps nothing (a getter: the config may change). */
   readonly ttlMs: () => number;
+  /** `api.idempotency_max_entries`: keys the cache holds at most (a getter, like the ttl). Default: 10000. */
+  readonly maxEntries?: () => number;
 }
 
 export class IdempotencyCache {
@@ -139,6 +147,7 @@ export class IdempotencyCache {
         // The first run failed and left nothing behind: this one tries again (the loop looks again).
       }
     }
+    this.#makeRoom();
     const promise = execute();
     // A repeat that waits on this run handles its failure; the run itself surfaces it to its caller.
     promise.catch(() => undefined);
@@ -153,6 +162,15 @@ export class IdempotencyCache {
       return { replayed: false, value };
     } finally {
       this.#running.delete(key);
+    }
+  }
+
+  /** Drops the oldest kept answers until one more key fits under `api.idempotency_max_entries`. */
+  #makeRoom(): void {
+    const max = this.#options.maxEntries?.() ?? DEFAULT_MAX_ENTRIES;
+    for (const key of this.#settled.keys()) {
+      if (this.#settled.size + this.#running.size < max) return;
+      this.#settled.delete(key);
     }
   }
 

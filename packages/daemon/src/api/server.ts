@@ -33,7 +33,9 @@ import {
   writePrivateFile,
 } from './files.js';
 import { PROMETHEUS_CONTENT_TYPE } from '../telemetry/prometheus.js';
+import { redactDetails, redactPaths } from './error-paths.js';
 import { ApiFailure, ApiHandlers, type HandlerEntry } from './handlers.js';
+import { jsonDepthExceeds } from './json-depth.js';
 
 /** Where the API listens: the loopback only, like the MCP server and the Producer channel. */
 export const API_HOST = '127.0.0.1';
@@ -61,6 +63,8 @@ export interface ApiServerOptions {
   readonly corsOrigins?: readonly string[];
   /** `api.max_body_bytes`. */
   readonly maxBodyBytes: number;
+  /** `api.max_json_depth`: the deepest nesting of a JSON body. Default: 64. */
+  readonly maxJsonDepth?: number;
   /** `api.rejection_events.every`: the window of the rate limit of `api.client_rejected`, in ms. */
   readonly rejectionWindowMs: number;
   readonly now: () => number;
@@ -94,6 +98,9 @@ const WEBSOCKET_ROUTES = API_ROUTE_LIST.filter((route) => route.kind === 'websoc
   (route) => ({ route, pattern: new RegExp(`^${route.path.replace(/:[^/]+/g, '[^/]+')}$`) }),
 );
 
+/** [proposta] `api.max_json_depth` when the server is made with no value (the tests of the server alone). */
+const DEFAULT_MAX_JSON_DEPTH = 64;
+
 type Listener = () => void;
 
 /**
@@ -121,6 +128,13 @@ export class ApiServer {
   readonly #rotationListeners = new Set<Listener>();
   readonly #rejections = new Map<ApiRejectionReason, { lastAt: number; suppressed: number }>();
   #token: string;
+  /**
+   * Counts the rotations. A request remembers the epoch its token was checked in, and what it does
+   * after an `await` (a body read, the recovery gate, a handler) is checked against it again, so a
+   * token that was rotated while the request ran does not carry the request through (see `#dispatch`).
+   */
+  #epoch = 0;
+  readonly #requestEpochs = new WeakMap<Request, number>();
   #rotating: Promise<void> = Promise.resolve();
   #metrics: (() => Promise<string>) | undefined;
   #stopped: Promise<void> | undefined;
@@ -215,6 +229,19 @@ export class ApiServer {
     return this.#stopController.signal;
   }
 
+  /**
+   * The epoch of the token: it changes (`rotateToken`) in the same synchronous step as the token, so
+   * what was vouched for under an epoch is vouched for only while this still reads the same.
+   */
+  get tokenEpoch(): number {
+    return this.#epoch;
+  }
+
+  /** `api.max_json_depth`: what the chat uses for the messages of its socket. */
+  get maxJsonDepth(): number {
+    return this.#options.maxJsonDepth ?? DEFAULT_MAX_JSON_DEPTH;
+  }
+
   /** The underlying Node server, for a route that upgrades the connection (the chat socket, P7). */
   get httpServer(): HttpServer {
     return this.#http;
@@ -282,7 +309,9 @@ export class ApiServer {
       const next = generateApiToken();
       // The file first: when the write fails the old token still works and nothing changed.
       await writePrivateFile(this.#options.tokenFile, `${next}\n`);
+      // One synchronous step: from here on the old token fails the check and its epoch is stale.
       this.#token = next;
+      this.#epoch += 1;
       this.#options.logger.info('the API token was rotated');
       for (const listener of [...this.#rotationListeners]) {
         try {
@@ -400,7 +429,10 @@ export class ApiServer {
 
   #checkToken(request: Request): Response | undefined {
     const match = /^Bearer +(\S+)$/i.exec(request.headers.get('authorization') ?? '');
-    if (match !== null && sameToken(match[1], this.#token)) return undefined;
+    if (match !== null && sameToken(match[1], this.#token)) {
+      this.#requestEpochs.set(request, this.#epoch);
+      return undefined;
+    }
     return this.#reject('token', 401, 'unauthorized', 'A valid API token is required', request, {
       'www-authenticate': 'Bearer realm="otheater"',
     });
@@ -519,9 +551,23 @@ export class ApiServer {
     const body =
       route.body === undefined
         ? undefined
-        : parsePart(route.body, await readJson(request, this.#options.maxBodyBytes), 'body');
+        : parsePart(
+            route.body,
+            await readJson(request, this.#options.maxBodyBytes, this.maxJsonDepth),
+            'body',
+          );
     // A command acts on the state, so it waits for the reconciliation of the start-up (5.21).
     if (entry.command) await this.#options.gate?.wait();
+    // The token was checked once, at the guard, against the token of that moment. Reading the body and
+    // the gate took time: when the token was rotated meanwhile this request belongs to the old one and
+    // stops here, before the handler can act (or open a stream or a socket) on its behalf.
+    const tokenEpoch = this.#requestEpochs.get(request);
+    if (tokenEpoch !== undefined && tokenEpoch !== this.#epoch) {
+      this.#record('token', request.method);
+      throw new ApiFailure('unauthorized', 'The API token was rotated', {
+        headers: { 'cache-control': 'no-store', 'www-authenticate': 'Bearer realm="otheater"' },
+      });
+    }
     const signal = AbortSignal.any([request.signal, this.#stopController.signal]);
     // The route that upgrades the connection takes this to open the socket (P7).
     const upgrade =
@@ -542,6 +588,7 @@ export class ApiServer {
       body,
       request,
       signal,
+      ...(tokenEpoch === undefined ? {} : { tokenEpoch }),
       ...upgrade,
     });
     return this.#answer(entry, result);
@@ -578,20 +625,26 @@ function corsHeaders(origin: string): Record<string, string> {
   return { 'access-control-allow-origin': origin, vary: 'Origin' };
 }
 
-/** The error answer for any thrown value. A message of an unexpected failure never leaves the daemon. */
+/**
+ * The error answer for any thrown value. A message of an unexpected failure never leaves the daemon,
+ * and no message or detail carries an absolute path (the log has the whole text).
+ */
 function failure(error: unknown): Response {
   if (error instanceof ApiFailure) {
-    return Response.json(apiError(error.code, error.message, error.details), {
-      status: apiErrorStatus(error.code),
-      ...(error.headers === undefined ? {} : { headers: error.headers }),
-    });
+    return Response.json(
+      apiError(error.code, redactPaths(error.message), redactDetails(error.details)),
+      {
+        status: apiErrorStatus(error.code),
+        ...(error.headers === undefined ? {} : { headers: error.headers }),
+      },
+    );
   }
   const code = apiErrorCodeOf(error);
   const message =
     code !== 'internal' && isOTheaterError(error)
       ? error.message
       : 'The daemon failed this request';
-  return Response.json(apiError(code, message), { status: apiErrorStatus(code) });
+  return Response.json(apiError(code, redactPaths(message)), { status: apiErrorStatus(code) });
 }
 
 function parsePart(schema: ZodType | undefined, value: unknown, where: string): never {
@@ -618,8 +671,12 @@ function headersOf(request: Request): Record<string, string> {
   return Object.fromEntries(request.headers.entries());
 }
 
-/** Reads the body as JSON, never more than `max` bytes. */
-async function readJson(request: Request, max: number): Promise<unknown> {
+/**
+ * Reads the body as JSON, never more than `max` bytes and never nested deeper than `maxDepth`
+ * (`api.max_json_depth`): a deeper body is `400 invalid_input` with `details.reason`, not a parser
+ * that overflows the stack into a 500.
+ */
+async function readJson(request: Request, max: number, maxDepth: number): Promise<unknown> {
   const tooLarge = (): ApiFailure =>
     new ApiFailure('payload_too_large', 'The request body is too large', {
       details: { maxBytes: max },
@@ -639,8 +696,14 @@ async function readJson(request: Request, max: number): Promise<unknown> {
     chunks.push(value);
   }
   if (size === 0) return undefined;
+  const text = Buffer.concat(chunks).toString('utf8');
+  if (jsonDepthExceeds(text, maxDepth)) {
+    throw new ApiFailure('invalid_input', 'The body of the request is nested too deep', {
+      details: { reason: 'json_too_deep', maxDepth },
+    });
+  }
   try {
-    return JSON.parse(Buffer.concat(chunks).toString('utf8')) as unknown;
+    return JSON.parse(text) as unknown;
   } catch {
     throw new ApiFailure('invalid_input', 'The body of the request is not valid JSON');
   }

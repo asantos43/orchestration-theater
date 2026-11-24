@@ -145,7 +145,12 @@ export async function withFakeDaemon(
   const real = defaultLauncher();
   if (real === undefined) throw new Error('this platform has no process launcher');
   const unenforced = options.unenforced === true ? 'security:\n  unenforced: warn\n' : '';
-  const config = parseConfig(`backup:\n  when: manual\n${unenforced}${options.config ?? ''}`);
+  // `shell.node_inline: allow`: these suites measure what the operating system holds when an allowed
+  // program does the harm (`node -e` is the example), and the default (`deny`, N290) would refuse it
+  // before it ran.
+  const config = parseConfig(
+    `backup:\n  when: manual\nshell:\n  node_inline: allow\n${unenforced}${options.config ?? ''}`,
+  );
   const profileDir = join(tmp.dir, 'profiles', 'fake', 'one');
   await mkdir(profileDir, { recursive: true });
   const profile: Profile = { client: 'fake', profile: 'one', id: 'fake/one', dir: profileDir };

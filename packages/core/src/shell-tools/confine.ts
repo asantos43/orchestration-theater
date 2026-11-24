@@ -205,11 +205,28 @@ function looksLikePath(host: PathHost, value: string): boolean {
 }
 
 /**
+ * The values that may hide in an option argument. `--opt=value` and `-o=value` give `value`; a short
+ * option with its value glued on (`-f/etc/passwd`, `-I../x`, `-C..`, `-f~/x`) gives the text after the
+ * option letter. Only the ones that look like a path are returned. [N] A cluster of letters before the
+ * value (`-abf/etc/passwd`) is not split: which letter takes the value depends on the program, and
+ * reading every tail would refuse harmless things such as `-Isrc/include`. The sandbox (layer 3) is
+ * what holds there.
+ */
+function optionValues(host: PathHost, arg: string): string[] {
+  const values: string[] = [];
+  const equals = arg.indexOf('=');
+  if (equals >= 0) values.push(arg.slice(equals + 1));
+  if (!arg.startsWith('--') && arg.length > 2) values.push(arg.slice(2));
+  return values.filter((value) => looksLikePath(host, value));
+}
+
+/**
  * Confines the arguments of an argv to the worktree (`argv[0]` is the program and is not read).
  * Every argument that is not an option is taken as a possible path and resolved, so `cat link` is
  * refused when `link` points out; for `--opt=value` the value is checked when it looks like a
- * path. A `~` at the start is refused (it would be the home folder). Arguments after `--` are
- * checked too. Throws {@link ShellToolRefusal}.
+ * path, and so is the value glued to a short option (`-f/path`, `-I../dir`). A `~` at the start
+ * is refused (it would be the home folder). Arguments after `--` are checked too. Throws
+ * {@link ShellToolRefusal}.
  */
 export async function confineArgv(
   host: PathHost,
@@ -218,19 +235,15 @@ export async function confineArgv(
 ): Promise<void> {
   for (const arg of argv.slice(1)) {
     if (arg === '' || arg === '--') continue;
-    let candidate = arg;
-    if (arg.startsWith('-')) {
-      const equals = arg.indexOf('=');
-      if (equals < 0) continue;
-      candidate = arg.slice(equals + 1);
-      if (!looksLikePath(host, candidate)) continue;
+    const candidates = arg.startsWith('-') ? optionValues(host, arg) : [arg];
+    for (const candidate of candidates) {
+      if (candidate.startsWith('~')) {
+        throw new ShellToolRefusal(
+          'path_escapes',
+          `the home folder is outside the worktree: ${JSON.stringify(arg)}`,
+        );
+      }
+      await confinePath(host, root, candidate);
     }
-    if (candidate.startsWith('~')) {
-      throw new ShellToolRefusal(
-        'path_escapes',
-        `the home folder is outside the worktree: ${JSON.stringify(arg)}`,
-      );
-    }
-    await confinePath(host, root, candidate);
   }
 }

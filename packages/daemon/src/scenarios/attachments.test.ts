@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: MPL-2.0
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { InvalidInput, NotFound } from '@otheater/core';
 import { FakeClock, InMemoryStore } from '@otheater/core/testing';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { AttachmentService, isImage, mimeOf } from './attachments.js';
+import { ANY_ATTACHMENT_ROOT } from './attachment-roots.js';
 
 const PNG_HEAD = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0]);
 
@@ -28,6 +29,7 @@ beforeEach(async () => {
   limits = { maxSize: 1024, readMax: 64 };
   service = new AttachmentService({
     store,
+    roots: ANY_ATTACHMENT_ROOT,
     clock,
     scenariosDir: join(root, 'scenarios'),
     limits: () => limits,
@@ -88,7 +90,9 @@ describe('the attachment limit (scenarios.attachment_max_size)', () => {
   it('does not limit a reference, which copies nothing', async () => {
     const big = await file('big.txt', 'x'.repeat(2000));
     const record = await service.addFile('s1', { path: big, mode: 'reference' });
-    expect(record).toMatchObject({ source: 'reference', path: big, size: 2000 });
+    // The reference keeps the real path (links followed): on macOS `/var` is `/private/var`, and on Windows
+    // a short `RUNNER~1` name is the long one.
+    expect(record).toMatchObject({ source: 'reference', path: await realpath(big), size: 2000 });
   });
 
   it('has no limit at 0', async () => {

@@ -21,6 +21,7 @@ import { buildDaemonRegistries } from '../registries.js';
 import type { CommandConfiner } from '../sandbox-wiring.js';
 import { makeRepo } from '../execution/attempt-fixture.js';
 import { nodePathHost, workToolHandlers, type ToolsDeps } from './index.js';
+import type { HostResolver } from './private-address.js';
 
 const registries = buildDaemonRegistries();
 
@@ -32,6 +33,10 @@ export const SCENARIO_ID = 's1';
 export interface ToolsRigOptions {
   /** The `tools:` block of the config, as YAML lines under `tools:` (indent two spaces). */
   readonly tools?: string;
+  /** The `shell:` block of the config, as YAML lines under `shell:` (indent two spaces). */
+  readonly shell?: string;
+  /** What `http_get` resolves a name with (`shell.http_get.block_private`); the system's by default. */
+  readonly resolveHost?: HostResolver;
   /** `configOverride` of the scenario of the play. */
   readonly configOverride?: JsonObject;
   /** `conventions` of the scenario of the play. */
@@ -151,11 +156,18 @@ export async function makeToolsRig(
     });
   }
 
-  const config = parseConfig(options.tools === undefined ? '' : `tools:\n${options.tools}\n`).tools;
+  const parsed = parseConfig(
+    [
+      options.tools === undefined ? '' : `tools:\n${options.tools}\n`,
+      options.shell === undefined ? '' : `shell:\n${options.shell}\n`,
+    ].join(''),
+  );
+  const config = parsed.tools;
   const launcher = 'launcher' in options ? options.launcher : defaultLauncher();
   const deps: ToolsDeps = {
     store,
     config,
+    shell: parsed.shell,
     launcher,
     ...(options.confine === undefined ? {} : { confine: options.confine }),
     vcs,
@@ -163,6 +175,7 @@ export async function makeToolsRig(
     env: { PATH: process.env.PATH ?? '', HOME: '/nonexistent' },
     host: nodePathHost(),
     ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
+    ...(options.resolveHost === undefined ? {} : { resolveHost: options.resolveHost }),
   };
   const handlers = workToolHandlers(deps);
   const events: NewEvent[] = [];

@@ -164,6 +164,11 @@ export interface PlayHarnessOptions {
   readonly codeHostMode?: 'fake' | 'none';
   /** The logger of the daemon (default: silent): a test that checks what the daemon logs hands in its own. */
   readonly logger?: Logger;
+  /**
+   * `security.attachment_roots.mode`. The fixture says `any` (the tests attach files from temporary
+   * folders); the test of the roots itself says `list`.
+   */
+  readonly attachmentRoots?: 'any' | 'list';
 }
 
 /**
@@ -186,6 +191,13 @@ backup:
   when: manual
 security:
   unenforced: warn
+  # The tests attach files from temporary folders; the roots have their own tests (api/security-review.test.ts).
+  attachment_roots:
+    mode: ${options.attachmentRoots ?? 'any'}
+shell:
+  http_get:
+    # The tests serve http_get from 127.0.0.1; the refusal has its own tests (tools/http-get.test.ts).
+    block_private: off
 limits:
   submit_retries: 1
 ${options.limits ?? ''}
