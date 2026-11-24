@@ -114,6 +114,9 @@ jobs:
           NODE_OPTIONS: --max-old-space-size=6144
           OT_TEST_CI: ${{ github.event_name == 'pull_request' && (vars.OT_TEST_CI || 'affected') || 'full' }}
           OT_TEST_SHARD: ${{ matrix.shard }}/${{ vars.OT_TEST_SHARDS || '4' }}
+          # How the files split (tools/ci/src/duration-shard.ts): `duration` (default, by
+          # tools/ci/test-timings.json) or `hash` (the vitest split).
+          OT_TEST_SHARD_MODE: ${{ vars.OT_TEST_SHARD_MODE || 'duration' }}
           OT_REQUIRE_SANDBOX: '1'
           OT_REQUIRE_TMUX: '1'
           OT_REQUIRE_PTY: '1'
@@ -149,6 +152,7 @@ jobs:
           TESTS_MODE: ${{ vars.OT_CROSS_TESTS || 'os' }}
           TEST_SHARDS: ${{ vars.OT_TEST_SHARDS || '4' }}
           CROSS_SHARDS: ${{ vars.OT_CROSS_SHARDS || '4' }}
+          SHARD_MODE: ${{ vars.OT_TEST_SHARD_MODE || 'duration' }}
         run: |
           changed=$(git diff --name-only HEAD^1 HEAD)
           echo "$changed"
@@ -187,6 +191,10 @@ jobs:
               *) echo "::error::$pair: use a number from 1 to 10"; exit 1 ;;
             esac
           done
+          case "$SHARD_MODE" in
+            duration | hash) ;;
+            *) echo "::error::OT_TEST_SHARD_MODE=$SHARD_MODE: use duration or hash"; exit 1 ;;
+          esac
           if printf '%s\n' "$changed" | grep -qE '^(packages/protocol/src/atif/|packages/daemon/src/atif/|packages/daemon/src/phase8-acceptance\.e2e\.test\.ts|tools/atif-validate/)'; then
             atif=true
           else
@@ -301,6 +309,7 @@ jobs:
           OT_TEST_CI: ${{ github.event_name == 'pull_request' && (vars.OT_TEST_CI || 'affected') || 'full' }}
           OT_CROSS_TESTS: ${{ github.event_name == 'pull_request' && (vars.OT_CROSS_TESTS || 'os') || 'all' }}
           OT_TEST_SHARD: ${{ matrix.shard }}/${{ vars.OT_CROSS_SHARDS || '4' }}
+          OT_TEST_SHARD_MODE: ${{ vars.OT_TEST_SHARD_MODE || 'duration' }}
       # Once per system: it reads the tree, not the part of the tests.
       - run: pnpm verify
         if: ${{ matrix.shard == 1 }}
