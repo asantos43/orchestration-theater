@@ -128,15 +128,25 @@ async function runReport(allowed, waitSeconds) {
     await sleep(500);
   }
   const events = readStore(
-    "SELECT type, scenario_id, payload FROM events WHERE type IN ('daemon.recovered', 'scenario.system_message')",
+    "SELECT type, scenario_id, payload FROM events WHERE type IN ('daemon.recovered', 'scenario.system_message') ORDER BY id",
   );
+  // Each start writes its daemon.recovered before its messages: the count so far is the start.
+  let boot = 0;
+  const booted = events.map((event) => {
+    if (event.type === 'daemon.recovered') boot += 1;
+    return { ...event, boot };
+  });
   return {
     timedOut,
     plays,
     recovered: events.filter((event) => event.type === 'daemon.recovered'),
-    systemMessages: events
+    systemMessages: booted
       .filter((event) => event.type === 'scenario.system_message')
-      .map((event) => ({ scenarioId: event.scenario_id, payload: event.payload })),
+      .map((event) => ({
+        scenarioId: event.scenario_id,
+        payload: event.payload,
+        boot: event.boot,
+      })),
   };
 }
 

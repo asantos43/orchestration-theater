@@ -181,13 +181,14 @@ seu vai em `--plan <arquivo.json>` (o formato é o de `packages/daemon/src/chaos
 Se o ponto cair antes de o daemon subir (`--plan` com `store.before_commit` num `nth` pequeno), o `start` imprime
 `o daemon se matou antes de subir` e o resto é igual (`plan none`, `restart`).
 
-**Achado, a decidir (rodado [V], `crash-commit` sem trocar o plano):** se você derruba o daemon duas vezes
-seguidas com o mesmo play no ar (aqui, o plano ainda armado no `restart`), as duas recuperações escrevem a mesma
-mensagem `scenario.system_message` (`kind: recovery`, `resumed: [play ...]`), e o `check` diz
-`I6: the scenario ... got the same message twice` e `I8: event N (scenario.system_message) repeats event M`.
-Pode ser defeito do produto (a recuperação não deveria repetir a mesma mensagem) ou rigor demais do invariante
-para duas quedas seguidas, onde cada recuperação diz a verdade; o roteiro não decide, só mostra (pergunta ao
-dono no PR).
+**Duas quedas seguidas (rodado [V], 2026-11-24):** com o `crash-commit`, faça o `restart` do passo 4 **sem** o
+`plan none`. O daemon cai de novo no 40º commit; depois dê `plan none`, `restart` e `check`. Cada subida retoma o
+mesmo play e escreve a sua `scenario.system_message` (`kind: recovery`, `resumed: [play ...]`), com o mesmo
+payload, e as duas dizem a verdade. O I6 e o I8 comparam as mensagens dentro de cada subida (cada subida escreve
+o seu `daemon.recovered` antes das mensagens), então o `check` dá `ok`. Uma repetição na mesma subida continua
+falhando. Na rodada que conferiu isso, as mensagens 28 e 51 eram iguais e vinham depois dos `daemon.recovered`
+27 e 50. Antes da correção, o `check` acusava `I6: ... got the same message twice` e `I8: event N repeats event M`:
+era o invariante que estava rígido demais, não o produto.
 
 ### 7. Atualização interrompida [N]
 
@@ -231,7 +232,7 @@ Linux do desenvolvimento (rodado por quem escreveu o roteiro); a do dono fica `[
 | 4. Disco cheio (`tmpfs` sem root, e `fail-log`) | [V: 2026-11-24] | [N] |
 | 5. Provedor fora do ar | [V: 2026-11-24] | [N] |
 | 6. Ponto de queda (`crash-push`, `crash-commit`, queda antes de subir) | [V: 2026-11-24] | [N] |
-| 6. Duas quedas seguidas no mesmo play | [X: I6 e I8, mensagem repetida; achado acima] | [N] |
+| 6. Duas quedas seguidas no mesmo play | [V] (I6 e I8 por subida, 2026-11-24) | [N] |
 | 7. Atualização interrompida | [N] | [N] |
 | macOS e Windows | [N] | [N] |
 | Corte de rede de verdade | [N] | [N] |
