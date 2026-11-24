@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: MPL-2.0
 import { describe, expect, it } from 'vitest';
-import { PROCESS_LAUNCHER_PORT_VERSION, supportsOrphanKill } from '@otheater/core';
+import {
+  LAUNCH_MARKER_ENV,
+  PROCESS_LAUNCHER_PORT_VERSION,
+  supportsMarkerScan,
+  supportsOrphanKill,
+} from '@otheater/core';
 import { describeProcessLauncherConformance } from '@otheater/sdk';
 import { PosixProcessLauncher } from './index.js';
 
@@ -84,5 +89,29 @@ describe.skipIf(process.platform !== 'linux')('PosixProcessLauncher orphan capab
     expect(result.report.found).toBeGreaterThanOrEqual(1);
     await process_.exited;
     expect(await launcher.processStartedAt(process_.pid)).toBeUndefined();
+  });
+
+  it('finds the live process that carries a launch marker, and only that one (Phase 11, P3)', async () => {
+    const launcher = new PosixProcessLauncher();
+    expect(supportsMarkerScan(launcher)).toBe(true);
+    const marker = `test-marker-${String(process.pid)}-${String(Date.now())}`;
+    const marked = await launcher.launch({
+      cmd: process.execPath,
+      args: ['-e', 'setInterval(() => undefined, 1000)'],
+      cwd: process.cwd(),
+      env: { [LAUNCH_MARKER_ENV]: marker },
+    });
+    const plain = await launchSleeper(launcher);
+    try {
+      const found = (await launcher.findMarked()).filter((entry) => entry.marker === marker);
+      expect(found.map((entry) => entry.pid)).toEqual([marked.pid]);
+      const started = await launcher.processStartedAt(marked.pid);
+      expect(Math.abs((found[0]?.startedAt ?? 0) - (started ?? -1))).toBeLessThan(2000);
+      expect((await launcher.findMarked()).some((entry) => entry.pid === plain.pid)).toBe(false);
+    } finally {
+      await marked.killTree();
+      await plain.killTree();
+    }
+    expect((await launcher.findMarked()).some((entry) => entry.marker === marker)).toBe(false);
   });
 });

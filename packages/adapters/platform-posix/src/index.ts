@@ -33,3 +33,12 @@ export {
   scopeCommand,
   type ScopeCommand,
 } from './systemd-scope.js';
+export {
+  markerFromEnviron,
+  markerFromPsLine,
+  procFsMarkers,
+  psMarkers,
+  scanMarked,
+  systemMarkerSource,
+  type MarkerSource,
+} from './marker-scan.js';

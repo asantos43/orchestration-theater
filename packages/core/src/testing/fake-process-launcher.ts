@@ -2,11 +2,14 @@
 import { AdapterUnavailable } from '../errors.js';
 import {
   assertLaunchOptions,
+  LAUNCH_MARKER_ENV,
   PROCESS_LAUNCHER_PORT_VERSION,
   type KillReport,
   type LauncherCapabilities,
   type LaunchedProcess,
   type LaunchOptions,
+  type MarkedProcess,
+  type MarkerScanner,
   type OrphanKillReport,
   type OrphanReaper,
   type OrphanTarget,
@@ -100,7 +103,7 @@ export class FakeLaunchedProcess implements LaunchedProcess {
  * {@link FakeLaunchedProcess}. For tests of what sits above the launcher (the `ClientAdapter`, a
  * session pool); the real behaviour belongs to the adapters of the port.
  */
-export class FakeProcessLauncher implements ProcessLauncher, OrphanReaper {
+export class FakeProcessLauncher implements ProcessLauncher, OrphanReaper, MarkerScanner {
   readonly id = 'fake';
   readonly implements: AdapterImplements = {
     port: 'ProcessLauncher',
@@ -115,6 +118,8 @@ export class FakeProcessLauncher implements ProcessLauncher, OrphanReaper {
   #nextPid = FIRST_FAKE_PID;
   /** Processes of a "previous daemon": alive, owned by nobody here, until `killOrphan` ends them. */
   readonly #ghosts = new Map<number, number>();
+  /** The launch marker of each planted orphan (see `plantOrphan`). */
+  readonly #ghostMarkers = new Map<number, string>();
 
   capabilities(): LauncherCapabilities {
     return { treeKill: 'process-group', memoryLimit: false, suspendedStart: false };
@@ -149,8 +154,25 @@ export class FakeProcessLauncher implements ProcessLauncher, OrphanReaper {
   }
 
   /** Plants a live process this launcher did not start, as a dead daemon would leave one. */
-  plantOrphan(pid: number, startedAt: number): void {
+  plantOrphan(pid: number, startedAt: number, marker?: string): void {
     this.#ghosts.set(pid, startedAt);
+    if (marker !== undefined) this.#ghostMarkers.set(pid, marker);
+  }
+
+  /** The live processes that carry a launch marker: the planted orphans and what this launcher started with one. */
+  findMarked(): Promise<readonly MarkedProcess[]> {
+    const marked: MarkedProcess[] = [];
+    for (const [pid, marker] of this.#ghostMarkers) {
+      const startedAt = this.#ghosts.get(pid);
+      if (startedAt !== undefined) marked.push({ marker, pid, startedAt });
+    }
+    for (const process of this.launched) {
+      const marker = process.options.env[LAUNCH_MARKER_ENV];
+      if (process.alive && marker !== undefined) {
+        marked.push({ marker, pid: process.pid, startedAt: process.startedAt });
+      }
+    }
+    return Promise.resolve(marked);
   }
 
   /** Whether the planted orphan `pid` is still alive. */
@@ -171,6 +193,7 @@ export class FakeProcessLauncher implements ProcessLauncher, OrphanReaper {
     this.orphanKills.push({ target, matched });
     if (!matched) return { matched: false, report: { found: 0, forced: false, remaining: [] } };
     if (this.#ghosts.delete(target.pid)) {
+      this.#ghostMarkers.delete(target.pid);
       return { matched: true, report: { found: 1, forced: false, remaining: [] } };
     }
     const own = this.launched.find((process) => process.pid === target.pid);

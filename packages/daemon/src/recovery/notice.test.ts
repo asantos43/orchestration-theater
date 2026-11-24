@@ -15,6 +15,7 @@ import type { RecoveryReport } from './reconcile.js';
 
 const EMPTY: RecoveryReport = {
   orphansKilled: 0,
+  orphansLeft: 0,
   sessionsInterrupted: 0,
   wipCommits: 0,
   effectsResolved: 0,

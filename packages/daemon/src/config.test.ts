@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 import {
   CHAT_PRESENCE_MODES,
   RECOVERY_NOTICE_MODES,
+  RECOVERY_ORPHAN_MODES,
   SANDBOX_MCP_BRIDGE_MODES,
   resolveMcpBridge,
   SANDBOX_MODES,
@@ -1422,13 +1423,21 @@ describe('the direct session (P19, N44, N190)', () => {
 
 describe('recovery', () => {
   it('tells the chat on every start-up that took something up, by default', () => {
-    expect(parseConfig('').recovery).toEqual({ notice: 'always' });
+    expect(parseConfig('').recovery).toEqual({ notice: 'always', orphans: 'kill' });
   });
 
   it('takes each mode of the notice', () => {
     for (const mode of RECOVERY_NOTICE_MODES) {
       expect(parseConfig(`recovery:\n  notice: ${mode}\n`).recovery.notice).toBe(mode);
     }
+  });
+
+  it('ends the orphans of a dead daemon by default, and takes each mode of recovery.orphans', () => {
+    expect(parseConfig('').recovery.orphans).toBe('kill');
+    for (const mode of RECOVERY_ORPHAN_MODES) {
+      expect(parseConfig(`recovery:\n  orphans: ${mode}\n`).recovery.orphans).toBe(mode);
+    }
+    expect(() => parseConfig('recovery:\n  orphans: maybe\n')).toThrow(/recovery\.orphans/);
   });
 
   it('rejects an unknown mode and unknown keys', () => {
