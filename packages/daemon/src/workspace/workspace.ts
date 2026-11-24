@@ -259,13 +259,22 @@ export class Workspace {
     readonly base: string;
   }): Promise<string> {
     const branch = playBranch(input.playId);
+    const path = join(this.#worktreeRoot, input.playId, 'base');
+    // A daemon killed between the creation of the worktree and its removal leaves it behind with
+    // the branch checked out (chaos A, P3). Nothing else uses the base worktree, and the branch
+    // has no commits of its own, so it goes; else the branch could never move (`moveBase`) and a
+    // repetition could not create it again.
+    for (const entry of await this.#vcs.listWorktrees(input.repo)) {
+      if (!entry.main && (entry.branch === branch || entry.path === path)) {
+        await this.#vcs.removeWorktree(entry.path, { force: true });
+      }
+    }
     try {
       return await this.#vcs.resolveRef(input.repo, branch);
     } catch (error) {
       if (!hasErrorCode(error, 'NOT_FOUND')) throw error;
     }
     // A branch needs a worktree to be created; the worktree goes away and the branch stays.
-    const path = join(this.#worktreeRoot, input.playId, 'base');
     const created = await this.#vcs.createWorktree({
       repo: input.repo,
       path,
