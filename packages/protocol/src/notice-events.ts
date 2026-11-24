@@ -94,6 +94,12 @@ const detail = z.string().min(1).max(512).nullable();
  *     says; with `off` it is only logged;
  *   - `disk_recovered`: the space came back; the daemon went back to work (the plays the full disk
  *     had stopped were resumed).
+ * - The code host of the deliveries (Phase 11, P13, N289; [proposta]):
+ *   - `delivery_without_pr`: a delivery ended with no host to open the pull request (`adapters.code_host`
+ *     is `none`, or `auto` found no GitHub remote or no credential); the work is on the local branch
+ *     (`subject`: the branch; `detail`: why there is no host);
+ *   - `code_host_unavailable`: `adapters.code_host: github` could not be built (`detail`: why), and
+ *     the deliveries end as with `none`.
  */
 export const DAEMON_NOTICE_KINDS = [
   'vault_locked',
@@ -128,6 +134,8 @@ export const DAEMON_NOTICE_KINDS = [
   'adapter_fallback',
   'disk_full',
   'disk_recovered',
+  'delivery_without_pr',
+  'code_host_unavailable',
 ] as const;
 export type DaemonNoticeKind = (typeof DAEMON_NOTICE_KINDS)[number];
 

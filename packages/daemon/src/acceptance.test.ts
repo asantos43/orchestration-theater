@@ -52,6 +52,7 @@ describe('acceptance: the daemon over the real SQLite', () => {
         'Clock:system',
         'SecretVault:override',
         'Store:sqlite',
+        'CodeHost:auto', // Phase 11, P13
         'TelemetryStore:sqlite',
       ]);
       expect(

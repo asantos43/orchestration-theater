@@ -23,6 +23,7 @@
     { "path": "../adapters/client-codex/tsconfig.src.json" },
     { "path": "../adapters/client-opencode/tsconfig.src.json" },
     { "path": "../adapters/clock-system/tsconfig.src.json" },
+    { "path": "../adapters/codehost-github/tsconfig.src.json" },
     { "path": "../adapters/platform-posix/tsconfig.src.json" },
     { "path": "../adapters/platform-windows/tsconfig.src.json" },
     { "path": "../adapters/prompts-files/tsconfig.src.json" },

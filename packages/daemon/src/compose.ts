@@ -26,6 +26,11 @@ import {
 } from '@otheater/adapter-client-opencode';
 import { SystemClock, systemClockAdapter } from '@otheater/adapter-clock-system';
 import {
+  GithubCodeHost,
+  GithubCodeHostConfigSchema,
+  ToolRunner,
+} from '@otheater/adapter-codehost-github';
+import {
   POSIX_MEMORY_PROBE_ADAPTER,
   POSIX_PROCESS_LAUNCHER_ADAPTER,
   PosixMemoryProbe,
@@ -73,6 +78,7 @@ import {
   AdapterUnavailable,
   BROWSER_SESSION_PORT_VERSION,
   CLOCK_PORT_VERSION,
+  CODE_HOST_PORT_VERSION,
   MEMORY_PROBE_PORT_VERSION,
   InvalidInput,
   isLockableSecretVault,
@@ -128,6 +134,7 @@ import { DiskGuard, diskSettingsOf } from './disk/index.js';
 import { resolveClientVersioning, type ClientVersioning } from './client-version.js';
 import { sessionConfigReader } from './catalog-reader.js';
 import { clientWarningLog, type ClientWarningLog } from './client-warnings.js';
+import { AutoCodeHost, LocalCodeHost, type CodeHostNotice, type GithubProbe } from './code-host.js';
 import { SituationLog, situationSubject, situationText, type SituationSink } from './situations.js';
 import {
   describeZodError,
@@ -158,7 +165,8 @@ export type PortName =
   | 'BrowserSession'
   | 'MemoryProbe'
   | 'UsageSource'
-  | 'TelemetryStore';
+  | 'TelemetryStore'
+  | 'CodeHost';
 
 /** What `daemon.started` and the status report about one adapter. */
 export interface AdapterRecord {
@@ -216,9 +224,8 @@ export interface ComposeOverrides {
    */
   readonly usageSource?: UsageSource;
   /**
-   * The code host the plays deliver to (P8). [proposta] There is no default: the GitHub adapter
-   * is not a dependency of the daemon package yet, so without this instance a play runs up to
-   * the delivery and the delivery fails with a clear error.
+   * The code host the plays deliver to (P8). Without it the composition builds the one
+   * `adapters.code_host` names (P13, N289; `auto` by default); tests hand in a fake.
    */
   readonly codeHost?: CodeHost;
 }
@@ -275,7 +282,11 @@ export interface Composition {
    * until the launcher with the Job Object is wired): the `browser_*` tools are not served there.
    */
   readonly browser: BrowserSession | undefined;
-  /** The code host of the deliveries, or `undefined` when none was handed in (see the override). */
+  /**
+   * The code host of the deliveries (P13, N289): the one `adapters.code_host` names, or the
+   * override. `compose` always sets it; the type allows `undefined` for the code that works
+   * without one (a test that builds the parts of the daemon by hand).
+   */
   readonly codeHost: CodeHost | undefined;
   /**
    * The `ccusage` source (P12, N118): set only when `usage.ccusage.enabled` and the adapter could
@@ -741,6 +752,143 @@ function composeUsageSource(
   }
 }
 
+/** The vault key of the GitHub token when `code_host.token_secret` is not set. [proposta] */
+export const DEFAULT_GITHUB_TOKEN_SECRET = 'code-host/github/token';
+
+interface CodeHostParts {
+  readonly config: DaemonConfig;
+  readonly overrides: ComposeOverrides;
+  readonly adapters: AdapterRecord[];
+  readonly vcs: Vcs;
+  readonly launcher: ProcessLauncher | undefined;
+  readonly vault: SecretVault;
+  readonly clock: Clock;
+  readonly logger: Logger;
+  readonly situations: SituationSink;
+}
+
+/**
+ * The code host of the deliveries (Phase 11, P13, N289), by `adapters.code_host`:
+ * - `github`: the `gh` and `git` adapter over the launcher. A token in the vault
+ *   (`code_host.token_secret`) is handed to it as `GH_TOKEN`; without one `gh` uses its own login. If
+ *   it cannot be built (no launcher) the daemon works as with `none`, with a warning and an event;
+ * - `none`: no host, the delivery ends in a local record, a warning and an event;
+ * - `fake`: a host in memory (the tests that run the whole daemon);
+ * - `auto` (default): `github` for a repository whose remote is on github.com and has a credential,
+ *   `none` for the others.
+ * The instance of `overrides.codeHost` replaces all of it. [proposta]
+ */
+async function composeCodeHost(parts: CodeHostParts): Promise<CodeHost> {
+  const { config, overrides, adapters, vcs, logger, situations } = parts;
+  if (overrides.codeHost !== undefined) {
+    adapters.push(overrideRecord('CodeHost', CODE_HOST_PORT_VERSION));
+    return overrides.codeHost;
+  }
+  const mode = config.adapters.code_host;
+  const onNotice = (text: CodeHostNotice): void => {
+    logger.warn({ kind: text.kind, subject: text.subject }, text.detail);
+    situations.record('daemon.notice', {
+      kind: text.kind,
+      subject: situationSubject(text.subject),
+      detail: situationText(text.detail),
+    });
+  };
+  const reasons = new Map<string, string>();
+  const local = new LocalCodeHost({
+    id: mode === 'fake' ? 'fake' : 'none',
+    vcs,
+    now: () => parts.clock.now(),
+    reason: (repo) => reasons.get(repo) ?? reasons.get('*') ?? 'adapters.code_host is none',
+    onNotice,
+  });
+  if (mode === 'none' || mode === 'fake') {
+    adapters.push(checkAdapterRange(local, 'CodeHost', CODE_HOST_PORT_VERSION));
+    return local;
+  }
+
+  const github = await buildGithubCodeHost(parts);
+  if (mode === 'github') {
+    if (github === undefined) {
+      const detail = 'adapters.code_host is github but the process launcher is missing';
+      logger.warn({ adapter: 'github' }, `${detail}: deliveries end without a pull request`);
+      situations.record('daemon.notice', {
+        kind: 'code_host_unavailable',
+        subject: 'github',
+        detail,
+      });
+      reasons.set('*', detail);
+      adapters.push(checkAdapterRange(local, 'CodeHost', CODE_HOST_PORT_VERSION));
+      return local;
+    }
+    adapters.push(checkAdapterRange(github.host, 'CodeHost', CODE_HOST_PORT_VERSION));
+    return github.host;
+  }
+  const auto = new AutoCodeHost({
+    github: github?.host,
+    local,
+    probe: github?.probe ?? NO_PROBE,
+    githubMissing: 'there is no process launcher on this platform',
+    reasons,
+  });
+  adapters.push(checkAdapterRange(auto, 'CodeHost', CODE_HOST_PORT_VERSION));
+  return auto;
+}
+
+const NO_PROBE: GithubProbe = {
+  remoteUrl: () => Promise.resolve(undefined),
+  hasCredential: () => Promise.resolve(false),
+};
+
+/** Shortest wait of the probes of `auto` (git remote, gh auth status); a deadline keeps a delivery from hanging. */
+const PROBE_TIMEOUT_MS = 20_000;
+
+async function buildGithubCodeHost(
+  parts: CodeHostParts,
+): Promise<{ readonly host: GithubCodeHost; readonly probe: GithubProbe } | undefined> {
+  const { config, launcher, vault, logger } = parts;
+  if (launcher === undefined) return undefined;
+  const { token_secret: tokenSecret, ...rest } = config.code_host;
+  const section = parseSection('code_host', GithubCodeHostConfigSchema, rest);
+  const secretKey = typeof tokenSecret === 'string' ? tokenSecret : DEFAULT_GITHUB_TOKEN_SECRET;
+  let token: string | undefined;
+  try {
+    token = (await vault.get(secretKey))?.reveal();
+  } catch (error) {
+    logger.warn(
+      { err: situationText(error, 200) },
+      'the GitHub token of the vault could not be read; gh uses its own login',
+    );
+  }
+  const env = token === undefined ? section.env : { ...section.env, GH_TOKEN: token };
+  const host = new GithubCodeHost({ launcher, config: { ...section, env } });
+  const runner = new ToolRunner({
+    launcher,
+    timeoutMs: Math.min(section.timeoutMs, PROBE_TIMEOUT_MS),
+    inheritEnv: section.inheritEnv,
+    env,
+  });
+  const probe: GithubProbe = {
+    remoteUrl: async (repo, remote) => {
+      try {
+        const result = await runner.run(section.gitBinary, ['remote', 'get-url', remote], repo);
+        const url = result.stdout.trim();
+        return result.code === 0 && url !== '' ? url : undefined;
+      } catch {
+        return undefined;
+      }
+    },
+    hasCredential: async (repo) => {
+      if (token !== undefined) return true;
+      try {
+        return (await runner.run(section.ghBinary, ['auth', 'status'], repo)).code === 0;
+      } catch {
+        return false;
+      }
+    },
+  };
+  return { host, probe };
+}
+
 function overrideRecord(port: PortName, portVersion: string): AdapterRecord {
   return { port, id: 'override', range: `^${portVersion}`, portVersion };
 }
@@ -945,6 +1093,17 @@ export async function compose(config: DaemonConfig, options: ComposeOptions): Pr
       overrides.browser ?? defaultBrowser(config, paths.profiles, launcher, logger, situations);
 
     const usageSource = composeUsageSource(config, paths, overrides, adapters, logger, situations);
+    const codeHost = await composeCodeHost({
+      config,
+      overrides,
+      adapters,
+      vcs,
+      launcher,
+      vault,
+      clock,
+      logger,
+      situations,
+    });
 
     // Phase 8, P1 (N54): the telemetry base opens after the situations, which it reports to. It
     // never stops the daemon: a bad file is recreated, and a base that cannot be had is `no_base`.
@@ -1007,7 +1166,7 @@ export async function compose(config: DaemonConfig, options: ComposeOptions): Pr
       transport,
       sandbox,
       browser,
-      codeHost: overrides.codeHost,
+      codeHost,
       usageSource,
       situations,
       disk,
