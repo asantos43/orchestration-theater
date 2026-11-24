@@ -125,6 +125,21 @@ describe('I2 and I8: no confirmed commit is lost', () => {
     const verdict = checkI8({ storePath, ledger });
     expect(verdict.problems).toEqual(['event 2 (scenario.system_message) repeats event 1']);
   });
+
+  it('I8 allows the same message once per start (two crashes in a row resume the same play)', () => {
+    store(
+      `INSERT INTO events VALUES
+        (1, 'daemon.recovered', NULL, NULL, '{}'),
+        (2, 'scenario.system_message', 's1', NULL, '{"t":"x"}'),
+        (3, 'daemon.recovered', NULL, NULL, '{}'),
+        (4, 'scenario.system_message', 's1', NULL, '{"t":"x"}'),
+        (5, 'scenario.system_message', 's1', NULL, '{"t":"x"}');`,
+    );
+    const ledger = new CommitLedger(join(dir, 'ledger.jsonl'));
+    expect(checkI8({ storePath, ledger }).problems).toEqual([
+      'event 5 (scenario.system_message) repeats event 4',
+    ]);
+  });
 });
 
 describe('I3: no process of the census is alive', () => {
@@ -233,6 +248,35 @@ describe('I6: the play ends and the account came out once per start', () => {
       { boots: 2 },
     );
     expect(verdict.problems).toHaveLength(4);
+  });
+
+  it('allows the same message once per start, and fails for a repeat within one start', () => {
+    const base = { timedOut: false, plays: [{ id: 'p1', state: 'DONE' }], recovered: [{}, {}] };
+    const message = { scenarioId: 's1', payload: { a: 1 } };
+    expect(
+      checkI6(
+        {
+          ...base,
+          systemMessages: [
+            { ...message, boot: 1 },
+            { ...message, boot: 2 },
+          ],
+        },
+        { boots: 2 },
+      ).ok,
+    ).toBe(true);
+    expect(
+      checkI6(
+        {
+          ...base,
+          systemMessages: [
+            { ...message, boot: 2 },
+            { ...message, boot: 2 },
+          ],
+        },
+        { boots: 2 },
+      ).problems,
+    ).toEqual(['the scenario s1 got the same message twice in one start']);
   });
 });
 
