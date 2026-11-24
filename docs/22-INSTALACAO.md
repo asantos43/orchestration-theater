@@ -159,6 +159,19 @@ Os modos que existem hoje **[V]** (`packages/daemon/src/config.ts`, esquema `Upd
 | `backup_before_migration` | `true`, `false` | `true` | Faz backup antes de uma migração de esquema. |
 | `manifest_expiry` | `enforce`, `require`, `off` | `enforce` | O que fazer com o `expires` do manifesto: `enforce` recusa um vencido, `require` recusa também um sem `expires`, `off` ignora. |
 | `health_timeout` | duração | `60s` | Quanto esperar o daemon novo responder antes de voltar. |
+| `apply.fs_retry` | `auto`, `always`, `off` | `auto` | Se o aplicador repete uma troca de arquivo que o sistema recusou por um instante (`EPERM`, `EBUSY`, `EACCES`: no Windows, o antivírus ou o indexador seguram o arquivo por alguns milissegundos). `auto` repete só no Windows; `always` repete em qualquer sistema; `off` nunca repete (a primeira recusa é a falha). |
+| `apply.fs_retry_timeout` | duração, de `1s` a `5m` **[proposta]** | `15s` | Por quanto tempo uma troca de arquivo tenta de novo. Passado o limite, o aplicador desiste com `swap_failed` e volta sozinho à versão anterior; a checagem seguinte tenta de novo. |
+
+As duas últimas ficam num grupo `apply` dentro de `updates` (N305), as outras são chaves diretas **[V]** (`UpdatesConfigSchema`):
+
+```yaml
+updates:
+  apply:
+    fs_retry: auto
+    fs_retry_timeout: 15s
+```
+
+O daemon grava os dois valores no diário da troca (`update-state.json`) e o aplicador os lê de lá; um diário de antes das chaves, sem os campos, usa `auto` e `15s` **[V: `main.test.ts`]**.
 
 Para só avisar e deixar você decidir, ponha no `config.yaml`:
 

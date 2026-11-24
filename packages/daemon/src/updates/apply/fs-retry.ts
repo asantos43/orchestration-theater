@@ -7,11 +7,13 @@
  * same call a moment later succeeds (Phase 10, P12: `rename staging\ot.exe -> ot.exe` failed with
  * `EPERM` on a runner, 14 ms after the old executable was linked to `previous\`). The swap retries
  * these, and only these, for a bounded time before it calls the step failed. [proposta]
- * Keys `updates.apply.fs_retry` (`auto`, `always`, `off`) and `updates.apply.fs_retry_timeout`.
+ * Keys `updates.apply.fs_retry` (`auto`, `always`, `off`) and `updates.apply.fs_retry_timeout`
+ * (N305): the daemon writes them in the journal of the swap and the applier reads them from there.
  */
 
 /** `auto`: on Windows only, where these errors are transient; `always`: on every system; `off`: never. */
-export type FsRetryMode = 'auto' | 'always' | 'off';
+export const FS_RETRY_MODES = ['auto', 'always', 'off'] as const;
+export type FsRetryMode = (typeof FS_RETRY_MODES)[number];
 
 export interface FsRetryPolicy {
   /** Default `auto`. */
@@ -33,8 +35,15 @@ export interface FsRetryPolicy {
     | undefined;
 }
 
-/** The default of `timeoutMs`. [proposta] key `updates.apply.fs_retry_timeout`. */
+/** The default of `timeoutMs`: key `updates.apply.fs_retry_timeout`. */
 export const FS_RETRY_TIMEOUT_MS = 15_000;
+/**
+ * The limits of `updates.apply.fs_retry_timeout`. [proposta] Less than a second is not enough for
+ * a scan of the antivirus to end; more than 5 minutes is not a transient hold, and the applier
+ * would keep the swap (with the old daemon already gone) waiting for it.
+ */
+export const FS_RETRY_TIMEOUT_MIN_MS = 1000;
+export const FS_RETRY_TIMEOUT_MAX_MS = 300_000;
 const FIRST_WAIT_MS = 25;
 const LONGEST_WAIT_MS = 500;
 const TRANSIENT_CODES: readonly string[] = ['EPERM', 'EBUSY', 'EACCES'];

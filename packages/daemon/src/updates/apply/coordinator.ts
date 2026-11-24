@@ -484,6 +484,8 @@ export class ApplyCoordinator {
         rollback: this.#o.settings.rollback,
         healthTimeoutMs: this.#o.settings.health_timeout,
         stableMs: this.#o.stableMs ?? STABLE_MS,
+        fsRetry: this.#o.settings.apply.fs_retry,
+        fsRetryTimeoutMs: this.#o.settings.apply.fs_retry_timeout,
         backup,
         reason: null,
         reported: false,

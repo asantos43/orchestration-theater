@@ -164,6 +164,9 @@ export function realApplyPorts(input: RealPortsInput): ApplyPorts {
       await endLockHolder();
     },
     probe: createHealthProbe({ dataDir: journal.dataDir }),
+    // `updates.apply.fs_retry` and `fs_retry_timeout`, as the daemon wrote them in the journal; a
+    // journal from before the keys has neither, and `retryFs` then uses `auto` and 15 s.
+    fsRetry: { mode: journal.fsRetry, timeoutMs: journal.fsRetryTimeoutMs },
     restoreBackup: async (backupDir) => {
       const lock = await InstanceLock.acquire(paths.lock, paths.lockInfo);
       try {
