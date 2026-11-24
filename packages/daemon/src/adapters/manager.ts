@@ -14,6 +14,7 @@ import {
   installAdapter,
   isInstalledSync,
   type InstallEvent,
+  type InstallOptions,
   type InstallResult,
 } from './install.js';
 import {
@@ -115,7 +116,10 @@ export interface AdapterManagerOptions {
   readonly lockOf?: ((id: AdapterId) => AdapterLock) | undefined;
   /** Passed to the installer (tests shorten the waits). */
   readonly installOptions?:
-    | { readonly retryDelayMs?: number; readonly retries?: number; readonly lockWaitMs?: number }
+    | Pick<
+        InstallOptions,
+        'retryDelayMs' | 'retries' | 'lockWaitMs' | 'lockTakeover' | 'concurrency'
+      >
     | undefined;
 }
 
