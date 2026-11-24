@@ -7,7 +7,12 @@ import { plain, waitFor } from '../ink.test-support.js';
 import { buildTuiKeymap } from '../keys/use-keymap.js';
 import { createTuiI18n, loadTuiCatalogs } from '../locale.js';
 import type { SetupFlow } from './api.js';
-import { FakeSetupApi, profileOf, requestError } from './fake-api.test-support.js';
+import {
+  FakeSetupApi,
+  FakeSetupAccounts,
+  profileOf,
+  requestError,
+} from './fake-api.test-support.js';
 import { SetupScreen, type SetupOutcome } from './setup-screen.js';
 
 /**
@@ -454,5 +459,207 @@ describe('the setup screen: the other flows', () => {
     await screen.seen('Pick the preset of the roles.');
     expect(api.calls.filter((call) => call === 'start:change_preset')).toHaveLength(2);
     expect(screen.frame()).not.toContain('Could not open');
+  });
+});
+
+describe('the setup screen: the step that adds an account (N274)', () => {
+  function withAccounts(): { api: FakeSetupApi; accounts: FakeSetupAccounts } {
+    const api = new FakeSetupApi({ profiles: PROFILES, withAccounts: true });
+    const accounts = api.accounts;
+    if (accounts === undefined) throw new Error('the fake has no accounts');
+    return { api, accounts };
+  }
+
+  async function atStep(api: FakeSetupApi): Promise<Mounted> {
+    const screen = mount('first_run', api);
+    await screen.seen('Add an account of a client');
+    return screen;
+  }
+
+  it('comes before the detection, lists the clients and can be skipped', async () => {
+    const { api, accounts } = withAccounts();
+    const screen = await atStep(api);
+    const frame = screen.frame();
+    expect(frame).toContain('Step 1 of 5');
+    expect(frame).toContain('● New account  ○ Accounts  ○ Preset  ○ Executors  ○ Review');
+    expect(frame).toContain('›claude-code  (installed)');
+    expect(frame).toContain('codex  (not found)');
+    expect(frame).toContain('continues without adding');
+    // The run of the daemon starts at the detection: the step is the screen's, not a step of it.
+    expect(frame).toContain('Esc leaves');
+    const detect = await screen.press(ENTER);
+    expect(detect).toContain('Step 2 of 5');
+    expect(detect).toContain('Pick the accounts that take part');
+    expect(detect).toContain('✓ New account  ● Accounts');
+    expect(accounts.added).toEqual([]);
+    expect(api.calls).not.toContain('submit:detect');
+  });
+
+  it('adds the account of the client under the cursor and logs in to it at once', async () => {
+    const { api, accounts } = withAccounts();
+    const screen = await atStep(api);
+    await screen.press('a');
+    expect(screen.frame()).toContain('Account of claude-code as: <name> [provider]');
+    await screen.type('work');
+    await screen.press(ENTER);
+    const done = await screen.seen('Added in this run: claude-code/work');
+    expect(accounts.added).toEqual([
+      { client: 'claude-code', name: 'work', kind: 'token_plan', provider: 'anthropic' },
+    ]);
+    // Nothing real runs: the terminal command goes to the fake.
+    expect(accounts.logins).toEqual(['start:claude-code/work']);
+    expect(accounts.ran).toEqual(['ot profile exec claude-code/work login']);
+    expect(done).toContain('The sign-in ended with code 0.');
+    // The detection lists the account just added.
+    const detect = await screen.press(ENTER);
+    expect(detect).toContain('claude-code/work');
+  });
+
+  it('takes the provider of the line when it has one, and the default of the client otherwise', async () => {
+    const { api, accounts } = withAccounts();
+    const screen = await atStep(api);
+    await screen.press(DOWN);
+    await screen.press('a');
+    await screen.type('alt openrouter');
+    await screen.press(ENTER);
+    await screen.seen('Added in this run: codex/alt');
+    expect(accounts.added[0]).toMatchObject({
+      client: 'codex',
+      name: 'alt',
+      provider: 'openrouter',
+    });
+  });
+
+  it('a line that is not <name> [provider] adds nothing', async () => {
+    const { api, accounts } = withAccounts();
+    const screen = await atStep(api);
+    await screen.press('a');
+    await screen.type('a b c');
+    await screen.press(ENTER);
+    expect(screen.frame()).toContain('Write <name> [provider].');
+    expect(accounts.added).toEqual([]);
+    expect(accounts.logins).toEqual([]);
+  });
+
+  it('a login the daemon would run itself is cancelled and run in the terminal [proposta]', async () => {
+    const { api, accounts } = withAccounts();
+    accounts.loginAnswer = 'started';
+    const screen = await atStep(api);
+    await screen.press('a');
+    await screen.type('work');
+    await screen.press(ENTER);
+    await screen.seen('The sign-in ended with code 0.');
+    expect(accounts.logins).toEqual(['start:claude-code/work', 'cancel:claude-code/work']);
+    expect(accounts.ran).toEqual(['ot profile exec claude-code/work login']);
+  });
+
+  it('does not log in to an account that already has a login', async () => {
+    const { api, accounts } = withAccounts();
+    accounts.newLogin = 'logged_in';
+    const screen = await atStep(api);
+    await screen.press('a');
+    await screen.type('work');
+    await screen.press(ENTER);
+    const frame = await screen.seen('It already has a login.');
+    expect(frame).toContain('Added in this run: claude-code/work');
+    expect(accounts.logins).toEqual([]);
+    expect(accounts.ran).toEqual([]);
+  });
+
+  it('says how to log in later when the terminal cannot run the login, and keeps the account', async () => {
+    const { api, accounts } = withAccounts();
+    accounts.failRun = new Error('no such program');
+    const screen = await atStep(api);
+    await screen.press('a');
+    await screen.type('work');
+    await screen.press(ENTER);
+    const frame = (await screen.seen('The sign-in could not run: no such program.'))
+      .replace(/[│\n]/g, ' ')
+      .replace(/\s+/g, ' ');
+    expect(frame).toContain('To try again: ot profile exec claude-code/work login');
+    expect(frame).toContain('Added in this run: claude-code/work');
+  });
+
+  it('shows what the daemon refuses and stays at the step', async () => {
+    const { api, accounts } = withAccounts();
+    accounts.failAdd = requestError('conflict', 409, 'Profile claude-code/work already exists.');
+    const screen = await atStep(api);
+    await screen.press('a');
+    await screen.type('work');
+    await screen.press(ENTER);
+    const frame = await screen.seen('The account was not added:');
+    expect(frame).toContain('Profile claude-code/work already exists.');
+    expect(frame).toContain('Add an account of a client');
+    expect(accounts.logins).toEqual([]);
+  });
+
+  it('asks before a second subscription of the same provider, and adds it with the notice accepted', async () => {
+    const { api, accounts } = withAccounts();
+    accounts.noticeFirst = true;
+    const screen = await atStep(api);
+    await screen.press('a');
+    await screen.type('work');
+    await screen.press(ENTER);
+    expect(await screen.seen('anthropic already has claude-code/main. Add another? y/n')).toContain(
+      'y confirms',
+    );
+    expect(accounts.added).toEqual([]);
+    await screen.press('y');
+    await screen.seen('Added in this run: claude-code/work');
+    expect(accounts.added[0]).toMatchObject({ name: 'work', acceptNotice: true });
+  });
+
+  it('any other key answers no to that notice', async () => {
+    const { api, accounts } = withAccounts();
+    accounts.noticeFirst = true;
+    const screen = await atStep(api);
+    await screen.press('a');
+    await screen.type('work');
+    await screen.press(ENTER);
+    await screen.seen('Add another? y/n');
+    await screen.press('n');
+    expect(accounts.added).toEqual([]);
+    expect(screen.frame()).not.toContain('Add another?');
+  });
+
+  it('back from the detection returns to the step, and Esc there leaves the run saved', async () => {
+    const { api } = withAccounts();
+    const screen = await atStep(api);
+    await screen.press(ENTER);
+    await screen.seen('Pick the accounts that take part');
+    expect(screen.frame()).not.toContain('Esc leaves');
+    await screen.press(ESC);
+    await screen.seen('Add an account of a client');
+    expect(screen.outcomes).toEqual([]);
+    await screen.press(ESC);
+    expect(screen.outcomes).toEqual(['left']);
+    expect(api.active.has('first_run')).toBe(true);
+    expect(api.calls).not.toContain('back');
+  });
+
+  it('can be repeated: a second account of another client', async () => {
+    const { api, accounts } = withAccounts();
+    const screen = await atStep(api);
+    await screen.press('a');
+    await screen.type('work');
+    await screen.press(ENTER);
+    await screen.seen('Added in this run: claude-code/work');
+    await screen.press(DOWN);
+    await screen.press('a');
+    await screen.type('home');
+    await screen.press(ENTER);
+    await screen.seen('Added in this run: claude-code/work, codex/home');
+    expect(accounts.added.map((body) => `${body.client}/${body.name}`)).toEqual([
+      'claude-code/work',
+      'codex/home',
+    ]);
+  });
+
+  it('is only in the first run, not in the other flows', async () => {
+    const { api } = withAccounts();
+    const screen = mount('add_account', api);
+    const first = await screen.seen('Pick the account to bring into the roles.');
+    expect(first).toContain('Step 1 of 3');
+    expect(first).not.toContain('New account');
   });
 });
