@@ -292,8 +292,28 @@ describe('LayoutStore changes', () => {
     expect(store.layout.collapsedSections).toEqual(['quotas', 'events']);
     store.setSectionCollapsed('quotas');
     expect(store.layout.collapsedSections).toEqual(['events']);
+    store.setSidebarWidth(44);
     store.reset();
     expect(store.layout).toEqual(defaultLayout('tui'));
+    expect('sidebarWidth' in store.layout).toBe(false);
+  });
+
+  it('keeps the width of the side bar optional, whole and saved (N277)', async () => {
+    const stub = new StubPersistence();
+    const { store, clock } = rig(stub);
+    await store.load();
+    expect(store.layout.sidebarWidth).toBeUndefined();
+    store.setSidebarWidth(40.4);
+    expect(store.layout.sidebarWidth).toBe(40);
+    await clock.advance(300);
+    await store.whenSaved();
+    expect(stub.saved.at(-1)?.sidebarWidth).toBe(40);
+    // Taking it away goes back to what the interface starts with, and that is saved too.
+    expect(store.setSidebarWidth(undefined)).toBe(true);
+    expect('sidebarWidth' in store.layout).toBe(false);
+    await clock.advance(300);
+    await store.whenSaved();
+    expect(stub.saved.at(-1)?.sidebarWidth).toBeUndefined();
   });
 
   it('keeps the width between 1 and 10000 and whole, and drops the oldest ids of a full list', async () => {
@@ -629,7 +649,7 @@ describe('LayoutStore following layout.changed (N174)', () => {
     const { store, events } = live();
     await store.load();
     events.changed(SAVED, 'x', 'web');
-    events.changed({ ...SAVED, version: 2 });
+    events.changed({ ...SAVED, version: LAYOUT_VERSION + 1 });
     events.changed({ ...SAVED, chatWidth: 0 });
     expect(store.layout).toEqual(defaultLayout('tui'));
   });

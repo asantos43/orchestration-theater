@@ -73,6 +73,10 @@ export type ScrollStep = (typeof SCROLL_STEPS)[number];
 export const DENSITIES = ['comfortable', 'compact'] as const;
 export type Density = (typeof DENSITIES)[number];
 
+/** `ui.tuiLayout.sidebarEdge` (N277): `tab` (drag and a stop of Tab with the arrows), `mouse` (drag only), `off` (fixed width). */
+export const SIDEBAR_EDGE_MODES = ['tab', 'mouse', 'off'] as const;
+export type SidebarEdgeMode = (typeof SIDEBAR_EDGE_MODES)[number];
+
 /** `ui.keymap`: the preset, whether to follow the environment, and the person's own shortcuts. */
 export interface UiKeymapSettings {
   readonly preset: KeymapPresetName;
@@ -91,6 +95,8 @@ export interface UiTuiLayoutSettings {
   readonly scrollStep: ScrollStep;
   /** `density` (N258): `comfortable` draws the margins of the mockup, `compact` the screen without them. */
   readonly density: Density;
+  /** `sidebarEdge` (N277): how the border between the side bar and the chat is adjusted. */
+  readonly sidebarEdge: SidebarEdgeMode;
 }
 
 export const TRAJECTORY_OPEN_MODES = ['none', 'last', 'all'] as const;
@@ -241,6 +247,7 @@ export const DEFAULT_TUI_LAYOUT: UiTuiLayoutSettings = {
   chatStep: 2,
   scrollStep: 'half',
   density: 'comfortable',
+  sidebarEdge: 'tab',
 };
 
 export const DEFAULT_TRAJECTORIES: UiTrajectoriesSettings = {
@@ -424,6 +431,11 @@ export function parseUiSettings(ui: unknown): UiSettings {
         DEFAULT_TUI_LAYOUT.scrollStep,
       ),
       density: oneOf(field(tuiLayout, 'density'), DENSITIES, DEFAULT_TUI_LAYOUT.density),
+      sidebarEdge: oneOf(
+        field(tuiLayout, 'sidebarEdge'),
+        SIDEBAR_EDGE_MODES,
+        DEFAULT_TUI_LAYOUT.sidebarEdge,
+      ),
     },
     trajectories: {
       open: oneOf(field(trajectories, 'open'), TRAJECTORY_OPEN_MODES, DEFAULT_TRAJECTORIES.open),

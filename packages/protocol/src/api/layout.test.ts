@@ -26,17 +26,25 @@ describe('LayoutPreferencesSchema', () => {
 
   it('refuses another version, a bad width, a wrong type and extra fields', () => {
     const good = {
-      version: 1,
+      version: 2,
       sidebarCollapsed: true,
       chatWidth: 80,
       openTabs: ['overview', 'usage'],
       collapsedSections: ['scenarios'],
     };
     expect(LayoutPreferencesSchema.parse(good)).toEqual(good);
+    expect(LayoutPreferencesSchema.parse({ ...good, sidebarWidth: 36 })).toEqual({
+      ...good,
+      sidebarWidth: 36,
+    });
     for (const bad of [
-      { ...good, version: 2 },
+      { ...good, version: 1 },
+      { ...good, version: 3 },
       { ...good, chatWidth: 0 },
       { ...good, chatWidth: 1.5 },
+      { ...good, sidebarWidth: 0 },
+      { ...good, sidebarWidth: 30.5 },
+      { ...good, sidebarWidth: '30' },
       { ...good, sidebarCollapsed: 'yes' },
       { ...good, openTabs: [''] },
       { ...good, extra: 1 },
@@ -64,7 +72,7 @@ describe('the interface and the routes', () => {
 
 describe('readLayout: what a record of any age becomes', () => {
   const good = {
-    version: 1,
+    version: 2,
     sidebarCollapsed: true,
     chatWidth: 80,
     openTabs: ['overview', 'usage'],
@@ -78,11 +86,11 @@ describe('readLayout: what a record of any age becomes', () => {
 
   it('replaces by the default of the interface what it cannot use, and says why', () => {
     const cases: [unknown, string, number | null][] = [
-      [{ ...good, version: 2 }, 'newer_version', 2],
+      [{ ...good, version: 3 }, 'newer_version', 3],
       [{ ...good, version: 0 }, 'invalid', null],
       [{ ...good, version: 1.5 }, 'invalid', null],
-      [{ ...good, chatWidth: 0 }, 'invalid', 1],
-      [{ ...good, extra: true }, 'invalid', 1],
+      [{ ...good, chatWidth: 0 }, 'invalid', 2],
+      [{ ...good, extra: true }, 'invalid', 2],
       [{ sidebarCollapsed: true }, 'invalid', null],
       [['not', 'a', 'record'], 'invalid', null],
       [null, 'invalid', null],
@@ -148,8 +156,50 @@ describe('readLayout: what a record of any age becomes', () => {
     });
   });
 
-  it('has no step today: version 1 is the first, so the table is empty', () => {
-    expect(LAYOUT_VERSION).toBe(1);
-    expect(Object.keys(LAYOUT_MIGRATIONS)).toEqual([]);
+  it('has one step today: 1 to 2 (N277), which adds the optional width of the side bar', () => {
+    expect(LAYOUT_VERSION).toBe(2);
+    expect(Object.keys(LAYOUT_MIGRATIONS)).toEqual(['1']);
+  });
+
+  it('migrates a version 1 record: every field is kept, the width of the side bar stays absent', () => {
+    const { version, ...fields } = good;
+    expect(version).toBe(LAYOUT_VERSION);
+    const old = { version: 1, ...fields };
+    const reading = readLayout('tui', old);
+    expect(reading).toEqual({
+      outcome: 'migrated',
+      layout: { ...fields, version: 2 },
+      fromVersion: 1,
+    });
+    expect(reading.layout.sidebarWidth).toBeUndefined();
+    expect(readLayoutText('web', JSON.stringify(old))).toMatchObject({
+      outcome: 'migrated',
+      fromVersion: 1,
+    });
+  });
+
+  it('migrates a version 1 record that is not valid to the default, as old_version', () => {
+    const { version, ...fields } = good;
+    expect(version).toBe(LAYOUT_VERSION);
+    expect(readLayout('tui', { version: 1, ...fields, chatWidth: 0 })).toEqual({
+      outcome: 'replaced',
+      layout: defaultLayout('tui'),
+      reason: 'old_version',
+      fromVersion: 1,
+    });
+  });
+
+  it('keeps the width of the side bar when it is there, and refuses one that does not fit', () => {
+    expect(readLayout('tui', { ...good, sidebarWidth: 44 })).toEqual({
+      outcome: 'ok',
+      layout: { ...good, sidebarWidth: 44 },
+    });
+    expect(readLayout('tui', { ...good, sidebarWidth: 0 })).toMatchObject({ outcome: 'replaced' });
+  });
+
+  it('has no width of the side bar in the default of any interface', () => {
+    for (const layoutInterface of LAYOUT_INTERFACES) {
+      expect(defaultLayout(layoutInterface).sidebarWidth).toBeUndefined();
+    }
   });
 });

@@ -64,6 +64,10 @@
       "narrow": "Estreitar o chat (borda com o foco)",
       "widen": "Alargar o chat (borda com o foco)"
     },
+    "sidebarEdge": {
+      "narrow": "Estreitar a barra lateral (borda com o foco)",
+      "widen": "Alargar a barra lateral (borda com o foco)"
+    },
     "sidebar": {
       "up": "Subir na barra lateral",
       "down": "Descer na barra lateral",
@@ -201,6 +205,9 @@
     "edge": {
       "resize": "Largura"
     },
+    "sidebarEdge": {
+      "resize": "Largura da barra"
+    },
     "sidebar": {
       "activate": "Abrir",
       "newProject": "Novo projeto",
@@ -315,6 +322,7 @@
     },
     "sidebar": {
       "title": "Navegação",
+      "widthLabel": "◂ {{cols}} col ▸",
       "scenarios": "CENÁRIOS",
       "subscriptions": "ASSINATURAS",
       "finished": "TERMINADAS",
