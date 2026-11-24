@@ -696,7 +696,7 @@ async function rollbackCase(r: Run): Promise<string> {
   if (!exeVersion.includes(versionN))
     throw new Error(`the executable after the rollback says "${exeVersion}"`);
   rmSync(marker, { force: true });
-  return `${wrong}: rolled back to ${versionN} (reason ${String(rolled.reason)}), backup ${path.basename(rolled.backup)} restored, new pid ${String(status.pid)}`;
+  return `${wrong}: rolled back to ${versionN} (reason ${rolled.reason}), backup ${path.basename(rolled.backup)} restored, new pid ${String(status.pid)}`;
 }
 
 /** The end of a text file, or undefined when it cannot be read. */
