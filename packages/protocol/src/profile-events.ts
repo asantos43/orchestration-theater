@@ -214,3 +214,21 @@ export const ProfileLoginFailedPayloadSchema = z.strictObject({
   reason: z.enum(PROFILE_LOGIN_FAILURES),
   durationMs: z.number().int().nonnegative(),
 });
+
+/**
+ * Why `ot profile add` did not start the login of the new account although `profiles.add.login` is
+ * `auto` (N273, 2026-11-22): `no_terminal` (the input or the output is not a terminal) or `json`
+ * (`--json` keeps the client's own text out of the JSON).
+ */
+export const PROFILE_LOGIN_SKIPPED_REASONS = ['no_terminal', 'json'] as const;
+
+/**
+ * `profile.login.skipped` (N273, [proposta]): `ot profile add` made a subscription account with no
+ * login and, with `profiles.add.login: auto`, did not start the login because there was no
+ * terminal. The person got the line that says so and the command that does the login
+ * (`ot profile exec <id> login`); the event is for the hooks and the plugins. Never a path.
+ */
+export const ProfileLoginSkippedPayloadSchema = z.strictObject({
+  profileId,
+  reason: z.enum(PROFILE_LOGIN_SKIPPED_REASONS),
+});
