@@ -1134,7 +1134,8 @@
       "account": "Conta",
       "preset": "Preset",
       "executors": "Executores",
-      "review": "Revisão"
+      "review": "Revisão",
+      "accounts": "Nova conta"
     },
     "loading": "Lendo o assistente...",
     "loadFailed": "Não deu para abrir o assistente: {{message}}",
@@ -1148,7 +1149,8 @@
       "account": "Escolha a conta que entra nos papéis.",
       "preset": "Escolha o preset dos papéis.",
       "executors": "Cadastre Executores por API ou modelo local e defina o teto de gasto de cada conta de API.",
-      "review": "Isto é o que será gravado. Nada é gravado antes de você confirmar."
+      "review": "Isto é o que será gravado. Nada é gravado antes de você confirmar.",
+      "accounts": "Adicione uma conta de um cliente (uma assinatura) e entre nela agora, ou continue sem nenhuma: dá para adicionar contas depois na aba Configurações ou com ot profile add."
     },
     "detect": {
       "clients": "Clientes nesta máquina: {{list}}",
@@ -1187,7 +1189,10 @@
       "hintConfirm": "s confirma, qualquer outra tecla cancela",
       "yes": "s",
       "badExecutor": "Escreva <conta> <modelo> [esforço].",
-      "badBudget": "Escreva <dia> <mês>: números acima de zero, ou - para sem teto."
+      "badBudget": "Escreva <dia> <mês>: números acima de zero, ou - para sem teto.",
+      "account": "Conta de {{client}} como: {{form}}",
+      "badAccount": "Escreva {{form}}.",
+      "confirmNotice": "{{provider}} já tem {{existing}}. Adicionar outra? s/n"
     },
     "review": {
       "preset": "Preset: {{preset}}",
@@ -1217,7 +1222,22 @@
       "cancelled": "Execução cancelada. Nada foi gravado.",
       "close": "{{key}} fecha o assistente."
     },
-    "gateFailed": "Não deu para checar se a primeira execução é necessária: {{message}}"
+    "gateFailed": "Não deu para checar se a primeira execução é necessária: {{message}}",
+    "accounts": {
+      "clients": "Clientes",
+      "row": "{{client}}{{state}}",
+      "installed": "  (instalado)",
+      "missing": "  (não encontrado)",
+      "added": "Adicionadas nesta execução: {{list}}",
+      "keys": "{{add}} adiciona uma conta do cliente sob o cursor, {{next}} continua sem adicionar.",
+      "result": {
+        "added": "Conta adicionada: {{profile}}.",
+        "loggedIn": "Conta adicionada: {{profile}}. Ela já tem login.",
+        "loginDone": "Conta adicionada: {{profile}}. O login terminou com o código {{code}}.",
+        "loginFailed": "Conta adicionada: {{profile}}. O login não pôde rodar: {{message}}. Para tentar de novo: {{command}}",
+        "failed": "A conta não foi adicionada: {{message}}"
+      }
+    }
   },
   "plugins": {
     "scope": {

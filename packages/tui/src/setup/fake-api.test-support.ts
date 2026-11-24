@@ -2,6 +2,8 @@
 // Shared by the tests of the setup screen only (excluded from the build of the package).
 import { ApiRequestError } from '@otheater/client';
 import type {
+  AddProfileBody,
+  AddProfileResult,
   SetupDetectedProfile,
   SetupOverview,
   SetupPlan,
@@ -9,8 +11,9 @@ import type {
   SetupRunView,
   SetupStepId,
   SetupStepSubmission,
+  StartProfileLoginResult,
 } from '@otheater/protocol';
-import type { SetupApi, SetupFlow } from './api.js';
+import type { SetupAccounts, SetupApi, SetupFlow } from './api.js';
 
 /**
  * A setup API in memory that behaves as the daemon of P4 does where the screen can tell: one run in
@@ -48,8 +51,95 @@ export function requestError(code: string, status: number, message: string): Api
   });
 }
 
+/**
+ * The routes of the step that adds an account, in memory (N274): a new account joins the accounts
+ * the detection lists, the login is the answer the test chose, and the command that would run in
+ * the terminal is recorded and never run: no client, no login, nothing real.
+ */
+export class FakeSetupAccounts implements SetupAccounts {
+  readonly added: AddProfileBody[] = [];
+  /** `start:<id>` and `cancel:<id>`, in order. */
+  readonly logins: string[] = [];
+  /** The commands handed to the terminal, in order. */
+  readonly ran: string[] = [];
+  /** The first add of a provider answers with the notice (a second subscription of it). */
+  noticeFirst = false;
+  /** What the client says about the new account. */
+  newLogin: 'logged_in' | 'logged_out' | 'unknown' = 'logged_out';
+  /** The answer of the start of the login: the daemon runs it (`started`) or the terminal does (`local`). */
+  loginAnswer: 'started' | 'local' = 'local';
+  exitCode: number | null = 0;
+  failAdd: Error | undefined;
+  failRun: Error | undefined;
+  /** What the terminal showed while the command ran (a test sets it to see the mouse go off and on). */
+  onRun: (command: string) => void = () => undefined;
+  readonly #host: FakeSetupApi;
+
+  constructor(host: FakeSetupApi) {
+    this.#host = host;
+  }
+
+  addProfile(body: AddProfileBody): Promise<AddProfileResult> {
+    if (this.failAdd !== undefined) return Promise.reject(this.failAdd);
+    if (this.noticeFirst && body.acceptNotice !== true) {
+      return Promise.resolve({
+        status: 'needs_notice',
+        notice: { provider: body.provider, existing: ['claude-code/main'], mode: 'once' },
+      } as AddProfileResult);
+    }
+    this.added.push(body);
+    const profileId = `${body.client}/${body.name}`;
+    this.#host.profiles = [...this.#host.profiles, profileOf(profileId, { login: this.newLogin })];
+    this.#host.refreshRuns();
+    return Promise.resolve({
+      status: 'added',
+      profile: { id: profileId, client: body.client, name: body.name, kind: body.kind },
+      hasSecret: false,
+      secretBackend: null,
+      login: this.newLogin,
+      notice: null,
+    } as unknown as AddProfileResult);
+  }
+
+  startLogin(profileId: string): Promise<StartProfileLoginResult> {
+    this.logins.push(`start:${profileId}`);
+    return Promise.resolve(
+      this.loginAnswer === 'local'
+        ? {
+            status: 'local',
+            profileId,
+            mode: 'terminal',
+            command: `ot profile exec ${profileId} login`,
+          }
+        : {
+            status: 'started',
+            profileId,
+            mode: 'browser',
+            url: 'https://login.example.test/oauth',
+            code: null,
+            takesCode: false,
+          },
+    );
+  }
+
+  cancelLogin(profileId: string): Promise<void> {
+    this.logins.push(`cancel:${profileId}`);
+    return Promise.resolve();
+  }
+
+  runLocal = (command: string): Promise<number | null> => {
+    this.ran.push(command);
+    this.onRun(command);
+    return this.failRun === undefined
+      ? Promise.resolve(this.exitCode)
+      : Promise.reject(this.failRun);
+  };
+}
+
 export interface FakeSetupOptions {
   readonly profiles?: readonly SetupDetectedProfile[];
+  /** Gives the API the routes of the step that adds an account (`accounts`). */
+  readonly withAccounts?: boolean;
   readonly firstRunNeeded?: boolean;
   readonly current?: 'quality' | 'balanced' | 'economical' | null;
 }
@@ -70,10 +160,13 @@ export class FakeSetupApi implements SetupApi {
   failNext: Error | undefined;
   /** An `overview` that never answers (a daemon that hangs). */
   hang = false;
+  /** The routes of the step that adds an account; absent unless the test asked for them. */
+  readonly accounts: FakeSetupAccounts | undefined;
   #next = 1;
 
   constructor(options: FakeSetupOptions = {}) {
     this.profiles = [...(options.profiles ?? [])];
+    this.accounts = options.withAccounts === true ? new FakeSetupAccounts(this) : undefined;
     this.firstRunNeeded = options.firstRunNeeded ?? true;
     this.current = options.current ?? null;
   }
@@ -90,6 +183,21 @@ export class FakeSetupApi implements SetupApi {
         lastFinished: null,
       })),
     }));
+  }
+
+  /** The runs in progress list the accounts as they are now (the daemon reads them at each view). */
+  refreshRuns(): void {
+    for (const entry of this.active.values()) {
+      entry.run = this.#view(
+        entry.run.flow,
+        entry.run.steps,
+        entry.run.step,
+        'active',
+        null,
+        entry.run.id,
+        entry,
+      );
+    }
   }
 
   start(flow: SetupFlow): Promise<SetupRunView> {

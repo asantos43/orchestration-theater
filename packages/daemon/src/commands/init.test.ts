@@ -131,6 +131,8 @@ describe('ot init --no-tui', () => {
     const first = await ot(['init', '--no-tui'], manager, {}, { ...real, find: onlyClaude });
     expect(first.code).toBe(0);
     expect(first.err).toEqual([]);
+    // N274: the summary shows the command that adds an account (the step of the assistant needs the interface).
+    expect(first.out.join('\n')).toMatch(/ot profile add <client> <name> --login/);
     expect(manager.calls).toEqual(['status', 'install', 'start']);
     expect(manager.installed).toBe(true);
     // The service is installed without starting it: the daemon comes up in step 2.
@@ -365,6 +367,8 @@ describe('ot init with the interface', () => {
     expect(result.code).toBe(0);
     expect(opened).toEqual([]);
     expect(result.out.join('\n')).toMatch(/no terminal[\s\S]*ot tui/i);
+    // N274: no assistant here, so the summary shows the command that adds an account.
+    expect(result.out.join('\n')).toMatch(/ot profile add <client> <name> --login/);
   });
 
   it('--no-tui does not open it even in a terminal', async () => {

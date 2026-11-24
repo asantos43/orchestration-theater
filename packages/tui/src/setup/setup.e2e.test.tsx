@@ -72,6 +72,12 @@ async function key(app: RenderedApp, sequence: string): Promise<string> {
   return app.settle();
 }
 
+/** The first run opens at the step that adds an account (N274): skip it, to the detection. */
+async function skipAccounts(app: RenderedApp): Promise<void> {
+  await app.waitForText('Add an account of a client');
+  await key(app, ENTER);
+}
+
 describe('the setup assistant of the TUI, with a daemon', () => {
   it('goes from scratch to the confirmation with the keys alone, and writes the configuration', async () => {
     const { daemon } = await startDaemon();
@@ -81,9 +87,11 @@ describe('the setup assistant of the TUI, with a daemon', () => {
       await watcher.daemon.stores.start();
       const app = await openTui(daemon);
       // No configuration: the TUI opens straight in the assistant, with no key pressed.
-      const detect = await app.waitForText('Setup assistant: first run');
+      const first = await app.waitForText('Setup assistant: first run');
+      expect(first).not.toContain('SCENARIOS');
+      expect(await app.waitForText('Add an account of a client')).toContain('Step 1 of 5');
+      await skipAccounts(app);
       await app.waitForText('Pick the accounts that take part');
-      expect(detect).not.toContain('SCENARIOS');
       expect(app.frame()).toContain('claude-code/main');
       expect(app.frame()).toContain('codex/work');
       expect(await configFile(daemon)).toBe('');
@@ -124,6 +132,7 @@ describe('the setup assistant of the TUI, with a daemon', () => {
   it('closing the TUI midway and opening it again returns to the same step', async () => {
     const { daemon } = await startDaemon();
     const first = await openTui(daemon);
+    await skipAccounts(first);
     await first.waitForText('Pick the accounts that take part');
     // Take the second account out of the run, then answer: the daemon holds that answer.
     await key(first, 'j');
@@ -138,7 +147,7 @@ describe('the setup assistant of the TUI, with a daemon', () => {
     const resumed = await second.waitForText(
       'Resuming the run you left midway, at the step Executors.',
     );
-    expect(resumed).toContain('Step 3 of 4');
+    expect(resumed).toContain('Step 4 of 5');
     // Back reaches the steps the daemon kept, each one drawn again from the daemon.
     await key(second, ESC);
     await second.waitForText('Pick the preset of the roles.');
@@ -160,7 +169,7 @@ describe('the setup assistant of the TUI, with a daemon', () => {
     const { daemon } = await startDaemon();
     const app = await openTui(daemon);
     // Leave the first run midway: the run stays, and the layout is the one under it.
-    await app.waitForText('Pick the accounts that take part');
+    await app.waitForText('Add an account of a client');
     await key(app, ESC);
     await app.waitForText('SCENARIOS');
     app.press('\x1b[15~');
@@ -187,6 +196,7 @@ describe('the setup assistant of the TUI, with a daemon', () => {
   it('shows the daemon error as the daemon said it', async () => {
     const { daemon } = await startDaemon();
     const app = await openTui(daemon);
+    await skipAccounts(app);
     await app.waitForText('Pick the accounts that take part');
     await key(app, ENTER);
     await app.waitForText('Pick the preset of the roles.');
