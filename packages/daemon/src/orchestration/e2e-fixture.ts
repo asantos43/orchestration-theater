@@ -157,6 +157,11 @@ export interface PlayHarnessOptions {
   readonly conventions?: 'ask' | 'detect' | 'off';
   /** The telemetry store the daemon runs with (P4): the test reads the spans from it. */
   readonly telemetry?: TelemetryStore;
+  /**
+   * P13 (N289): run the daemon with the code host the configuration builds (`adapters.code_host`)
+   * instead of the fake handed in through `overrides`. The test reads it from `daemon.codeHost`.
+   */
+  readonly codeHostMode?: 'fake' | 'none';
   /** The logger of the daemon (default: silent): a test that checks what the daemon logs hands in its own. */
   readonly logger?: Logger;
   /**
@@ -198,6 +203,7 @@ limits:
 ${options.limits ?? ''}
 project:
   conventions: ${options.conventions ?? 'detect'}
+${options.codeHostMode === undefined ? '' : `adapters:\n  code_host: ${options.codeHostMode}`}
 orchestration:
   executor:
     client: fake
@@ -214,7 +220,7 @@ ${options.extra ?? ''}
       clock: fakes.clock,
       vault: fakes.vault,
       launcher,
-      codeHost: realHead,
+      ...(options.codeHostMode === undefined ? { codeHost: realHead } : {}),
       ...(options.telemetry === undefined ? {} : { telemetry: options.telemetry }),
     },
     clients: (parts) => [
