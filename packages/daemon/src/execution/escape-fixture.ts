@@ -21,7 +21,7 @@ import { defaultLauncher, productionClients } from '../compose.js';
 import { parseConfig, type DaemonConfig } from '../config.js';
 import { startDaemon, type DaemonHandle } from '../daemon.js';
 import { createSilentLogger } from '../logger.js';
-import { makeTempDataDir } from '../test-helpers.js';
+import { makeTempDataDir, NO_CLIENTS } from '../test-helpers.js';
 import { makeRepo } from './attempt-fixture.js';
 import type { AttemptSpec } from './attempt-runner.js';
 
@@ -159,7 +159,7 @@ export async function withFakeDaemon(
     config,
     overrides: { clock: clock(), vault: vault(), launcher: real },
     clients: (parts) => [
-      ...productionClients(config)(parts),
+      ...productionClients(config, NO_CLIENTS)(parts),
       client({
         parts,
         unenforced: config.security.unenforced,

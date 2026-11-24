@@ -29,7 +29,7 @@ import { defaultLauncher, productionClients } from '../compose.js';
 import { parseConfig } from '../config.js';
 import { startDaemon, type DaemonHandle } from '../daemon.js';
 import { createSilentLogger, type Logger } from '../logger.js';
-import { makeTempDataDir } from '../test-helpers.js';
+import { makeTempDataDir, NO_CLIENTS } from '../test-helpers.js';
 import { makeWorkspaceRig, type WorkspaceRig } from '../workspace/workspace-fixture.js';
 import type { ProducerChannel } from './channel.js';
 
@@ -218,7 +218,7 @@ ${options.extra ?? ''}
       ...(options.telemetry === undefined ? {} : { telemetry: options.telemetry }),
     },
     clients: (parts) => [
-      ...productionClients(config)(parts),
+      ...productionClients(config, NO_CLIENTS)(parts),
       ...[
         fakes.client(
           parts.launcher,
