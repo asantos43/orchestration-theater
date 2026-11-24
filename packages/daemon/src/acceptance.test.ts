@@ -29,6 +29,7 @@ async function allEvents(store: {
   return store.events.readFrom(0, 10_000);
 }
 
+// It starts several daemons over real SQLite: on the Windows runner of the CI it passed the 30 s.
 describe('acceptance: the daemon over the real SQLite', () => {
   it('starts, refuses a twin, copies under a writer, restores the copy, and starts over fakes', async () => {
     const tmp = await makeTempDataDir();
@@ -176,5 +177,5 @@ describe('acceptance: the daemon over the real SQLite', () => {
     } finally {
       await tmp.dispose();
     }
-  });
+  }, 90_000);
 });
