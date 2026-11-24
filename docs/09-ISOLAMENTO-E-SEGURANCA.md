@@ -118,3 +118,70 @@ Sem contêiner, essas regras e a camada 3 são a defesa.
 | — | Contas sinalizadas por uso automatizado | [07](07-ASSINATURAS-E-TERMOS.md); troca de Executor sem reescrever o núcleo |
 
 Os dois últimos riscos vêm da conversa de 2026-11-08 e não estão na tabela da arquitetura. A injeção pelo navegador compartilhado está no R17.
+
+## Revisão da Fase 11 (P8, 2026-11-23)
+
+Revisão da API local e das cascas (P8b), mais a cadeia de suprimento (P8a, outro PR). Método: leitura do código, testes adversariais escritos à mão e a skill `/security-review` sobre a branch. Marcas: **[V]** reproduzido ou confirmado por teste local; **[S]** fonte secundária; **[N]** suspeita ou limite aceito, sem confirmação. As chaves novas são de reinício: valem na próxima subida do daemon (ver "Chaves novas"). O `api.remote` (VPN, proxy) ficou de fora: é da Fase 12.
+
+### Achados e consertos
+
+| # | Área | Achado | Gravidade | Estado | Chave | Teste |
+|---|---|---|---|---|---|---|
+| 1 | API | Anexo por `path` lia qualquer arquivo legível (`~/.ssh/...`) e o entregava a um modelo **[V]** | alta | consertado (N287) | `security.attachment_roots` | `api/security-review.test.ts` |
+| 2 | API | Rotação do token: um pedido que já tinha passado pelo portão terminava com o token velho, e tickets e soquetes do chat sobreviviam **[V]** | média | consertado (época do token) | — | `security-review.test.ts`, `chat-tickets.test.ts` |
+| 3 | API | Tickets do chat sem teto, com limpeza que varria todos **[V]** | média | consertado (teto e limpeza barata) | `api.chat.max_tickets` | `chat-tickets.test.ts`, `security-review.test.ts` |
+| 4 | API | JSON profundo derrubava o `JSON.parse` (500) no corpo REST e no quadro do chat **[V]** | média | consertado (400 `json_too_deep`; no chat, quadro de erro) | `api.max_json_depth` | `security-review.test.ts` |
+| 5 | API | Mensagens de erro e `details` com caminho absoluto (diz quem é o usuário e como a máquina é) **[V]** | média | consertado (`<path>`; o log guarda a mensagem inteira) | — | `security-review.test.ts` |
+| 6 | API | Arquivo de token e pasta de dados: escrita com nome temporário previsível e seguindo link; token antigo com modo frouxo era reaproveitado; pasta de dados já existente com bits de grupo/outros **[V]** | média | consertado (`O_EXCL`, `O_NOFOLLOW`, `0600`, só reaproveita arquivo regular privado; pasta `0700`) | — | `security-review.test.ts`, `paths.test.ts` |
+| 7 | API | Soquetes do chat, fila de mensagens e tabela de idempotência sem teto **[V]** | baixa | consertado | `api.chat.max_sockets`, `api.chat.max_queued_messages`, `api.idempotency_max_entries` | `security-review.test.ts`, `idempotency.test.ts` |
+| 8 | API | O redator do log não cobria cabeçalhos nem chaves de segredo aninhadas **[V]** | média | consertado | — | `logger.test.ts` |
+| 9 | Cascas | `confineArgv` não olhava a opção curta colada (`-f/etc/passwd`) nem `--opt=valor` **[V]** | alta | consertado | — | `core/src/shell-tools/{confine,argv}.test.ts` |
+| 10 | Cascas | `node -e`, `-p`, `-r`, `--import`... rodavam código que não estava em arquivo da worktree **[V]** | alta | consertado (N290) | `shell.node_inline` | `tools/command-tools.test.ts`, `core/.../argv.test.ts` |
+| 11 | Cascas | `http_get` liberava um domínio permitido que resolvia para `127.0.0.1`, rede privada ou metadados de nuvem **[V]** | alta | consertado (resolve o nome e recusa endereço privado; com `tools.http.redirects: follow_allowed`, a cada salto) | `shell.http_get.block_private` | `tools/private-address.test.ts`, `tools/http-get.test.ts` |
+| 12 | Suprimento | Chave pública de verificação embutida no pacote **[V]** | média | P8a, feito | — | P8a |
+| 13 | Suprimento | `install.sh`: o manifesto assinado em Ed25519 (`.sig`) e em SSHSIG (`.sshsig`, namespace `otheater-release`) é conferido antes de ler o conteúdo, por openssl 3, depois `ssh-keygen`, depois o SHA-256 fixado no script; sem nenhum verificador, recusa (código 3). O executável baixado nunca confere a si mesmo (N288). `OT_INSTALL_VERIFIER=auto\|openssl\|ssh-keygen\|pinned` escolhe o verificador **[V]** | alta | P8a, feito (N288) | — | P8a |
+| 14 | Suprimento | Troca da chave ou do `openssl` no `install.sh` (variáveis do `wget` e da raiz de confiança) só com `OT_INSTALL_ALLOW_KEY_OVERRIDE=1` **[V]** | média | P8a, feito | — | P8a |
+| 15 | Suprimento | Restauração de uma versão guardada por execução anterior: passa de novo por canal, `minVersion` e validade, com a configuração e o relógio de agora, ao restaurar e ao aplicar (`updates/policy.ts`) **[V]** | média | P8a, feito | — | P8a |
+| 16 | Suprimento | Diário do aplicador sem autenticação: agora guarda `manifestSha256`, e a prova é o manifesto assinado ao lado do executável. Sem prova válida (SHA, assinatura, versão, SHA do ativo) nada é movido e sai o aviso `update_untrusted_journal`; `exe` e `backup` ficam confinados **[V]** | alta | P8a, feito | — | P8a |
+| 17 | Suprimento | Validade do manifesto: campo opcional `expires`, gerado pelo `assemble` com `manifestValidityDays`; o `install.sh` recusa vencido **[V]** | média | P8a, feito | `updates.manifest_expiry`: `enforce` (padrão; recusa vencido, aceita sem `expires` e avisa `update_no_expiry`), `require`, `off` | P8a |
+| 18 | Suprimento | Download de adaptadores (`adapters/install`): redirecionamento só para `clients.adapters.redirect_hosts` e até `redirect_max` (3); o `tar` recusa entradas duplicadas e mais de `tar_max_entries` (20000) **[V]** | média | P8a, feito | `clients.adapters.redirect_hosts`, `redirect_max`, `tar_max_entries` | P8a |
+| 19 | Suprimento | `verify credentials` é uma verificação do lint, **não** uma garantia de que não há credencial **[V]** | baixa | P8a, aceito (documentado) | — | P8a |
+
+As linhas 12 a 19 são do PR do P8a (branch `fase11/p8a-cadeia`); o teste e o estado de cada uma estão lá. Fora do escopo do P8a **[N]**: a repetição de um manifesto antigo e ainda válido (rollback dentro da validade); a rotação da chave; `from` e `dataDir` do diário, que não são autenticados; a presença do `openssl@3` nas imagens macOS da CI, não confirmada.
+
+### Chaves novas
+
+| Chave | Modos | Padrão |
+|---|---|---|
+| `security.attachment_roots.mode` | `list`, `any` | `list` |
+| `security.attachment_roots.defaults` | subconjunto de `project`, `worktrees`, `documents`, `downloads` | os quatro |
+| `security.attachment_roots.add` | lista de caminhos absolutos ou com `~` | vazia |
+| `shell.node_inline` | `deny`, `allow` | `deny` |
+| `shell.http_get.block_private` | `on`, `off` | `on` |
+| `api.max_json_depth` | inteiro >= 1 | 64 |
+| `api.chat.max_tickets` / `max_sockets` / `max_queued_messages` | inteiro >= 1 | 64 / 32 / 256 |
+| `api.idempotency_max_entries` | inteiro >= 1 | 10000 |
+
+O bloco `shell` vale só na configuração global (não há `tools.*` por projeto para estas duas chaves). Testes das chaves: `config.test.ts`, bloco "the security review of Phase 11".
+
+### Decisões do dono, 2026-11-23
+
+- **N287, anexo por caminho.** Com `list`, só entra o arquivo cujo `realpath` está sob uma das raízes: o projeto, as worktrees do cenário, Documentos e Downloads do usuário (resolvidos por plataforma: `XDG_*` e `user-dirs.dirs` no Linux, `~/Documents` no macOS, `%USERPROFILE%` no Windows) e o que o usuário puser em `add`. As raízes também passam por `realpath`; a referência é conferida de novo na leitura. Uma pasta do XDG que seja a própria home ou a raiz do disco é ignorada [V].
+- **N290, `node` inline.** Com `deny`, o `node` recusa `-e`, `--eval`, `-p`, `--print`, `-r`, `--require`, `--import` e `--input-type`, também colados e na forma `--opção=valor` (e `-pe`). O que vem depois de `--` é do script. **O que isso não resolve:** `node script.js` e os scripts do projeto (`npm test`, `pnpm build`) continuam rodando código arbitrário que o agente pôde escrever na worktree; quem segura isso é o sandbox (camada 3), não a lista de bandeiras. Com `allow`, vale só o sandbox.
+
+### O que ficou [N] ou fora
+
+- **[N] DNS rebinding no `http_get`:** o nome é resolvido para conferir e de novo para conectar; um servidor que troque a resposta entre as duas passa. Fechar pede conectar no IP já conferido (com SNI do nome).
+- **[N] Opções curtas agrupadas** com valor colado (`-abf/etc/passwd`) não são abertas; só a opção curta única colada e o `--opção=valor`.
+- **[N] `node script.js -p`** é recusado no modo `deny` (a opção é do script); o contorno é `node -- script.js -p`.
+- **[N] Windows:** pastas conhecidas realocadas (OneDrive) não são perguntadas ao sistema (use `add`); os modos de arquivo POSIX não existem e a ACL não foi revista; a ordem de acesso ao arquivo de token fica por conta da ACL padrão da pasta do usuário.
+- **[N] Teto de soquetes:** pode passar um pouco do teto enquanto há aperto de mão em curso, limitado por `max_tickets`. Uma fila de 256 mensagens de 1 MiB é um pior caso grande de memória.
+- **[N] Leitura do token durante a escrita:** um cliente que leia o arquivo na janela da troca recebe 401 e lê de novo.
+- **[N]** `ensureDataDir` não muda o modo de uma pasta de outro usuário. A redação de caminhos corta no espaço. A mensagem de anexo "fora das raízes" difere da de "não é um arquivo", então a existência de um arquivo fora das raízes é distinguível; quem anexa é o Produtor, impacto baixo.
+- **[N] Endereços sem uso na prática** que o classificador não cobre: SIIT (`::ffff:0:a.b.c.d`), `64:ff9b:1::/48` e Teredo. Só chegam com uma rede especial.
+- **[N] A raiz `project`** é o repositório que o Produtor registra no cenário; quem tem o token pode registrar `~` como repositório e anexar tudo abaixo. É o mesmo nível de confiança do token, e a revisão trata como projeto.
+- **Fora do escopo:** o servidor MCP do daemon (porta `auto`), o receptor OTLP e o ambiente dos plugins não foram revisados a fundo neste passo [N]; ficam sem revisão e precisam de um passo próprio.
+
+### Resultado da `/security-review`
+
+Rodada sobre a branch (commit `a6bd973`, antes dos dois consertos abaixo). Nenhum achado com confiança maior que 80% [V]. As três observações abaixo do corte: o redator não pegava caminho depois de `=` ou `:` e a pasta XDG igual à home viraria raiz (as duas **consertadas** e testadas), e a raiz `project` acima, aceita.

@@ -85,6 +85,47 @@ describe('restricted_shell in the mode list (the default)', () => {
     );
   });
 
+  it('refuses the flags of node that run code written in the argv (shell.node_inline: deny)', async () => {
+    const rig = await rigOf({ tools: '  shell_allowlist:\n    list: [node]' });
+    for (const argv of [
+      [NODE, '-e', 'process.exit(3)'],
+      [NODE, '-p', '1+1'],
+      [NODE, '--eval=1'],
+      [NODE, '--print', '1'],
+      [NODE, '-r', './x.js', 'a.js'],
+      [NODE, '--require=./x.js', 'a.js'],
+      [NODE, '--import', './x.mjs', 'a.js'],
+      [NODE, '--import=./x.mjs', 'a.js'],
+      [NODE, '--input-type=module', '-'],
+      [NODE, '-pe', '1'],
+    ]) {
+      const failure = await rig.fail('restricted_shell', { argv });
+      expect(failure.code, argv.join(' ')).toBe('forbidden_flag');
+    }
+    expect(eventsOf(rig, 'tool.finished')[0]?.payload).toMatchObject({ outcome: 'refused' });
+  });
+
+  itWithLauncher('lets node run an inline script with shell.node_inline: allow', async () => {
+    const rig = await rigOf({
+      tools: '  shell_allowlist:\n    list: [node]',
+      shell: '  node_inline: allow',
+    });
+    expect(await rig.call('restricted_shell', { argv: [NODE, '-p', '6*7'] })).toMatchObject({
+      exitCode: 0,
+      stdout: '42\n',
+    });
+  });
+
+  it('confines the value glued to a short option', async () => {
+    const rig = await rigOf();
+    expect((await rig.fail('restricted_shell', { argv: ['cat', '-f/etc/passwd'] })).code).toBe(
+      'path_escapes',
+    );
+    expect((await rig.fail('restricted_shell', { argv: ['rg', '-f../outside', 'x'] })).code).toBe(
+      'path_escapes',
+    );
+  });
+
   itWithLauncher('keeps every path argument inside the worktree, symlinks included', async () => {
     const rig = await rigOf();
     expect((await rig.fail('restricted_shell', { argv: ['cat', '/etc/passwd'] })).code).toBe(

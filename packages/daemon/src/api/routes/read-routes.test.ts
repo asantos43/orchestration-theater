@@ -24,6 +24,10 @@ const CONVENTION_VALUE = 'sk-convention-0123456789abcdefghijk';
 const CONFIG_YAML = `
 backup:
   when: manual
+security:
+  # The attachments of these tests are referenced files in the temporary folder (the roots are tested in api/security-review.test.ts).
+  attachment_roots:
+    mode: any
 clients:
   codex:
     env:

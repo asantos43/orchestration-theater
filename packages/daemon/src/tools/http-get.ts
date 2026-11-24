@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: MPL-2.0
+import { isIP } from 'node:net';
 import { OutputCollector } from '@otheater/core';
 import { ToolFailure, type ToolCall, type ToolHandler } from '../mcp/handlers.js';
 import { ToolRefusal, ToolTimeout, type ToolDone, type ToolsContext } from './context.js';
+import { isLocalName, isPrivateAddress, systemResolver } from './private-address.js';
 import type { ToolSettings } from './settings.js';
 
 /**
@@ -64,6 +66,40 @@ function checkedUrl(raw: string | URL, allow: readonly string[]): URL {
   return url;
 }
 
+/**
+ * `shell.http_get.block_private: on`: after the name passed the allowlist, refuses it when it is a local
+ * name, a literal private address, or a name that resolves to one (any of its addresses: a name with a
+ * public record and a private one is refused too). [N] The check and the connection are two lookups, so
+ * a name that answers differently the second time (DNS rebinding) is not stopped here; closing that
+ * needs the connection itself to check the address (an undici dispatcher), and the sandbox (layer 3)
+ * is what holds meanwhile.
+ */
+async function assertPublicHost(context: ToolsContext, url: URL): Promise<void> {
+  const host = normalizeHost(url.hostname);
+  const refuse = (why: string): ToolRefusal =>
+    new ToolRefusal(
+      'private_address',
+      `${url.hostname} ${why}; http_get does not reach this machine or its network (shell.http_get.block_private).`,
+    );
+  if (isLocalName(host)) throw refuse('is this machine');
+  if (isPrivateAddress(host)) throw refuse('is a private, loopback or link-local address');
+  if (isIP(host) !== 0) return;
+  const resolve = context.deps.resolveHost ?? systemResolver;
+  let addresses: readonly string[];
+  try {
+    addresses = await resolve(host);
+  } catch (error) {
+    const why = error instanceof Error ? error.message : String(error);
+    throw new ToolFailure('fetch_failed', `Could not resolve ${url.hostname}: ${why}`);
+  }
+  if (addresses.length === 0) {
+    throw new ToolFailure('fetch_failed', `${url.hostname} has no address.`);
+  }
+  if (addresses.some((address) => isPrivateAddress(address))) {
+    throw refuse('resolves to a private, loopback or link-local address');
+  }
+}
+
 async function readBody(
   response: Response,
   collector: OutputCollector,
@@ -98,6 +134,7 @@ async function httpGet(
   const { timeout_ms, redirects } = settings.config.http;
   const { output_max_bytes, truncate } = settings.config;
 
+  const blockPrivate = (context.deps.shell?.http_get.block_private ?? 'on') === 'on';
   let current = checkedUrl(asked, allow);
   const request = new AbortController();
   const timer = new AbortController();
@@ -112,6 +149,7 @@ async function httpGet(
 
   try {
     for (let hop = 0; ; hop += 1) {
+      if (blockPrivate) await assertPublicHost(context, current);
       const response = await fetcher(current, {
         redirect: 'manual',
         signal: request.signal,
@@ -170,8 +208,10 @@ async function httpGet(
  * the tool (the actor and the consultant).
  *
  * - Only `http` and `https`, no credentials in the URL, and only a host of the `network.allow` of
- *   the role (`domain_not_allowed` otherwise). The check is on the name; resolving a name to a
- *   private address is the sandbox's business (P4).
+ *   the role (`domain_not_allowed` otherwise). With `shell.http_get.block_private: on` (default) the
+ *   name is also resolved and refused (`private_address`) when an address is loopback, private,
+ *   link-local or the metadata address, at every hop; the window of a DNS rebinding between the check
+ *   and the connection stays open [N] and is the sandbox's business (P4).
  * - A redirect is NOT followed by default (`tools.http.redirects: refuse`: the answer is the 3xx
  *   itself); `follow_allowed` follows up to 5, each target checked again.
  * - The body is cut to `tools.output_max_bytes` and goes back marked `untrusted: true`: it is data

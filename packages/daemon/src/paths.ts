@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-import { chmod, mkdir } from 'node:fs/promises';
+import { chmod, mkdir, stat } from 'node:fs/promises';
 import { posix, resolve, win32 } from 'node:path';
 import { InvalidInput } from '@otheater/core';
 import { API_DISCOVERY_FILE, API_TOKEN_FILE, DAEMON_ID_FILE } from '@otheater/protocol';
@@ -161,13 +161,26 @@ export interface ProfileNames {
 
 /**
  * Creates the data directory (and its parents) with mode 0700 where POSIX permissions exist. An
- * existing directory keeps the mode it has: the user may have chosen it on purpose.
+ * existing directory that others can enter (group or other bits) is closed to them (`chmod g-rwx,o-rwx`,
+ * the owner's bits stay as they are): the folder holds the API token, the store and the profiles, so a
+ * mode the user did not choose on purpose is the likelier case, and the files in it are 0600 anyway. A
+ * folder of another user is left alone (`chmod` would fail, and it is not ours to change). On Windows
+ * the folder is private to the user by its place (`%LOCALAPPDATA%`), and nothing is changed.
  */
 export async function ensureDataDir(dataDir: string): Promise<void> {
   const root = resolve(dataDir);
   const created = await mkdir(root, { recursive: true, mode: 0o700 });
+  if (process.platform === 'win32') return;
   // `mkdir` is subject to the umask, which can only remove bits; set the exact mode on what we made.
-  if (created !== undefined && process.platform !== 'win32') await chmod(root, 0o700);
+  if (created !== undefined) {
+    await chmod(root, 0o700);
+    return;
+  }
+  const info = await stat(root);
+  const uid = process.getuid?.();
+  if ((info.mode & 0o077) !== 0 && (uid === undefined || info.uid === uid)) {
+    await chmod(root, info.mode & ~0o077);
+  }
 }
 
 function nonEmpty(value: string | undefined): string | undefined {

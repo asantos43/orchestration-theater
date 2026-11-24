@@ -16,10 +16,14 @@ const rigs: ToolsRig[] = [];
 const servers: Server[] = [];
 
 async function rigOf(options: ToolsRigOptions = {}): Promise<ToolsRig> {
-  const rig = await makeToolsRig(options, {
-    store: new InMemoryStore({ clock: realClock }),
-    clock: realClock,
-  });
+  // These tests reach a server on 127.0.0.1, which `shell.http_get.block_private` refuses by default.
+  const rig = await makeToolsRig(
+    { shell: '  http_get:\n    block_private: off', ...options },
+    {
+      store: new InMemoryStore({ clock: realClock }),
+      clock: realClock,
+    },
+  );
   rigs.push(rig);
   return rig;
 }
@@ -214,5 +218,147 @@ describe('http_get', () => {
       ),
     );
     expect((await rig.fail('http_get', { url: `${base}/` })).code).toBe('fetch_failed');
+  });
+});
+
+describe('http_get with shell.http_get.block_private (P8 of Phase 11)', () => {
+  /** A rig with the key at its default (`on`), an allowlist and a resolver of the test. */
+  async function guarded(
+    networkAllow: string[],
+    resolveHost: (host: string) => Promise<string[]>,
+    shell?: string,
+  ): Promise<ToolsRig> {
+    const rig = await makeToolsRig(
+      { networkAllow, resolveHost, ...(shell === undefined ? {} : { shell }) },
+      { store: new InMemoryStore({ clock: realClock }), clock: realClock },
+    );
+    rigs.push(rig);
+    return rig;
+  }
+
+  it('refuses a literal loopback, private, link-local and metadata address, without a request', async () => {
+    let fetched = 0;
+    const rig = await makeToolsRig(
+      {
+        networkAllow: ['127.0.0.1', '10.0.0.1', '169.254.169.254', '[::1]', '[::ffff:7f00:1]'],
+        fetch: () => {
+          fetched += 1;
+          return Promise.resolve(new Response('x'));
+        },
+      },
+      { store: new InMemoryStore({ clock: realClock }), clock: realClock },
+    );
+    rigs.push(rig);
+    for (const url of [
+      'http://127.0.0.1/',
+      'http://10.0.0.1/',
+      'http://169.254.169.254/latest/meta-data/',
+      'http://[::1]/',
+      'http://[::ffff:127.0.0.1]/',
+      // Variants of 127.0.0.1 the URL parser normalizes: the check sees the normal form.
+      'http://2130706433/',
+      'http://0x7f.1/',
+    ]) {
+      const failure = await rig.fail('http_get', { url });
+      expect(failure.code, url).toMatch(/^(private_address|domain_not_allowed)$/);
+    }
+    expect((await rig.fail('http_get', { url: 'http://127.0.0.1/' })).code).toBe('private_address');
+    expect((await rig.fail('http_get', { url: 'http://169.254.169.254/' })).code).toBe(
+      'private_address',
+    );
+    expect(fetched).toBe(0);
+    expect(eventsOf(rig, 'tool.finished')[0]?.payload).toMatchObject({ outcome: 'refused' });
+  });
+
+  it('refuses a name that resolves to a private address, or to one among public ones', async () => {
+    let fetched = 0;
+    const answers: Record<string, string[]> = {
+      'internal.example.com': ['10.1.2.3'],
+      'mixed.example.com': ['93.184.216.34', '169.254.169.254'],
+      'v6.example.com': ['::1'],
+    };
+    const rig = await makeToolsRig(
+      {
+        networkAllow: ['*.example.com'],
+        resolveHost: (host) => Promise.resolve(answers[host] ?? ['93.184.216.34']),
+        fetch: () => {
+          fetched += 1;
+          return Promise.resolve(new Response('x'));
+        },
+      },
+      { store: new InMemoryStore({ clock: realClock }), clock: realClock },
+    );
+    rigs.push(rig);
+    for (const host of Object.keys(answers)) {
+      expect((await rig.fail('http_get', { url: `http://${host}/` })).code, host).toBe(
+        'private_address',
+      );
+    }
+    expect(fetched).toBe(0);
+    expect(await rig.call('http_get', { url: 'http://public.example.com/' })).toMatchObject({
+      status: 200,
+    });
+    expect(fetched).toBe(1);
+  });
+
+  it('refuses a local name even when the allowlist names it', async () => {
+    const rig = await guarded(['localhost', '*.localhost'], () =>
+      Promise.resolve(['93.184.216.34']),
+    );
+    expect((await rig.fail('http_get', { url: 'http://localhost:8080/' })).code).toBe(
+      'private_address',
+    );
+    expect((await rig.fail('http_get', { url: 'http://app.localhost/' })).code).toBe(
+      'private_address',
+    );
+  });
+
+  it('refuses a redirect that leads to a private address, checked at every hop', async () => {
+    const answers: Record<string, string[]> = { 'good.example.com': ['93.184.216.34'] };
+    let calls = 0;
+    const rig = await makeToolsRig(
+      {
+        tools: '  http:\n    redirects: follow_allowed',
+        networkAllow: ['good.example.com', '169.254.169.254', 'rebind.example.com'],
+        resolveHost: (host) => Promise.resolve(answers[host] ?? ['10.0.0.9']),
+        fetch: () => {
+          calls += 1;
+          return Promise.resolve(
+            new Response(null, {
+              status: 302,
+              headers: { location: calls === 1 ? 'http://169.254.169.254/latest/' : 'http://x/' },
+            }),
+          );
+        },
+      },
+      { store: new InMemoryStore({ clock: realClock }), clock: realClock },
+    );
+    rigs.push(rig);
+    const failure = await rig.fail('http_get', { url: 'http://good.example.com/' });
+    expect(failure.code).toBe('private_address');
+    expect(calls).toBe(1);
+  });
+
+  it('reports a name that does not resolve as fetch_failed', async () => {
+    const rig = await guarded(['gone.example.com'], () => Promise.reject(new Error('ENOTFOUND')));
+    const failure = await rig.fail('http_get', { url: 'http://gone.example.com/' });
+    expect(failure.code).toBe('fetch_failed');
+    expect(failure.message).toContain('ENOTFOUND');
+  });
+
+  it('with block_private: off only the allowlist counts', async () => {
+    let resolved = 0;
+    const rig = await guarded(
+      ['10.0.0.1'],
+      () => {
+        resolved += 1;
+        return Promise.resolve(['10.0.0.1']);
+      },
+      '  http_get:\n    block_private: off',
+    );
+    // Passes the check and goes to the network: the refusal is the failed connection, not the guard.
+    const failure = await rig.fail('http_get', { url: 'http://10.0.0.1:9/' });
+    expect(failure.code).not.toBe('private_address');
+    expect(resolved).toBe(0);
   });
 });

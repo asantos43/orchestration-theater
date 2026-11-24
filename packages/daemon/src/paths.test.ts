@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-import { mkdir, stat } from 'node:fs/promises';
+import { chmod, mkdir, stat } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { dataPaths, defaultDataDir, ensureDataDir, profileDirOf, resolveDataDir } from './paths.js';
@@ -119,7 +119,7 @@ describe('profileDirOf', () => {
 
 describe('ensureDataDir', () => {
   it.skipIf(process.platform === 'win32')(
-    'creates a new directory with mode 0700 and leaves an existing one alone',
+    'creates a new directory with mode 0700 and closes an existing one to group and others',
     async () => {
       const tmp = await makeTempDataDir();
       try {
@@ -130,7 +130,14 @@ describe('ensureDataDir', () => {
         const existing = join(tmp.dir, 'c');
         await mkdir(existing, { mode: 0o755 });
         await ensureDataDir(existing);
-        expect((await stat(existing)).mode & 0o777).toBe(0o755);
+        expect((await stat(existing)).mode & 0o777).toBe(0o700);
+
+        // The bits of the owner stay as they were.
+        const owner = join(tmp.dir, 'd');
+        await mkdir(owner, { mode: 0o750 });
+        await chmod(owner, 0o750);
+        await ensureDataDir(owner);
+        expect((await stat(owner)).mode & 0o777).toBe(0o700);
       } finally {
         await tmp.dispose();
       }

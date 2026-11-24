@@ -15,21 +15,42 @@ export type { Logger } from 'pino';
  * never reaches the log in clear whatever its key is called.
  */
 export const REDACT_PATHS: readonly string[] = [
-  'password',
-  'passphrase',
-  'token',
-  'secret',
-  'apiKey',
-  'api_key',
-  'authorization',
-  '*.password',
-  '*.passphrase',
-  '*.token',
-  '*.secret',
-  '*.apiKey',
-  '*.api_key',
-  '*.authorization',
+  ...secretKeysAt(''),
+  ...secretKeysAt('*.'),
+  // One level deeper: the `err`/`error` of a log call, a `request`/`req` with its headers, a `details`.
+  ...secretKeysAt('*.*.'),
+  // The headers of a request or a response, where the token and the cookies travel (the keys of a
+  // header object are in lower case in Node, but a client of the API may spell them otherwise).
+  'headers["set-cookie"]',
+  '*.headers["set-cookie"]',
+  '*.*.headers["set-cookie"]',
+  'headers["proxy-authorization"]',
+  '*.headers["proxy-authorization"]',
+  '*.*.headers["proxy-authorization"]',
 ];
+
+/** The key names that hold a secret, under `prefix` (a wildcard path pino understands). */
+function secretKeysAt(prefix: string): string[] {
+  const keys = [
+    'password',
+    'passphrase',
+    'token',
+    'secret',
+    'apiKey',
+    'api_key',
+    'authorization',
+    'Authorization',
+    'cookie',
+    'Cookie',
+    'cookies',
+    'accessToken',
+    'access_token',
+    'refreshToken',
+    'refresh_token',
+    'bearer',
+  ];
+  return keys.map((key) => `${prefix}${key}`);
+}
 
 export interface CreateLoggerOptions {
   readonly level: DaemonConfig['log']['level'];

@@ -30,6 +30,7 @@ import {
   ShellCommandService,
   type ShellSettings,
 } from './service.js';
+import { ANY_ATTACHMENT_ROOT } from '../scenarios/attachment-roots.js';
 
 afterAll(disposeTestGitIsolation);
 
@@ -91,6 +92,7 @@ async function rigOf(options: RigOptions = {}): Promise<Rig> {
   const asked: unknown[] = [];
   const attachments = new AttachmentService({
     store,
+    roots: ANY_ATTACHMENT_ROOT,
     clock: realClock,
     scenariosDir: join(root, 'scenarios'),
     limits: () => ({ maxSize: 1024 * 1024, readMax: 1024 * 1024 }),
