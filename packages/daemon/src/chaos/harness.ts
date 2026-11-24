@@ -105,6 +105,59 @@ export function resolveSeed(
   return seed;
 }
 
+/** A part of the long chaos files for one job of the CI: the `index`-th of `count` (1-based). */
+export interface ChaosShard {
+  readonly index: number;
+  readonly count: number;
+}
+
+/**
+ * The part of the long chaos files this run takes: `OT_CHAOS_SHARD=<index>/<count>` (the matrix of
+ * chaos.yml), or the whole file (`1/1`) when unset. A malformed value throws: a typo must not run
+ * only a part, nor nothing, in silence.
+ */
+export function chaosShard(
+  env: Readonly<Record<string, string | undefined>> = process.env,
+): ChaosShard {
+  const raw = env.OT_CHAOS_SHARD;
+  if (raw === undefined || raw === '') return { index: 1, count: 1 };
+  const match = /^(\d+)\/(\d+)$/.exec(raw);
+  const index = Number(match?.[1]);
+  const count = Number(match?.[2]);
+  if (match === null || index < 1 || count < 1 || index > count) {
+    throw new Error(`OT_CHAOS_SHARD=${raw}: use <index>/<count>, with 1 <= index <= count`);
+  }
+  return { index, count };
+}
+
+/**
+ * Splits the cases of one chaos file among the shards (CI under 10 min, owner, 2026-11-24). The
+ * cases are counted in the order the file declares them, across all of its `describe`s, and the
+ * shard `i` of `n` keeps those whose position is `i - 1` modulo `n`: each shard gets an even part of
+ * every group (named points, random instants), and the `n` shards together run every case once.
+ * The seeds of the cases do not change, so `OT_CHAOS_SEED` repeats a failure in any shard.
+ */
+export class ChaosSlicer {
+  readonly shard: ChaosShard;
+  #position = 0;
+
+  constructor(shard: ChaosShard = chaosShard()) {
+    this.shard = shard;
+  }
+
+  /** The cases of `items` that belong to this shard. */
+  take<T>(items: readonly T[]): T[] {
+    return items.filter(() => this.has());
+  }
+
+  /** Whether the next single case belongs to this shard (for an `it` outside an `it.each`). */
+  has(): boolean {
+    const mine = this.#position % this.shard.count === this.shard.index - 1;
+    this.#position += 1;
+    return mine;
+  }
+}
+
 export interface InstantPlan {
   readonly seed: number;
   /** Milliseconds after the daemon says `STARTED` at which it gets `SIGKILL`. */
