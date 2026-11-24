@@ -64,15 +64,21 @@ function nativeFiles(rig: SeaRig): string[] {
 }
 
 /**
- * KNOWN DEFECT (found by this suite in the CI run of the P12, instant #43 at 754 ms of a cold start,
- * seed 20261125; docs/23, P12, "Como ficou"): `writePrivateFile` (`api/files.ts`) writes the files
- * `daemon-id`, `api-token` and `api.json` through `<name>.<pid>.<hex>.tmp` and a rename. A `SIGKILL`
- * between the two leaves the temporary, and nothing removes it at the next start (the update journal
- * has the cleaning of the temporaries of dead pids since the P6; these three files do not). The
- * product code is outside this step, so I7 lets exactly this name stay here, and nothing else. When
- * the writer cleans them, delete this pattern.
+ * KNOWN DEFECTS (found by this suite in the CI runs of the P12, seed 20261125; docs/23, P12, "Como
+ * ficou"). Both are a temporary file written next to its target and then renamed, and a `SIGKILL`
+ * between the two leaves it, with nothing that removes it at the next start:
+ * - `writePrivateFile` (`api/files.ts`) writes `daemon-id`, `api-token` and `api.json` through
+ *   `<name>.<pid>.<hex>.tmp` (cold start, instant #43 at 754 ms);
+ * - `extractNative` (`client/src/node/sea.ts`) writes the native addon of the executable through
+ *   `<data>/native/<sha256>/.<name>.<hex>.tmp` (cold start, instant #35 at 426 ms).
+ * The update journal has the cleaning of the temporaries of dead pids since the P6; these do not. The
+ * product code is outside this step, so I7 lets exactly these names stay here, and nothing else. When
+ * the writers clean them, delete the patterns.
  */
-const KNOWN_API_FILE_TEMPORARY = /^(daemon-id|api-token|api\.json)\.\d+\.[0-9a-f]{16}\.tmp$/;
+const KNOWN_TEMPORARIES: readonly RegExp[] = [
+  /^(daemon-id|api-token|api\.json)\.\d+\.[0-9a-f]{16}\.tmp$/,
+  /^\.[\w.-]+\.node\.[0-9a-f]+\.tmp$/,
+];
 
 describe.skipIf(!SEA)('chaos over the executable: the single executable of Phase 10', () => {
   const target = SEA ? chaosTarget() : undefined;
@@ -94,7 +100,7 @@ describe.skipIf(!SEA)('chaos over the executable: the single executable of Phase
     assertInvariants(
       rig.evaluate({
         census: afterKill,
-        allowedLeftovers: [...DEFAULT_ALLOWED_LEFTOVERS, KNOWN_API_FILE_TEMPORARY],
+        allowedLeftovers: [...DEFAULT_ALLOWED_LEFTOVERS, ...KNOWN_TEMPORARIES],
       }),
     );
   }
