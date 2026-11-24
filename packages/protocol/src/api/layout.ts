@@ -24,8 +24,11 @@ export type LayoutStore = (typeof LAYOUT_STORES)[number];
 export const LAYOUT_SYNCS = ['live', 'on_open'] as const;
 export type LayoutSync = (typeof LAYOUT_SYNCS)[number];
 
-/** Version of the record written by this code. */
-export const LAYOUT_VERSION = 1;
+/**
+ * Version of the record written by this code. Version 2 (N277, 2026-11-22) adds `sidebarWidth`;
+ * version 1 had none.
+ */
+export const LAYOUT_VERSION = 2;
 
 export const LayoutPreferencesSchema = z.strictObject({
   version: z.literal(LAYOUT_VERSION),
@@ -33,6 +36,13 @@ export const LayoutPreferencesSchema = z.strictObject({
   sidebarCollapsed: z.boolean(),
   /** Width of the chat: columns in the `tui`, pixels in the `web`. */
   chatWidth: z.int().min(1).max(10_000),
+  /**
+   * Width of the side bar when it is open (N277): columns in the `tui`, pixels in the `web`. Absent
+   * until the person sets it: the interface then starts from its own setting
+   * (`ui.tuiLayout.sidebarWidth` in the `tui`), so a record never freezes a value nobody chose.
+   * The `tui` keeps it between 16 and 80 columns.
+   */
+  sidebarWidth: z.int().min(1).max(10_000).optional(),
   /** Ids of the tabs open in the work panel, in order. */
   openTabs: z.array(z.string().min(1).max(64)).max(32),
   /** Ids of the sections and cards that are collapsed. */
@@ -70,8 +80,15 @@ export type LayoutMigrations = Readonly<
   Record<number, (old: Readonly<Record<string, unknown>>) => Record<string, unknown>>
 >;
 
-/** The steps that exist. Empty: version 1 is the first, so no older record exists yet. */
-export const LAYOUT_MIGRATIONS: LayoutMigrations = {};
+/**
+ * The steps that exist. [proposta] 1 to 2 (N277): the width of the side bar is new and optional, so
+ * the record keeps every field it had and only the version moves up; an absent width is the
+ * setting of the interface. The step does not invent a number, so a record that was never touched
+ * stays free to follow `ui.tuiLayout.sidebarWidth`.
+ */
+export const LAYOUT_MIGRATIONS: LayoutMigrations = {
+  1: (old) => ({ ...old }),
+};
 
 export type LayoutReading =
   | { readonly outcome: 'ok'; readonly layout: LayoutPreferences }

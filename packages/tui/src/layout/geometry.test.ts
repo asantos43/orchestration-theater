@@ -1,7 +1,14 @@
 // SPDX-License-Identifier: MPL-2.0
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_TUI_LAYOUT } from '../settings.js';
-import { computeGeometry, steppedChatWidth, type GeometryInput } from './geometry.js';
+import {
+  computeGeometry,
+  steppedChatWidth,
+  steppedSidebarWidth,
+  SIDEBAR_MAX_WIDTH,
+  SIDEBAR_MIN_WIDTH,
+  type GeometryInput,
+} from './geometry.js';
 
 const base: GeometryInput = {
   columns: 140,
@@ -70,5 +77,66 @@ describe('computeGeometry: small screens and bounds', () => {
     expect(steppedChatWidth(g, 100)).toBe(80);
     const closed = computeGeometry({ ...base, panelOpen: false });
     expect(steppedChatWidth(closed, 2)).toBe(110);
+  });
+});
+
+describe('computeGeometry: the width of the side bar (N277)', () => {
+  it('starts from ui.tuiLayout.sidebarWidth and uses the saved width when there is one', () => {
+    expect(computeGeometry(base).sidebar).toEqual({ mode: 'expanded', width: 30 });
+    const saved = computeGeometry({ ...base, sidebarWidth: 44 });
+    expect(saved.sidebar).toEqual({ mode: 'expanded', width: 44 });
+    expect(saved.chat.x).toBe(44);
+  });
+
+  it('keeps the width between 16 and 80 columns', () => {
+    expect(SIDEBAR_MIN_WIDTH).toBe(16);
+    expect(SIDEBAR_MAX_WIDTH).toBe(80);
+    expect(computeGeometry({ ...base, sidebarWidth: 3 }).sidebar.width).toBe(16);
+    expect(computeGeometry({ ...base, sidebarWidth: 500, panelOpen: false }).sidebar.width).toBe(
+      80,
+    );
+  });
+
+  it('bounds the drag so the chat and the panel on the screen keep their minimum', () => {
+    // 140 columns, panel open: 140 - 30 (chat) - 30 (panel) = 80.
+    expect(computeGeometry(base).sidebarRange).toEqual({ min: 16, max: 80 });
+    // 100 columns: 100 - 60 = 40 with the panel; without it, 100 - 30 = 70.
+    expect(computeGeometry({ ...base, columns: 100 }).sidebarRange).toEqual({ min: 16, max: 40 });
+    expect(computeGeometry({ ...base, columns: 100, panelOpen: false }).sidebarRange).toEqual({
+      min: 16,
+      max: 70,
+    });
+  });
+
+  it('never takes the minimum of the chat: a width too large for the screen gives way to the rail', () => {
+    const g = computeGeometry({ ...base, columns: 60, panelOpen: false, sidebarWidth: 40 });
+    expect(g.sidebar.mode).toBe('rail');
+    expect(g.chat.width).toBeGreaterThanOrEqual(DEFAULT_TUI_LAYOUT.minChatWidth);
+    expect(g.sidebarRange.min).toBe(g.sidebarRange.max);
+  });
+
+  it('keeps the width chosen and lets the panel give way, as it always did', () => {
+    const g = computeGeometry({ ...base, columns: 80 });
+    expect(g.sidebar.width).toBe(30);
+    expect(g.panel).toBeUndefined();
+    expect(g.panelAbsence).toBe('narrow');
+    expect(g.sidebarRange.max).toBe(50);
+  });
+
+  it('has nothing to adjust on a rail or without a side bar', () => {
+    const rail = computeGeometry({ ...base, sidebarCollapsed: true });
+    expect(rail.sidebarRange).toEqual({ min: 5, max: 5 });
+    expect(steppedSidebarWidth(rail, 4)).toBe(5);
+    const hidden = computeGeometry({ ...base, columns: 33, panelOpen: false });
+    expect(hidden.sidebarRange).toEqual({ min: 0, max: 0 });
+    expect(steppedSidebarWidth(hidden, 4)).toBe(0);
+  });
+
+  it('steps the width inside the range', () => {
+    const g = computeGeometry(base);
+    expect(steppedSidebarWidth(g, 2)).toBe(32);
+    expect(steppedSidebarWidth(g, -100)).toBe(16);
+    expect(steppedSidebarWidth(g, 100)).toBe(80);
+    expect(steppedSidebarWidth(g, 3, 50)).toBe(53);
   });
 });

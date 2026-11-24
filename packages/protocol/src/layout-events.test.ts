@@ -48,7 +48,7 @@ describe('layout.changed', () => {
       { ...changed, origin: 'a b' },
       { ...changed, origin: 'x'.repeat(65) },
       { ...changed, layout: { ...changed.layout, chatWidth: 0 } },
-      { ...changed, layout: { ...changed.layout, version: 2 } },
+      { ...changed, layout: { ...changed.layout, version: 3 } },
       { ...changed, extra: 1 },
       { interface: 'web', layout: changed.layout },
     ]) {
