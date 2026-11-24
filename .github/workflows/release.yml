@@ -18,6 +18,21 @@ name: Release
 # The production signature (the secret OT_UPDATE_SIGNING_KEY) is read only by the job `publish`, which
 # is also the only job with `contents: write`. No job but `publish` calls `gh release`
 # (tools/release/src/release-workflow.test.ts reads this file and checks it).
+#
+# CODE SIGNING (P11, N247) is OFF. Two keys, `signing.windows` (off | signtool) and `signing.macos`
+# (off | codesign), in tools/release/release.config.json; the repository variables OT_SIGNING_WINDOWS and
+# OT_SIGNING_MACOS, when set, win over the file. No account and no certificate exist, so both are `off`:
+# the signing steps are skipped and the release is what P9 built (docs/22 says what that means for the
+# user). With a key on:
+#   - the job `signing` checks the secrets BEFORE anything is built, and fails with a clear message when
+#     one is missing (the secrets never appear in an `if`, which GitHub does not allow: they go through
+#     `env`);
+#   - `sign-windows` and `sign-macos` sign the files of the artifacts and upload them again under the
+#     same names, before the manifest hashes them: the SHA-256 of the manifest is the one of the SIGNED
+#     file;
+#   - they run on `main` only (the certificate is not for a branch).
+# The signing secrets are read by those three jobs and by no other (the test reads this file). The ad
+# hoc signature that P1 puts on the macOS arm64 executable is not this: it has no certificate.
 on:
   workflow_dispatch:
     inputs:
@@ -94,26 +109,263 @@ jobs:
             fi
           } >> "$GITHUB_STEP_SUMMARY"
 
+  # The code signing keys and their secrets, checked BEFORE anything is built (P11, N247, [proposta]).
+  # It has no `if` on purpose: a job that needs a skipped job is skipped too, and the manifest would go
+  # with it. With both keys `off` it only says so in the summary.
+  signing:
+    runs-on: ubuntu-latest
+    outputs:
+      windows: ${{ steps.modes.outputs.windows }}
+      macos: ${{ steps.modes.outputs.macos }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Resolve the signing modes
+        id: modes
+        env:
+          VAR_WINDOWS: ${{ vars.OT_SIGNING_WINDOWS }}
+          VAR_MACOS: ${{ vars.OT_SIGNING_MACOS }}
+        run: |
+          set -eu
+          config=tools/release/release.config.json
+          from_file() {
+            node -p "const s = JSON.parse(require('fs').readFileSync('$config', 'utf8')).signing; s?.[process.argv[1]] ?? 'off'" "$1"
+          }
+          file_windows=$(from_file windows)
+          file_macos=$(from_file macos)
+          # The repository variable wins over the file; empty or absent, the file decides.
+          windows="${VAR_WINDOWS:-$file_windows}"
+          macos="${VAR_MACOS:-$file_macos}"
+          case "$windows" in
+            off | signtool) ;;
+            *) echo "::error::signing.windows '$windows' is not one of: off, signtool"; exit 1 ;;
+          esac
+          case "$macos" in
+            off | codesign) ;;
+            *) echo "::error::signing.macos '$macos' is not one of: off, codesign"; exit 1 ;;
+          esac
+          echo "windows=$windows" >> "$GITHUB_OUTPUT"
+          echo "macos=$macos" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Assinatura de código"
+            echo
+            echo "- Windows: \`$windows\`"
+            echo "- macOS: \`$macos\`"
+            if [ "$windows" = off ] && [ "$macos" = off ]; then
+              echo
+              echo "Desligada nas duas plataformas: nada é assinado e o guia (docs/22) explica o que o usuário vê."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+      # [proposta] A certificate is used from main only.
+      - name: Signing only from main
+        if: steps.modes.outputs.windows != 'off' || steps.modes.outputs.macos != 'off'
+        run: |
+          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "::error::code signing is on, and a signed release comes from refs/heads/main (this run is on $GITHUB_REF). Run it on main or set the keys to off."
+            exit 1
+          fi
+      - name: Check the Windows signing secrets
+        if: steps.modes.outputs.windows == 'signtool'
+        env:
+          OT_WINDOWS_SIGNING_CERT_BASE64: ${{ secrets.OT_WINDOWS_SIGNING_CERT_BASE64 }}
+          OT_WINDOWS_SIGNING_CERT_PASSWORD: ${{ secrets.OT_WINDOWS_SIGNING_CERT_PASSWORD }}
+        run: |
+          missing=""
+          [ -n "$OT_WINDOWS_SIGNING_CERT_BASE64" ] || missing="$missing OT_WINDOWS_SIGNING_CERT_BASE64"
+          [ -n "$OT_WINDOWS_SIGNING_CERT_PASSWORD" ] || missing="$missing OT_WINDOWS_SIGNING_CERT_PASSWORD"
+          if [ -n "$missing" ]; then
+            echo "::error::signing.windows is signtool, but these secrets are missing or empty:$missing. Create them (docs/22) or set signing.windows to off. Nothing was built or published."
+            exit 1
+          fi
+      - name: Check the macOS signing secrets
+        if: steps.modes.outputs.macos == 'codesign'
+        env:
+          OT_MACOS_SIGNING_CERT_BASE64: ${{ secrets.OT_MACOS_SIGNING_CERT_BASE64 }}
+          OT_MACOS_SIGNING_CERT_PASSWORD: ${{ secrets.OT_MACOS_SIGNING_CERT_PASSWORD }}
+          OT_MACOS_SIGNING_IDENTITY: ${{ secrets.OT_MACOS_SIGNING_IDENTITY }}
+          OT_MACOS_NOTARY_APPLE_ID: ${{ secrets.OT_MACOS_NOTARY_APPLE_ID }}
+          OT_MACOS_NOTARY_PASSWORD: ${{ secrets.OT_MACOS_NOTARY_PASSWORD }}
+          OT_MACOS_NOTARY_TEAM_ID: ${{ secrets.OT_MACOS_NOTARY_TEAM_ID }}
+        run: |
+          missing=""
+          [ -n "$OT_MACOS_SIGNING_CERT_BASE64" ] || missing="$missing OT_MACOS_SIGNING_CERT_BASE64"
+          [ -n "$OT_MACOS_SIGNING_CERT_PASSWORD" ] || missing="$missing OT_MACOS_SIGNING_CERT_PASSWORD"
+          [ -n "$OT_MACOS_SIGNING_IDENTITY" ] || missing="$missing OT_MACOS_SIGNING_IDENTITY"
+          [ -n "$OT_MACOS_NOTARY_APPLE_ID" ] || missing="$missing OT_MACOS_NOTARY_APPLE_ID"
+          [ -n "$OT_MACOS_NOTARY_PASSWORD" ] || missing="$missing OT_MACOS_NOTARY_PASSWORD"
+          [ -n "$OT_MACOS_NOTARY_TEAM_ID" ] || missing="$missing OT_MACOS_NOTARY_TEAM_ID"
+          if [ -n "$missing" ]; then
+            echo "::error::signing.macos is codesign, but these secrets are missing or empty:$missing. Create them (docs/22) or set signing.macos to off. Nothing was built or published."
+            exit 1
+          fi
+
   # The executables, the notices (dist-sea.yml) and the .msi (dist-msi.yml), as the workflows of P1, P4 and
   # P10 build and test them. `upload` keeps the files as artifacts of this run (one day).
   sea:
-    needs: [plan]
+    needs: [plan, signing]
     uses: ./.github/workflows/dist-sea.yml
     with:
       version: ${{ inputs.version }}
       upload: true
 
   msi:
-    needs: [plan]
+    needs: [plan, signing]
     uses: ./.github/workflows/dist-msi.yml
     with:
       version: ${{ inputs.version }}
       upload: true
 
+  # Windows code signing (P11, N247, [proposta]). Every step that does something has the `if` of the key:
+  # with `signing.windows` off the job runs and does nothing. The files are signed in place and uploaded
+  # again under the same artifact names, so the manifest below hashes the signed bytes. The .exe inside
+  # the .msi is a separate build of dist-msi.yml and is NOT signed here ([N], docs/22).
+  sign-windows:
+    needs: [signing, sea, msi]
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/download-artifact@v4
+        if: needs.signing.outputs.windows == 'signtool'
+        with:
+          name: sea-win32-x64
+          path: sea
+      - uses: actions/download-artifact@v4
+        if: needs.signing.outputs.windows == 'signtool'
+        with:
+          name: msi-win32-x64
+          path: msi
+      - name: Sign the executable and the .msi
+        if: needs.signing.outputs.windows == 'signtool'
+        env:
+          OT_WINDOWS_SIGNING_CERT_BASE64: ${{ secrets.OT_WINDOWS_SIGNING_CERT_BASE64 }}
+          OT_WINDOWS_SIGNING_CERT_PASSWORD: ${{ secrets.OT_WINDOWS_SIGNING_CERT_PASSWORD }}
+          # [proposta] The RFC 3161 server is a repository variable, with a default.
+          TIMESTAMP_URL: ${{ vars.OT_SIGNING_TIMESTAMP_URL }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin" -Recurse -Filter signtool.exe |
+            Where-Object { $_.FullName -match '\\x64\\' } | Sort-Object FullName | Select-Object -Last 1
+          if (-not $signtool) { throw 'signtool.exe not found in the Windows SDK of the runner' }
+          $timestamp = if ($env:TIMESTAMP_URL) { $env:TIMESTAMP_URL } else { 'http://timestamp.digicert.com' }
+          $pfx = Join-Path $env:RUNNER_TEMP 'windows-signing.pfx'
+          [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:OT_WINDOWS_SIGNING_CERT_BASE64))
+          try {
+            $files = @(Get-ChildItem sea -Filter *.exe) + @(Get-ChildItem msi -Filter *.msi)
+            if ($files.Count -ne 2) { throw "expected one .exe and one .msi, found $($files.Count) files" }
+            foreach ($file in $files) {
+              & $signtool.FullName sign /f $pfx /p $env:OT_WINDOWS_SIGNING_CERT_PASSWORD /fd SHA256 /tr $timestamp /td SHA256 $file.FullName
+              if ($LASTEXITCODE -ne 0) { throw "signtool sign failed on $($file.Name)" }
+              & $signtool.FullName verify /pa /v $file.FullName
+              if ($LASTEXITCODE -ne 0) { throw "signtool verify failed on $($file.Name)" }
+            }
+          } finally {
+            Remove-Item $pfx -Force -ErrorAction SilentlyContinue
+          }
+      - uses: actions/upload-artifact@v4
+        if: needs.signing.outputs.windows == 'signtool'
+        with:
+          name: sea-win32-x64
+          path: sea
+          if-no-files-found: error
+          retention-days: 1
+          overwrite: true
+      - uses: actions/upload-artifact@v4
+        if: needs.signing.outputs.windows == 'signtool'
+        with:
+          name: msi-win32-x64
+          path: msi
+          if-no-files-found: error
+          retention-days: 1
+          overwrite: true
+
+  # macOS code signing and notarization (P11, N247, [proposta]), with a Developer ID certificate. It is
+  # not the ad hoc signature of P1. A standalone binary cannot be stapled (Apple, notarization docs), so
+  # Gatekeeper finds the ticket online. Same rule as above: every step has the `if` of the key.
+  sign-macos:
+    needs: [signing, sea]
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        if: needs.signing.outputs.macos == 'codesign'
+      - uses: actions/download-artifact@v4
+        if: needs.signing.outputs.macos == 'codesign'
+        with:
+          name: sea-darwin-arm64
+          path: sea
+      - name: Sign with the Developer ID certificate
+        if: needs.signing.outputs.macos == 'codesign'
+        env:
+          OT_MACOS_SIGNING_CERT_BASE64: ${{ secrets.OT_MACOS_SIGNING_CERT_BASE64 }}
+          OT_MACOS_SIGNING_CERT_PASSWORD: ${{ secrets.OT_MACOS_SIGNING_CERT_PASSWORD }}
+          OT_MACOS_SIGNING_IDENTITY: ${{ secrets.OT_MACOS_SIGNING_IDENTITY }}
+        run: |
+          set -eu
+          keychain="$RUNNER_TEMP/otheater-signing.keychain-db"
+          p12="$RUNNER_TEMP/macos-signing.p12"
+          keychain_password=$(uuidgen)
+          cleanup() {
+            security delete-keychain "$keychain" 2>/dev/null || true
+            rm -f "$p12"
+          }
+          trap cleanup EXIT
+          printf '%s' "$OT_MACOS_SIGNING_CERT_BASE64" | base64 --decode > "$p12"
+          security create-keychain -p "$keychain_password" "$keychain"
+          security set-keychain-settings -lut 3600 "$keychain"
+          security unlock-keychain -p "$keychain_password" "$keychain"
+          security import "$p12" -P "$OT_MACOS_SIGNING_CERT_PASSWORD" -A -t cert -f pkcs12 -k "$keychain"
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$keychain_password" "$keychain" >/dev/null
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          exe=$(ls sea/otheater-darwin-arm64)
+          # Hardened runtime and a secure timestamp are what notarization asks for. The entitlements are
+          # [N]: not tested with a real certificate (docs/22).
+          codesign --force --options runtime --timestamp \
+            --entitlements tools/release/macos-entitlements.plist \
+            --keychain "$keychain" --sign "$OT_MACOS_SIGNING_IDENTITY" "$exe"
+          codesign --verify --strict --verbose=2 "$exe"
+          # The result must be a real identity, never the ad hoc signature (no Authority line).
+          codesign -dv --verbose=4 "$exe" 2>&1 | tee "$RUNNER_TEMP/codesign.txt"
+          grep -q '^Authority=Developer ID Application' "$RUNNER_TEMP/codesign.txt" || {
+            echo "::error::the signature has no Developer ID Application authority (it looks ad hoc)"
+            exit 1
+          }
+      - name: Notarize
+        if: needs.signing.outputs.macos == 'codesign'
+        env:
+          OT_MACOS_NOTARY_APPLE_ID: ${{ secrets.OT_MACOS_NOTARY_APPLE_ID }}
+          OT_MACOS_NOTARY_PASSWORD: ${{ secrets.OT_MACOS_NOTARY_PASSWORD }}
+          OT_MACOS_NOTARY_TEAM_ID: ${{ secrets.OT_MACOS_NOTARY_TEAM_ID }}
+        run: |
+          set -eu
+          exe=$(ls sea/otheater-darwin-arm64)
+          zip="$RUNNER_TEMP/otheater-notarize.zip"
+          ditto -c -k --keepParent "$exe" "$zip"
+          result="$RUNNER_TEMP/notary.json"
+          xcrun notarytool submit "$zip" --apple-id "$OT_MACOS_NOTARY_APPLE_ID" --team-id "$OT_MACOS_NOTARY_TEAM_ID" \
+            --password "$OT_MACOS_NOTARY_PASSWORD" --wait --output-format json > "$result"
+          status=$(node -p "JSON.parse(require('fs').readFileSync(process.argv[1], 'utf8')).status" "$result")
+          id=$(node -p "JSON.parse(require('fs').readFileSync(process.argv[1], 'utf8')).id" "$result")
+          echo "notarization $id: $status"
+          if [ "$status" != "Accepted" ]; then
+            xcrun notarytool log "$id" --apple-id "$OT_MACOS_NOTARY_APPLE_ID" --team-id "$OT_MACOS_NOTARY_TEAM_ID" \
+              --password "$OT_MACOS_NOTARY_PASSWORD" || true
+            echo "::error::notarization $id ended '$status', not Accepted"
+            exit 1
+          fi
+          # No stapling: Apple does not staple a standalone binary (the ticket is found online).
+      - uses: actions/upload-artifact@v4
+        if: needs.signing.outputs.macos == 'codesign'
+        with:
+          name: sea-darwin-arm64
+          path: sea
+          if-no-files-found: error
+          retention-days: 1
+          overwrite: true
+
   # The manifest, signed with a key that exists only in this job (the rehearsal), and the checks of the
   # result as the daemon makes them (tools/release `verify` runs the code of daemon/src/updates).
   manifest:
-    needs: [plan, sea, msi]
+    needs: [plan, sea, msi, signing, sign-windows, sign-macos]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -255,7 +507,7 @@ jobs:
   # The only job that publishes. Both locks are in the `if`: the input and the variable of the
   # repository. It signs with the production key after checking it, and creates the release as a draft.
   publish:
-    needs: [plan, sea, msi, manifest, install-check]
+    needs: [plan, sea, msi, signing, sign-windows, sign-macos, manifest, install-check]
     if: inputs.publish == true && vars.OT_RELEASE_GATE == 'open'
     runs-on: ubuntu-latest
     permissions:

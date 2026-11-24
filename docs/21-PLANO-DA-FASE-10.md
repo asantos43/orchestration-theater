@@ -82,7 +82,7 @@ Os passos P1 a P11 seguem a lista do pedido do dono (executável, lançador, `.m
 | P8 | `updates.*` (2/2): aplicar com `apply_when` e `max_wait`, volta automática e backup antes das migrações | P1, P7 | P4, P5, P6, P10 | feito (#297) |
 | P9 | Job de release na CI e o portão do R1 | P1, P4, P5, P7, P10 | nada | feito neste PR |
 | P10 | `THIRD_PARTY_NOTICES` por plataforma | P1 | P4, P5, P6, P8 | feito (#294) |
-| P11 | Assinatura de código, desligada, por chave; guia de instalação | P9 | P12 (a parte automática) | a fazer |
+| P11 | Assinatura de código, desligada, por chave; guia de instalação | P9 | P12 (a parte automática) | feito (#332) |
 | P12 | Aceite da fase | P1 a P11 | nada | a fazer |
 | P13 | Adaptadores ACP gerenciados (N254 revista) | P1, P6 | P9, P11 | feito (#298) |
 
@@ -403,7 +403,14 @@ Definido aqui para que os passos em paralelo (P5, P7, P8 e P9) concordem **[prop
 
 **Aceite:** com as chaves em `off`, o ensaio do P9 continua verde sem assinar; com elas em `on`, o job se recusa a seguir sem o certificado. O guia está revisado por `pnpm verify:docs`.
 
-**Como ficou:** a preencher quando o passo for mesclado.
+**Como ficou** (2026-11-24; nada foi assinado, publicado nem criado: nenhuma conta, certificado, variável ou secret):
+
+- **Chaves [V]:** `tools/release/release.config.json` ganhou `signing: { windows: off | signtool, macos: off | codesign }`, os dois `off`. `tools/release/src/config.ts` valida (chave ausente vale `off`; modo ou subchave desconhecida é erro, nunca um `off` silencioso) e exporta `WINDOWS_SIGNING_MODES` e `MACOS_SIGNING_MODES`. A variável de repositório `OT_SIGNING_WINDOWS` ou `OT_SIGNING_MACOS` vale mais que o arquivo **[proposta]**.
+- **`release.yml` [V: a forma; N: nada rodou com certificado real]:** o job `signing` (sem `if`, porque um job que depende de um job pulado é pulado e levaria o manifesto junto) resolve os modos, exige `refs/heads/main` com uma chave ligada **[proposta]** e confere os *secrets* **antes** de `sea` e `msi` (`needs`), falhando com a lista dos que faltam. `sign-windows` (`signtool sign /fd SHA256 /tr ... /td SHA256` e `verify /pa /v`, no `.exe` e no `.msi`) e `sign-macos` (`codesign --options runtime --timestamp`, conferência de que a autoridade é "Developer ID Application", `notarytool submit --wait` com `Accepted`, sem `staple`) rodam entre a compilação e o manifesto e reenviam o artefato com o mesmo nome (`overwrite: true`), então o SHA-256 do manifesto é o do arquivo assinado. Todo passo desses jobs tem `if` na chave. O `if` do `publish` não mudou. Nomes dos *secrets*, `OT_SIGNING_TIMESTAMP_URL` e `tools/release/macos-entitlements.plist` são **[proposta]**.
+- **Testes [V]:** `release-workflow.test.ts` confere que, com `off`/`off`, nenhum passo de assinatura roda (as expressões `if` são avaliadas); que cada plataforma só roda com a sua chave; que `signing` precede a compilação, o manifesto e o `publish`; que os *secrets* de assinatura só aparecem nos três jobs de assinatura e o de produção só no `publish`; e **executa de verdade, com `bash`**, os passos de resolver os modos e de conferir os *secrets* (sem secret: código 1 e mensagem com os nomes; com todos: 0 e nada impresso; variável sobre arquivo; modo inválido recusado; fora da `main` recusado). `config.test.ts` cobre o bloco `signing`. Os 139 testes de `tools/release` passam.
+- **Guia [V]:** `docs/22-INSTALACAO.md` (instalar, avisos, conferir à mão, atualizar, desinstalar, recusa do `install.sh`, ligar a assinatura) e a linha no `README.md`. **[S]** O SmartScreen e o Gatekeeper só são descritos com a fonte e a data (2026-11-24, [seção 9 do guia](22-INSTALACAO.md#9-fontes-consultadas)). **[V]** Não existe `ot update`: a atualização é o bloco `updates.*` do `config.yaml` e a API `/v1/updates`; o guia lista os modos que existem no código.
+- **Ficou [N]:** o `ot.exe` **dentro do `.msi`** sai sem assinatura (é uma compilação separada do `dist-msi.yml`, fora deste passo); os *entitlements* do macOS e a notarização de um binário avulso não foram testados com certificado; `upload-artifact@v4` com `overwrite` (a versão 4.x que o trouxe não está na página consultada); o texto do botão "More info" do SmartScreen e se o `curl | sh` faz o Gatekeeper reclamar.
+- **Decidido (N301, 2026-11-24, por múltipla escolha, igual à recomendação):** os nomes dos secrets e das variáveis ficam como estão; a assinatura só roda a partir da `main`; os jobs de assinatura sempre sobem um runner; e a assinatura do `ot.exe` de dentro do `.msi` vira um passo à parte, só quando houver certificado. Os **[proposta]** desses quatro pontos passam a decididos.
 
 ### P12. Aceite da fase
 
