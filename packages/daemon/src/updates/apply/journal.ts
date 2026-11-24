@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
-import { open, readFile, rename, rm } from 'node:fs/promises';
+import { readdir, open, readFile, rename, rm } from 'node:fs/promises';
+import { basename, dirname, join } from 'node:path';
+import { crashPoint } from '../../chaos/crash-points.js';
 import { UPDATE_REASONS, UPDATE_ROLLBACK_MODES } from '@otheater/protocol';
 import { z } from 'zod';
 
@@ -86,6 +88,9 @@ export async function readJournal(file: string): Promise<JournalReading> {
   }
 }
 
+/** The chaos point between the journal being on the disk under a temporary name and the rename (Phase 11, P6). */
+export const JOURNAL_CRASH_POINT = 'journal.before_rename';
+
 /** Writes the journal whole and to the disk before the next step; a reader never sees half of it. */
 export async function writeJournal(file: string, journal: UpdateJournal): Promise<void> {
   const temporary = `${file}.${String(process.pid)}.tmp`;
@@ -96,10 +101,42 @@ export async function writeJournal(file: string, journal: UpdateJournal): Promis
   } finally {
     await handle.close();
   }
+  await crashPoint(JOURNAL_CRASH_POINT);
   try {
     await rename(temporary, file);
   } catch (error) {
     await rm(temporary, { force: true }).catch(() => undefined);
     throw error;
+  }
+  await sweepDeadTemporaries(file);
+}
+
+function pidExists(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === 'EPERM';
+  }
+}
+
+/**
+ * Removes the temporary journals of writers that no longer exist (Phase 11, P6): an applier killed
+ * between the write and the rename leaves `<file>.<pid>.tmp`, and nobody else would ever delete it.
+ * Runs after a successful write, so the file that matters is already whole.
+ */
+async function sweepDeadTemporaries(file: string): Promise<void> {
+  try {
+    const prefix = `${basename(file)}.`;
+    for (const name of await readdir(dirname(file))) {
+      if (!name.startsWith(prefix) || !name.endsWith('.tmp')) continue;
+      const middle = name.slice(prefix.length, -'.tmp'.length);
+      const pid = /^\d+$/.test(middle) ? Number(middle) : 0;
+      if (pid > 0 && pid !== process.pid && !pidExists(pid)) {
+        await rm(join(dirname(file), name), { force: true });
+      }
+    }
+  } catch {
+    // A leftover file is not worth failing a step of the swap for.
   }
 }
