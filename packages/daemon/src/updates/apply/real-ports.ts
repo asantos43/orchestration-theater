@@ -146,6 +146,7 @@ export function realApplyPorts(input: RealPortsInput): ApplyPorts {
         spawnDaemon: spawnDetachedDaemon,
         env,
       });
+      input.logger.info({ outcome }, 'update: the new daemon was asked to start');
       if (outcome.kind === 'running' || outcome.kind === 'started') return { ok: true };
       return { ok: false, detail: outcome.kind === 'failed' ? outcome.detail : outcome.kind };
     },

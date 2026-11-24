@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
-import { appendFileSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
-import type { Logger } from '../../logger.js';
 import { recoverInterrupted, type ApplyPorts, type RecoveryResult } from './applier.js';
+import { appendFileLogger } from './file-log.js';
 import { FINAL_STEPS, readJournal, type UpdateJournal } from './journal.js';
 import { layoutOf } from './layout.js';
 import { realApplyPorts } from './real-ports.js';
@@ -17,27 +16,6 @@ export interface RecoverAtStartInput {
   readonly ports?: ((input: { journalDataDir: string }) => ApplyPorts) | undefined;
   /** The key and the platform the journal is checked with; the default is the key of this build. */
   readonly trust?: { readonly key: PublicKeyResult; readonly platform: string } | undefined;
-}
-
-function appendLog(file: string): Pick<Logger, 'info' | 'warn' | 'error'> {
-  const write =
-    (level: string) =>
-    (fields: unknown, message?: string): void => {
-      try {
-        const extra = typeof fields === 'object' && fields !== null ? fields : {};
-        const text = typeof fields === 'string' ? fields : (message ?? '');
-        appendFileSync(
-          file,
-          `${JSON.stringify({ time: new Date().toISOString(), level, msg: text, ...extra })}\n`,
-        );
-      } catch {
-        // Nothing to tell it to.
-      }
-    };
-  return { info: write('info'), warn: write('warn'), error: write('error') } as Pick<
-    Logger,
-    'info' | 'warn' | 'error'
-  >;
 }
 
 /**
@@ -64,14 +42,14 @@ export async function recoverAtStart(input: RecoverAtStartInput): Promise<Recove
     if (!FINAL_STEPS.includes(reading.journal.step)) {
       const trusted = await trust(reading.journal);
       if (!trusted.ok) {
-        appendLog(join(layout.folder, 'update-apply.log')).error(
+        appendFileLogger(join(layout.folder, 'update-apply.log')).error(
           { step: reading.journal.step, to: reading.journal.to, detail: trusted.detail },
           'update: the journal is not backed by a signed manifest; ignored',
         );
         return { kind: 'untrusted', detail: trusted.detail };
       }
     }
-    const logger = appendLog(join(layout.folder, 'update-apply.log'));
+    const logger = appendFileLogger(join(layout.folder, 'update-apply.log'));
     const ports =
       input.ports?.({ journalDataDir: reading.journal.dataDir }) ??
       realApplyPorts({ layout, journal: reading.journal, logger, env: input.env });
