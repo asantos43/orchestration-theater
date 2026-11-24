@@ -73,6 +73,7 @@ describe('parseConfig', () => {
       vault: 'keyring',
       clock: 'system',
       prompts: 'files',
+      code_host: 'auto', // Phase 11, P13 (N289)
     });
     expect(config.backup).toEqual({
       when: 'daily_after',

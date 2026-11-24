@@ -194,6 +194,13 @@ export const STORE_ADAPTER_IDS = ['sqlite'] as const;
 export const VAULT_ADAPTER_IDS = ['keyring', 'encrypted-file'] as const;
 export const CLOCK_ADAPTER_IDS = ['system'] as const;
 export const PROMPT_ADAPTER_IDS = ['files'] as const;
+/**
+ * The code host the plays deliver to (Phase 11, P13, N289). `auto`: GitHub when the remote of the
+ * repository is on github.com and `gh` has a credential, no host otherwise; `github`: always the
+ * GitHub adapter; `none`: no host (the delivery ends in a local record, a warning and an event);
+ * `fake`: a host in memory, for the tests that run the whole daemon. [proposta]
+ */
+export const CODE_HOST_ADAPTER_IDS = ['auto', 'github', 'none', 'fake'] as const;
 export const OPENCODE_PROCESS_MODELS = ['per_profile', 'per_session'] as const;
 export const RESUME_PRESET_NAMES = ['balanced', 'patient', 'agile'] as const;
 
@@ -1854,6 +1861,7 @@ export const DaemonConfigSchema = z
         vault: z.enum(VAULT_ADAPTER_IDS).default('keyring'),
         clock: z.enum(CLOCK_ADAPTER_IDS).default('system'),
         prompts: z.enum(PROMPT_ADAPTER_IDS).default('files'),
+        code_host: z.enum(CODE_HOST_ADAPTER_IDS).default('auto'),
       })
       .prefault({}),
     /** `SqliteStoreConfigSchema` without `path` (the path is `<data>/store.sqlite`). */
@@ -1865,6 +1873,13 @@ export const DaemonConfigSchema = z
      * without it the versioned `prompts/` folder of the repository is used). [proposta]
      */
     prompts: AdapterSection.prefault({}),
+    /**
+     * Config of the GitHub code host (`GithubCodeHostConfigSchema`: `ghBinary`, `gitBinary`,
+     * `timeoutMs`, `inheritEnv`, `env`) and `token_secret`, the vault key of the token handed to
+     * `gh` as `GH_TOKEN` (default `code-host/github/token`; without it in the vault `gh` uses its own
+     * login). [proposta]
+     */
+    code_host: AdapterSection.prefault({}),
     /** The telemetry of the clients and its own base (architecture 5.11, N54). */
     telemetry: TelemetryConfigSchema,
     backup: z

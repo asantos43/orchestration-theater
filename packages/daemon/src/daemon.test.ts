@@ -223,6 +223,7 @@ describe('startDaemon', () => {
         'override',
         'override',
         'override',
+        'auto', // the code host (Phase 11, P13)
         'sqlite', // the telemetry base (Phase 8, P1)
       ]);
       const started = await store.events.readFrom(0, 10);
