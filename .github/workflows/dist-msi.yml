@@ -29,6 +29,12 @@ on:
       - 'pnpm-lock.yaml'
   pull_request:
   workflow_dispatch:
+    inputs:
+      version:
+        description: 'A version (x.y.z) for the executable and the .msi instead of the one of the package'
+        type: string
+        required: false
+        default: ''
   workflow_call:
     inputs:
       version:
@@ -136,8 +142,10 @@ jobs:
           OT_RELEASE_VERSION: ${{ inputs.version }}
         run: |
           # Empty outside the release rehearsal: build.ps1 then reads the version of the config.
-          $extra = @()
-          if ($env:OT_RELEASE_VERSION) { $extra = @('-Version', $env:OT_RELEASE_VERSION) }
+          # A hashtable splat binds by name; an array splat would pass '-Version' as a positional
+          # value (it landed in -Exe, and the version in -Launcher).
+          $extra = @{}
+          if ($env:OT_RELEASE_VERSION) { $extra = @{ Version = $env:OT_RELEASE_VERSION } }
           ./installer/wix/build.ps1 @extra
       - name: Install, check, uninstall, check
         env:
