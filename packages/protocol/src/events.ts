@@ -118,6 +118,7 @@ import {
   ProfileExecStartedPayloadSchema,
   ProfileLoginCompletedPayloadSchema,
   ProfileLoginFailedPayloadSchema,
+  ProfileLoginSkippedPayloadSchema,
   ProfileLoginStartedPayloadSchema,
   ProfileShimsRcChangedPayloadSchema,
   ProfileShimsSyncedPayloadSchema,
@@ -700,6 +701,11 @@ export const DAEMON_EVENT_DEFINITIONS = [
     payload: ProfileLoginFailedPayloadSchema,
   }),
   defineEventType({
+    type: 'profile.login.skipped',
+    schemaVersion: 1,
+    payload: ProfileLoginSkippedPayloadSchema,
+  }),
+  defineEventType({
     type: 'executor.changed',
     schemaVersion: 1,
     payload: ExecutorChangedPayloadSchema,
@@ -1116,6 +1122,7 @@ export type ProfileShimsRcChangedPayload = DaemonEventPayloads['profile.shims.rc
 export type ProfileLoginStartedPayload = DaemonEventPayloads['profile.login.started'];
 export type ProfileLoginCompletedPayload = DaemonEventPayloads['profile.login.completed'];
 export type ProfileLoginFailedPayload = DaemonEventPayloads['profile.login.failed'];
+export type ProfileLoginSkippedPayload = DaemonEventPayloads['profile.login.skipped'];
 export type ExecutorChangedPayload = DaemonEventPayloads['executor.changed'];
 export type DaemonNoticePayload = DaemonEventPayloads['daemon.notice'];
 export type RecoveryNoticePayload = DaemonEventPayloads['recovery.notice'];

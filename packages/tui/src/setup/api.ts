@@ -2,14 +2,34 @@
 import type { ApiClient } from '@otheater/client';
 import {
   API_ROUTES,
+  type AddProfileBody,
+  type AddProfileResult,
   type SetupOverview,
   type SetupRunView,
   type SetupStepSubmission,
+  type StartProfileLoginResult,
 } from '@otheater/protocol';
 import { randomUUID } from 'node:crypto';
+import { apiOf } from '../tabs/settings/api.js';
 
 /** The three flows the daemon's assistant has (P4). */
 export type SetupFlow = SetupOverview['flows'][number]['flow'];
+
+/**
+ * What the step that adds an account asks of the daemon (N274, 2026-11-22): the same routes the
+ * tab Settings uses to add an account and to log in to it. [proposta] It is part of {@link SetupApi}
+ * and optional: an API without it (a test of the other steps) has no such step.
+ */
+export interface SetupAccounts {
+  addProfile(body: AddProfileBody): Promise<AddProfileResult>;
+  startLogin(profileId: string): Promise<StartProfileLoginResult>;
+  cancelLogin(profileId: string): Promise<void>;
+  /**
+   * Runs a command in the terminal of the person, with it handed over (default: the command as the
+   * tab Settings runs it). Tests put a fake in its place: no client is ever run by a test.
+   */
+  runLocal?: ((command: string) => Promise<number | null>) | undefined;
+}
 
 /**
  * What the setup screen asks of the daemon (P17 of Phase 7): the thin, typed face of the six
@@ -25,6 +45,8 @@ export interface SetupApi {
   back(runId: string): Promise<SetupRunView>;
   confirm(runId: string): Promise<SetupRunView>;
   cancel(runId: string): Promise<SetupRunView>;
+  /** The step that adds an account (first run only); without it the screen has no such step. */
+  readonly accounts?: SetupAccounts | undefined;
 }
 
 function key(): { readonly 'idempotency-key': string } {
@@ -33,7 +55,13 @@ function key(): { readonly 'idempotency-key': string } {
 
 /** The setup API over the typed client of the daemon. */
 export function setupApiOf(client: ApiClient): SetupApi {
+  const settings = apiOf(client);
   return {
+    accounts: {
+      addProfile: (body) => settings.addProfile(body),
+      startLogin: (profileId) => settings.startLogin(profileId),
+      cancelLogin: (profileId) => settings.cancelLogin(profileId),
+    },
     overview: () => client.call(API_ROUTES.getSetup, {}),
     start: (flow) => client.call(API_ROUTES.startSetup, { params: { flow }, headers: key() }),
     submit: (runId, body) =>
