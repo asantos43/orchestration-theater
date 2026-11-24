@@ -100,6 +100,11 @@ export function sessionEntries(storePath: string): CensusEntry[] {
   const db = new DatabaseSync(storePath);
   try {
     db.exec('PRAGMA query_only = ON');
+    // A daemon killed while it creates the store leaves a file without the schema: no table, no clients.
+    const hasSessions = db
+      .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'sessions'")
+      .get();
+    if (hasSessions === undefined) return [];
     const rows = db
       .prepare('SELECT id, pid, process_started_at FROM sessions WHERE pid IS NOT NULL')
       .all() as { id: string; pid: number; process_started_at: number | null }[];

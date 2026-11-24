@@ -14,6 +14,8 @@
     "src/chaos/census.ts",
     "src/chaos/invariants.ts",
     "src/chaos/torn-store.ts",
+    "src/chaos/sea-rig.ts",
+    "src/chaos/target.ts",
     "src/types/*.d.ts"
   ],
   "references": [
