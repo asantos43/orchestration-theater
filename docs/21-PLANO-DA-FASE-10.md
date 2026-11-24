@@ -82,7 +82,7 @@ Os passos P1 a P11 seguem a lista do pedido do dono (executável, lançador, `.m
 | P8 | `updates.*` (2/2): aplicar com `apply_when` e `max_wait`, volta automática e backup antes das migrações | P1, P7 | P4, P5, P6, P10 | feito (#297) |
 | P9 | Job de release na CI e o portão do R1 | P1, P4, P5, P7, P10 | nada | feito neste PR |
 | P10 | `THIRD_PARTY_NOTICES` por plataforma | P1 | P4, P5, P6, P8 | feito (#294) |
-| P11 | Assinatura de código, desligada, por chave; guia de instalação | P9 | P12 (a parte automática) | a fazer |
+| P11 | Assinatura de código, desligada, por chave; guia de instalação | P9 | P12 (a parte automática) | feito (#332) |
 | P12 | Aceite da fase | P1 a P11 | nada | a fazer |
 | P13 | Adaptadores ACP gerenciados (N254 revista) | P1, P6 | P9, P11 | feito (#298) |
 
