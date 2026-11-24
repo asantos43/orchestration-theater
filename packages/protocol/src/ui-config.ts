@@ -24,6 +24,7 @@ export const UI_SETUP_OPEN_MODES = ['auto', 'never'] as const;
 export const UI_INK_PATCHES = ['cache', 'grid'] as const;
 export const UI_SCROLL_STEPS = ['page', 'half', 'line'] as const;
 export const UI_DENSITIES = ['comfortable', 'compact'] as const;
+export const UI_SIDEBAR_EDGE_MODES = ['tab', 'mouse', 'off'] as const;
 export const UI_KEYBOARD_PROTOCOLS = ['auto', 'kitty', 'off'] as const;
 
 export type UiKeymapPreset = (typeof UI_KEYMAP_PRESETS)[number];
@@ -115,14 +116,19 @@ export const UiRuntimeConfigSchema = z.strictObject({
 
 /**
  * `ui.tuiLayout` (architecture 5.13, P9 of docs/18): the measures of the screen of the terminal.
- * `sidebarWidth`: columns of the side bar open (30, as in the mockup); `railWidth`: columns of the
+ * `sidebarWidth`: columns of the side bar open (30, as in the mockup); since N277 it is the width
+ * the TUI starts with, and the one the person drags or steps to is kept in the layout preferences
+ * (`LayoutPreferences.sidebarWidth`); `railWidth`: columns of the
  * rail it becomes (5); `minChatWidth` and `minPanelWidth`: the least the chat and the work panel
  * keep when the window is narrow (30 each); `chatStep`: columns one press of the width keys moves
  * the edge of the chat (2); `scrollStep`: how far the scroll keys of a list go, `page`, `half`
  * (default) or `line`; `density` (N258): `comfortable` (default) draws the margins and the alignment
  * of the mockup (a column of margin inside each frame, the sections of the panel with a blank row
  * and an indent, the tab bar and the hints in the places of the mockup), `compact` is the screen
- * as it was before (no margin). The ranges and defaults are [proposta].
+ * as it was before (no margin); `sidebarEdge` (N277, 2026-11-22): how the border between the side bar
+ * and the chat is adjusted, `tab` (default: the mouse drags it, and it is a stop of Tab where the
+ * arrows change the width, as the border of the chat), `mouse` (only the drag: no stop of Tab) or
+ * `off` (the width is fixed: neither drag nor keys). The ranges and defaults are [proposta].
  */
 export const UiTuiLayoutConfigSchema = z.strictObject({
   sidebarWidth: z.int().min(16).max(80).default(30),
@@ -132,10 +138,12 @@ export const UiTuiLayoutConfigSchema = z.strictObject({
   chatStep: z.int().min(1).max(20).default(2),
   scrollStep: z.enum(UI_SCROLL_STEPS).default('half'),
   density: z.enum(UI_DENSITIES).default('comfortable'),
+  sidebarEdge: z.enum(UI_SIDEBAR_EDGE_MODES).default('tab'),
 });
 export type UiTuiLayoutConfig = z.output<typeof UiTuiLayoutConfigSchema>;
 export type UiScrollStep = (typeof UI_SCROLL_STEPS)[number];
 export type UiDensity = (typeof UI_DENSITIES)[number];
+export type UiSidebarEdgeMode = (typeof UI_SIDEBAR_EDGE_MODES)[number];
 // ---- The text box (N35; P10 of docs/18) ---------------------------------------------------------
 
 /** `marker`: a long paste becomes `[Pasted text #n]` plus an attachment; `inline`: it stays in the text. */

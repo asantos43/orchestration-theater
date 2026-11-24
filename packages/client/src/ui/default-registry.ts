@@ -213,7 +213,7 @@ export const DEFAULT_UI_REGISTRY_DEFINITION: UiRegistryDefinition = {
       keys: terminalKeys(['Ctrl+Shift+Right'], ['Ctrl+Right']),
     },
     {
-      // Tab moves the focus between the chat, its edge, the work panel and the side bar; P9.
+      // Tab moves the focus between the chat, its edge, the work panel, the side bar and the edge of the side bar (N277); P9.
       id: 'layout.focusNext',
       textKey: 'actions.layout.focusNext',
       group: 'layout',
@@ -287,6 +287,25 @@ export const DEFAULT_UI_REGISTRY_DEFINITION: UiRegistryDefinition = {
       textKey: 'actions.edge.widen',
       group: 'navigation',
       context: 'edge',
+      palette: false,
+      keys: terminalKeys(['Right']),
+    },
+    {
+      // [proposta] The border between the side bar and the chat (N277): the same keys as the one of
+      // the chat, in a context of its own so each border has its own bar of shortcuts.
+      id: 'sidebarEdge.narrow',
+      textKey: 'actions.sidebarEdge.narrow',
+      group: 'navigation',
+      context: 'sidebarEdge',
+      palette: false,
+      keys: terminalKeys(['Left']),
+      bar: { textKey: 'bar.sidebarEdge.resize', order: 12 },
+    },
+    {
+      id: 'sidebarEdge.widen',
+      textKey: 'actions.sidebarEdge.widen',
+      group: 'navigation',
+      context: 'sidebarEdge',
       palette: false,
       keys: terminalKeys(['Right']),
     },
