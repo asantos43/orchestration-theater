@@ -18,12 +18,31 @@ import { isTargetId, TARGET_IDS, type TargetId } from './targets.js';
  *   `assemble`; the manifest carries it as `expires` and the daemon and `install.sh` refuse a manifest
  *   after it. Default 365. `null` writes no `expires` (the manifest never expires). The command
  *   line (`assemble --valid-days <n|none>`) overrides it.
+ * - `signing` (P11, N247) [proposta]: the code signing of the release, both OFF by default (no account
+ *   and no certificate exist; docs/22). The build itself never signs: `.github/workflows/release.yml`
+ *   reads these keys (the repository variables `OT_SIGNING_WINDOWS` and `OT_SIGNING_MACOS`, when set,
+ *   win over the file) and runs the signing steps only when a key is on.
+ *   - `signing.windows`: `off` or `signtool` (signs the .exe and the .msi with a certificate from secrets).
+ *   - `signing.macos`: `off` or `codesign` (signs with a Developer ID certificate and notarizes). The
+ *     ad hoc signature the build always applies to the arm64 executable (P1) is not this: it is no
+ *     certificate and no identity.
  */
 export interface ReleaseConfig {
   readonly targets: readonly TargetId[];
   readonly versionOverride: string | null;
   readonly notices: NoticesMode;
   readonly manifestValidityDays: number | null;
+  readonly signing: SigningConfig;
+}
+
+export const WINDOWS_SIGNING_MODES = ['off', 'signtool'] as const;
+export type WindowsSigningMode = (typeof WINDOWS_SIGNING_MODES)[number];
+export const MACOS_SIGNING_MODES = ['off', 'codesign'] as const;
+export type MacosSigningMode = (typeof MACOS_SIGNING_MODES)[number];
+
+export interface SigningConfig {
+  readonly windows: WindowsSigningMode;
+  readonly macos: MacosSigningMode;
 }
 
 /** The longest validity `manifestValidityDays` takes (ten years). */
@@ -37,6 +56,7 @@ export const DEFAULT_RELEASE_CONFIG: ReleaseConfig = {
   versionOverride: null,
   notices: 'per_platform',
   manifestValidityDays: 365,
+  signing: { windows: 'off', macos: 'off' },
 };
 
 /** A version that is safe to bake into the bundle and to print: dotted numbers, an optional tag. */
@@ -56,7 +76,8 @@ export function parseReleaseConfig(raw: unknown): ReleaseConfig {
       key !== 'targets' &&
       key !== 'versionOverride' &&
       key !== 'notices' &&
-      key !== 'manifestValidityDays',
+      key !== 'manifestValidityDays' &&
+      key !== 'signing',
   );
   if (unknown.length > 0) {
     throw new ReleaseConfigError(`release.config.json has unknown keys: ${unknown.join(', ')}`);
@@ -108,7 +129,44 @@ export function parseReleaseConfig(raw: unknown): ReleaseConfig {
       manifestValidityDays = days;
     }
   }
-  return { targets, versionOverride, notices, manifestValidityDays };
+  return {
+    targets,
+    versionOverride,
+    notices,
+    manifestValidityDays,
+    signing: parseSigning(raw.signing),
+  };
+}
+
+/** `signing`: a missing key takes `off`; an unknown key or mode is an error, never a silent `off`. */
+function parseSigning(raw: unknown): SigningConfig {
+  if (raw === undefined) return DEFAULT_RELEASE_CONFIG.signing;
+  if (!isRecord(raw)) throw new ReleaseConfigError('"signing" must be an object');
+  const unknown = Object.keys(raw).filter((key) => key !== 'windows' && key !== 'macos');
+  if (unknown.length > 0) {
+    throw new ReleaseConfigError(`"signing" has unknown keys: ${unknown.join(', ')}`);
+  }
+  let windows: WindowsSigningMode = DEFAULT_RELEASE_CONFIG.signing.windows;
+  if (raw.windows !== undefined) {
+    const mode = raw.windows;
+    if (typeof mode !== 'string' || !(WINDOWS_SIGNING_MODES as readonly string[]).includes(mode)) {
+      throw new ReleaseConfigError(
+        `"signing.windows" must be one of: ${WINDOWS_SIGNING_MODES.join(', ')}`,
+      );
+    }
+    windows = mode as WindowsSigningMode;
+  }
+  let macos: MacosSigningMode = DEFAULT_RELEASE_CONFIG.signing.macos;
+  if (raw.macos !== undefined) {
+    const mode = raw.macos;
+    if (typeof mode !== 'string' || !(MACOS_SIGNING_MODES as readonly string[]).includes(mode)) {
+      throw new ReleaseConfigError(
+        `"signing.macos" must be one of: ${MACOS_SIGNING_MODES.join(', ')}`,
+      );
+    }
+    macos = mode as MacosSigningMode;
+  }
+  return { windows, macos };
 }
 
 export function loadReleaseConfig(file: string): ReleaseConfig {
