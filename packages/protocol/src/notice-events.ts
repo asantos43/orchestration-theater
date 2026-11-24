@@ -100,6 +100,10 @@ const detail = z.string().min(1).max(512).nullable();
  *     (`subject`: the branch; `detail`: why there is no host);
  *   - `code_host_unavailable`: `adapters.code_host: github` could not be built (`detail`: why), and
  *     the deliveries end as with `none`.
+ * - `temporary_cleanup_failed` (Phase 11, N306; [proposta]): a temporary file a killed process left
+ *   (`<file>.<pid>.<hex>.tmp` of `daemon-id`, `api-token` or `api.json`, or `.<addon>.<pid>.<hex>.tmp`
+ *   of an extracted native addon) could not be removed (`subject`: the file name; `detail`: why). The
+ *   start goes on; the file stays, and the next start tries again.
  */
 export const DAEMON_NOTICE_KINDS = [
   'vault_locked',
@@ -136,6 +140,7 @@ export const DAEMON_NOTICE_KINDS = [
   'disk_recovered',
   'delivery_without_pr',
   'code_host_unavailable',
+  'temporary_cleanup_failed',
 ] as const;
 export type DaemonNoticeKind = (typeof DAEMON_NOTICE_KINDS)[number];
 

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
-import { access, readdir, readFile, rm, stat } from 'node:fs/promises';
+import { spawnSync } from 'node:child_process';
+import { access, mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { API_VERSION, type ApiStatus } from '@otheater/protocol';
 import { FakeClock, InMemorySecretVault, InMemoryStore } from '@otheater/core/testing';
@@ -71,7 +72,47 @@ async function ot(
   return { code, out, err };
 }
 
+/** The pid of a process that ran and is gone. */
+function deadPid(): number {
+  return spawnSync(process.execPath, ['-e', ''], { stdio: 'ignore' }).pid;
+}
+
 describe('startDaemon, the HTTP API', () => {
+  it('removes the temporaries a killed daemon left beside its files, and only those (N306)', async () => {
+    const tmp = await makeTempDataDir();
+    try {
+      const hex = '0123456789abcdef';
+      const dead = String(deadPid());
+      const orphans = [`daemon-id.${dead}.${hex}.tmp`, `api.json.${dead}.${hex}.tmp`];
+      const stuck = `api-token.${dead}.${hex}.tmp`;
+      const keep = ['notes.tmp', `other.${dead}.${hex}.tmp`, `api.json.${dead}.tmp`];
+      for (const name of [...orphans, ...keep]) await writeFile(join(tmp.dir, name), 'x');
+      // One that cannot be removed (a folder): a warning and a notice, and the daemon still starts.
+      await mkdir(join(tmp.dir, stuck));
+      const store = memoryStore();
+      const daemon = await start(tmp.dir, AUTO, store);
+      expect((await readdir(tmp.dir)).filter((name) => name.includes('.tmp')).sort()).toEqual(
+        [...keep, stuck].sort(),
+      );
+      // The situations are written by a queue; wait for the notice (at most 5 s).
+      let notices: Awaited<ReturnType<typeof store.events.readFrom>> = [];
+      for (let tries = 0; tries < 100 && notices.length === 0; tries += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        notices = (await store.events.readFrom(0, 200)).filter(
+          (event) => event.type === 'daemon.notice',
+        );
+      }
+      expect(notices.map((event) => event.payload)).toContainEqual({
+        kind: 'temporary_cleanup_failed',
+        subject: stuck,
+        detail: expect.any(String) as string,
+      });
+      await daemon.stop('shutdown');
+    } finally {
+      await tmp.dispose();
+    }
+  });
+
   it('answers GET /v1/status with the token, publishes api.json and api-token (0600), and records api.started', async () => {
     const tmp = await makeTempDataDir();
     try {

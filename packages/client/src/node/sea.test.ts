@@ -1,5 +1,13 @@
 // SPDX-License-Identifier: MPL-2.0
-import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -9,9 +17,11 @@ import {
   isSeaProcess,
   listSeaAssets,
   loadSeaNative,
+  onSeaNativeSweepFailure,
   readSeaAsset,
   readSeaAssetBytes,
   SEA_INTERNAL_PREFIX,
+  type SeaSweepFailure,
 } from './sea.js';
 
 const dirs: string[] = [];
@@ -83,5 +93,106 @@ describe('extractNative', () => {
     const dir = tmp();
     const file = extractNative('a.node', Buffer.from('x'), { argv: ['--data-dir', dir], env: {} });
     expect(file.startsWith(dir)).toBe(true);
+  });
+});
+
+describe('extractNative: orphan temporaries of a killed process (N306)', () => {
+  const DEAD = 2_000_000_000;
+  const hex = '0123456789ab';
+  const dead = (pid: number): boolean => pid !== process.pid && pid !== 4242;
+
+  /** The folder of an addon after one extraction, so the hash folder exists. */
+  function folderOf(dir: string, bytes: string): string {
+    return join(extractNative('a.node', Buffer.from(bytes), { dataDir: dir }), '..');
+  }
+
+  it('removes the temporary of a dead pid, on a fresh extraction and when the good copy is there', () => {
+    const dir = tmp();
+    const folder = folderOf(dir, 'one');
+    const orphan = join(folder, `.a.node.${String(DEAD)}.${hex}.tmp`);
+    writeFileSync(orphan, 'half');
+    extractNative('a.node', Buffer.from('one'), { dataDir: dir, isPidAlive: () => false });
+    expect(readdirSync(folder)).toEqual(['a.node']);
+
+    // The good copy is gone and the orphan is there: the extraction writes again and cleans too.
+    writeFileSync(orphan, 'half');
+    rmSync(join(folder, 'a.node'));
+    extractNative('a.node', Buffer.from('one'), { dataDir: dir, isPidAlive: () => false });
+    expect(readdirSync(folder)).toEqual(['a.node']);
+  });
+
+  it('keeps the temporary of a live pid (another extraction in the same folder)', () => {
+    const dir = tmp();
+    const folder = folderOf(dir, 'one');
+    const live = join(folder, `.a.node.4242.${hex}.tmp`);
+    writeFileSync(live, 'in flight');
+    extractNative('a.node', Buffer.from('one'), {
+      dataDir: dir,
+      isPidAlive: (pid) => pid === 4242,
+    });
+    expect(readFileSync(live, 'utf8')).toBe('in flight');
+  });
+
+  it('removes a temporary that carries its own pid (a pid reused by a restart)', () => {
+    const dir = tmp();
+    const folder = folderOf(dir, 'one');
+    const own = join(folder, `.a.node.${String(process.pid)}.${hex}.tmp`);
+    writeFileSync(own, 'half');
+    extractNative('a.node', Buffer.from('one'), { dataDir: dir });
+    expect(readdirSync(folder)).toEqual(['a.node']);
+  });
+
+  it('never touches a name outside the pattern, nor the temporary of another addon', () => {
+    const dir = tmp();
+    const folder = folderOf(dir, 'one');
+    const others = [
+      `.a.node.${hex}.tmp`, // the name without a pid
+      `.a.node.${String(DEAD)}.${hex}.tmp.keep`,
+      `.a.node.${String(DEAD)}.XYZ.tmp`,
+      `.b.node.${String(DEAD)}.${hex}.tmp`, // another addon's
+      `x.a.node.${String(DEAD)}.${hex}.tmp`,
+      `.aXnode.${String(DEAD)}.${hex}.tmp`, // the dot of the name is not a wildcard
+      'notes.txt',
+    ];
+    for (const name of others) writeFileSync(join(folder, name), 'keep');
+    extractNative('a.node', Buffer.from('one'), { dataDir: dir, isPidAlive: dead });
+    expect(readdirSync(folder).sort()).toEqual(['a.node', ...others].sort());
+  });
+
+  it('tells a temporary it cannot remove and goes on', () => {
+    const dir = tmp();
+    const folder = folderOf(dir, 'one');
+    // A folder with the name of a temporary: `rmSync` without `recursive` refuses it.
+    const stuck = `.a.node.${String(DEAD)}.${hex}.tmp`;
+    mkdirSync(join(folder, stuck));
+    const failures: SeaSweepFailure[] = [];
+    const file = extractNative('a.node', Buffer.from('one'), {
+      dataDir: dir,
+      isPidAlive: () => false,
+      onSweepFailure: (failure) => failures.push(failure),
+    });
+    expect(readFileSync(file, 'utf8')).toBe('one');
+    expect(failures.map((failure) => failure.name)).toEqual([stuck]);
+    expect(failures[0]?.error).toBeInstanceOf(Error);
+  });
+
+  it('hands a failure to the sink of the daemon, also one that came before the sink was set', () => {
+    const dir = tmp();
+    const folder = folderOf(dir, 'one');
+    const stuck = `.a.node.${String(DEAD)}.${hex}.tmp`;
+    mkdirSync(join(folder, stuck));
+    // No sink yet: the failure waits.
+    extractNative('a.node', Buffer.from('one'), { dataDir: dir, isPidAlive: () => false });
+    const names: string[] = [];
+    const stop = onSeaNativeSweepFailure((failure) => names.push(failure.name));
+    expect(names).toEqual([stuck]);
+    // With the sink set, the next one goes straight to it.
+    extractNative('a.node', Buffer.from('one'), { dataDir: dir, isPidAlive: () => false });
+    expect(names).toEqual([stuck, stuck]);
+    stop();
+    extractNative('a.node', Buffer.from('one'), { dataDir: dir, isPidAlive: () => false });
+    expect(names).toHaveLength(2);
+    // Leave the module the way it was found: the failure above waits in the queue, so drain it.
+    onSeaNativeSweepFailure(() => undefined)();
   });
 });

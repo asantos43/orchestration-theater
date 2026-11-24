@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 import { disposeTestGitIsolation } from '@otheater/sdk';
 import { SeededRandom, resolveSeed } from './harness.js';
-import { assertInvariants, DEFAULT_ALLOWED_LEFTOVERS } from './invariants.js';
+import { assertInvariants } from './invariants.js';
 import { SeaRig } from './sea-rig.js';
 import { chaosTarget, overSea } from './target.js';
 
@@ -63,23 +63,6 @@ function nativeFiles(rig: SeaRig): string[] {
   return files.sort();
 }
 
-/**
- * KNOWN DEFECTS (found by this suite in the CI runs of the P12, seed 20261125; docs/23, P12, "Como
- * ficou"). Both are a temporary file written next to its target and then renamed, and a `SIGKILL`
- * between the two leaves it, with nothing that removes it at the next start:
- * - `writePrivateFile` (`api/files.ts`) writes `daemon-id`, `api-token` and `api.json` through
- *   `<name>.<pid>.<hex>.tmp` (cold start, instant #43 at 754 ms);
- * - `extractNative` (`client/src/node/sea.ts`) writes the native addon of the executable through
- *   `<data>/native/<sha256>/.<name>.<hex>.tmp` (cold start, instant #35 at 426 ms).
- * The update journal has the cleaning of the temporaries of dead pids since the P6; these do not. The
- * product code is outside this step, so I7 lets exactly these names stay here, and nothing else. When
- * the writers clean them, delete the patterns.
- */
-const KNOWN_TEMPORARIES: readonly RegExp[] = [
-  /^(daemon-id|api-token|api\.json)\.\d+\.[0-9a-f]{16}\.tmp$/,
-  /^\.[\w.-]+\.node\.[0-9a-f]+\.tmp$/,
-];
-
 describe.skipIf(!SEA)('chaos over the executable: the single executable of Phase 10', () => {
   const target = SEA ? chaosTarget() : undefined;
   const exe = (): string => {
@@ -97,12 +80,7 @@ describe.skipIf(!SEA)('chaos over the executable: the single executable of Phase
     expect(status.state).toBe('running');
     expect(await rig.stop(daemon)).toBe(0);
     rig.pollLedger();
-    assertInvariants(
-      rig.evaluate({
-        census: afterKill,
-        allowedLeftovers: [...DEFAULT_ALLOWED_LEFTOVERS, ...KNOWN_TEMPORARIES],
-      }),
-    );
+    assertInvariants(rig.evaluate({ census: afterKill }));
   }
 
   describe('a cold start (the native addons are extracted) killed at a random instant', () => {

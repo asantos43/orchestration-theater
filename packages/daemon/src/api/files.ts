@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { constants } from 'node:fs';
-import { lstat, open, readFile, rename, rm } from 'node:fs/promises';
+import { lstat, open, readFile, readdir, rename, rm } from 'node:fs/promises';
+import { basename, dirname, join } from 'node:path';
 import {
   ApiDiscoverySchema,
   DaemonIdSchema,
@@ -10,6 +11,7 @@ import {
 } from '@otheater/protocol';
 import type { ApiTokenMode } from '../config.js';
 import type { Logger } from '../logger.js';
+import { situationSubject, situationText, type SituationSink } from '../situations.js';
 
 /**
  * The three small files of the daemon API in the data folder (P3 of docs/17; decisions N165, N166
@@ -57,6 +59,104 @@ export async function writePrivateFile(path: string, text: string): Promise<void
     await rm(temporary, { force: true }).catch(() => undefined);
     throw error;
   }
+}
+
+/** What follows `<file>` in the name of a temporary of {@link writePrivateFile}: `.<pid>.<16 hex>.tmp`. */
+const TEMPORARY_TAIL = /^\.(\d+)\.[0-9a-f]{16}\.tmp$/;
+
+export interface SweepTemporariesOptions {
+  /** Whether a pid is a live process. Default {@link isProcessAlive}; tests replace it. */
+  readonly alive?: ((pid: number) => boolean) | undefined;
+  /**
+   * Whether a temporary that carries this process's own pid is an orphan too. Right at start-up it is:
+   * nothing of this process has written the file yet, so the name is a left-over of an earlier process
+   * that had the same pid (a daemon that runs as pid 1 in a container always has it). Default `false`.
+   */
+  readonly includeOwnPid?: boolean | undefined;
+  /** Told about a temporary that could not be removed, or a folder that could not be read; never throws. */
+  readonly onError?: ((error: unknown, name: string) => void) | undefined;
+}
+
+/**
+ * Removes the orphan temporaries of `path` (Phase 11, N306): the `<name>.<pid>.<16 hex>.tmp` that
+ * {@link writePrivateFile} leaves when its process dies between the write and the rename, whose pid is no
+ * longer alive. Only that exact shape of name, for that exact file, is ever touched: nothing else in the
+ * folder, and no temporary of another file. A pid that was reused by a live process keeps its file (the
+ * safe side). It never throws. Returns the names it removed.
+ */
+export async function sweepOrphanTemporaries(
+  path: string,
+  options: SweepTemporariesOptions = {},
+): Promise<string[]> {
+  const alive = options.alive ?? isProcessAlive;
+  const folder = dirname(path);
+  const prefix = basename(path);
+  const removed: string[] = [];
+  let names: string[];
+  try {
+    names = await readdir(folder);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') options.onError?.(error, prefix);
+    return removed;
+  }
+  for (const name of names) {
+    if (!name.startsWith(prefix)) continue;
+    const match = TEMPORARY_TAIL.exec(name.slice(prefix.length));
+    if (match === null) continue;
+    const pid = Number(match[1]);
+    if (!Number.isSafeInteger(pid) || pid <= 0) continue;
+    if (pid === process.pid ? options.includeOwnPid !== true : alive(pid)) continue;
+    try {
+      await rm(join(folder, name), { force: true });
+      removed.push(name);
+    } catch (error) {
+      options.onError?.(error, name);
+    }
+  }
+  return removed;
+}
+
+export interface SweepApiTemporariesOptions {
+  readonly logger?: Logger | undefined;
+  readonly situations?: SituationSink | undefined;
+  readonly alive?: ((pid: number) => boolean) | undefined;
+}
+
+/**
+ * The start-up cleaning of the three files of this module (`daemon-id`, `api-token`, `api.json`): the
+ * temporaries a killed daemon left are removed before the files are written again. A removal that fails
+ * is a warning in the log and a `daemon.notice` (`temporary_cleanup_failed`), and the start goes on.
+ */
+export async function sweepApiTemporaries(
+  paths: readonly string[],
+  options: SweepApiTemporariesOptions = {},
+): Promise<string[]> {
+  const removed: string[] = [];
+  for (const path of paths) {
+    const names = await sweepOrphanTemporaries(path, {
+      alive: options.alive,
+      includeOwnPid: true,
+      onError: (error, name) => {
+        options.logger?.warn(
+          { err: situationText(error, 200), file: name },
+          'an orphan temporary file could not be removed',
+        );
+        options.situations?.record('daemon.notice', {
+          kind: 'temporary_cleanup_failed',
+          subject: situationSubject(name),
+          detail: situationText(error),
+        });
+      },
+    });
+    removed.push(...names);
+  }
+  if (removed.length > 0) {
+    options.logger?.info(
+      { files: removed },
+      'orphan temporary files of a killed daemon were removed',
+    );
+  }
+  return removed;
 }
 
 /**

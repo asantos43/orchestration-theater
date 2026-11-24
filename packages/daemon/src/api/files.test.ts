@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0
-import { readdir, readFile, stat, writeFile } from 'node:fs/promises';
+import { spawnSync } from 'node:child_process';
+import { mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { createSilentLogger } from '../logger.js';
 import { makeTempDataDir } from '../test-helpers.js';
 import {
@@ -15,6 +16,8 @@ import {
   readDiscovery,
   removeDiscovery,
   sameToken,
+  sweepApiTemporaries,
+  sweepOrphanTemporaries,
   writePrivateFile,
 } from './files.js';
 
@@ -159,5 +162,126 @@ describe('isProcessAlive', () => {
   it('knows this process and a pid that does not exist', () => {
     expect(isProcessAlive(process.pid)).toBe(true);
     expect(isProcessAlive(2_147_483_000)).toBe(false);
+  });
+});
+
+describe('orphan temporaries of a killed writer (N306)', () => {
+  const DEAD = 2_000_000_000;
+  const hex = '0123456789abcdef';
+  const dead = (pid: number): boolean => pid !== 4242;
+
+  it('removes the temporary of a dead pid and leaves the file itself', async () => {
+    await withDir(async (dir) => {
+      const path = join(dir, 'daemon-id');
+      await writeFile(path, 'the id');
+      await writeFile(`${path}.${String(DEAD)}.${hex}.tmp`, 'half');
+      const removed = await sweepOrphanTemporaries(path, { alive: () => false });
+      expect(removed).toEqual([`daemon-id.${String(DEAD)}.${hex}.tmp`]);
+      expect(await readdir(dir)).toEqual(['daemon-id']);
+    });
+  });
+
+  it('with the real check of the pid, a process that ended is dead and this one is alive', async () => {
+    await withDir(async (dir) => {
+      const path = join(dir, 'daemon-id');
+      const gone = spawnSync(process.execPath, ['-e', ''], { stdio: 'ignore' }).pid;
+      const orphan = `daemon-id.${String(gone)}.${hex}.tmp`;
+      const live = `daemon-id.${String(process.ppid)}.${hex}.tmp`;
+      await writeFile(join(dir, orphan), 'half');
+      await writeFile(join(dir, live), 'in flight');
+      expect(await sweepOrphanTemporaries(path)).toEqual([orphan]);
+      expect(await readdir(dir)).toEqual([live]);
+    });
+  });
+
+  it('leaves the temporary of a live pid, and its own pid unless told otherwise', async () => {
+    await withDir(async (dir) => {
+      const path = join(dir, 'api-token');
+      const live = `api-token.4242.${hex}.tmp`;
+      const own = `api-token.${String(process.pid)}.${hex}.tmp`;
+      await writeFile(join(dir, live), 'in flight');
+      await writeFile(join(dir, own), 'mine');
+      expect(await sweepOrphanTemporaries(path, { alive: (pid) => pid === 4242 })).toEqual([]);
+      expect((await readdir(dir)).sort()).toEqual([live, own].sort());
+      // At start-up its own pid is a left-over of an earlier process; the live one stays.
+      expect(
+        await sweepOrphanTemporaries(path, { alive: (pid) => pid === 4242, includeOwnPid: true }),
+      ).toEqual([own]);
+      expect(await readdir(dir)).toEqual([live]);
+    });
+  });
+
+  it('never touches a name outside the pattern or a temporary of another file', async () => {
+    await withDir(async (dir) => {
+      const path = join(dir, 'api.json');
+      const keep = [
+        `api.json.${String(DEAD)}.tmp`, // no random part
+        `api.json.${String(DEAD)}.${hex}`, // not .tmp
+        `api.json.${String(DEAD)}.${hex}.tmp.old`,
+        `api.json.${String(DEAD)}.XYZXYZXYZXYZXYZX.tmp`,
+        `api.json.abc.${hex}.tmp`, // the pid is not a number
+        `api.json.0.${hex}.tmp`, // pid 0 is no process
+        `api-json.${String(DEAD)}.${hex}.tmp`,
+        `other.${String(DEAD)}.${hex}.tmp`, // another file's
+        `xapi.json.${String(DEAD)}.${hex}.tmp`,
+        'api.json.bak',
+        'api.json',
+      ];
+      for (const name of keep) await writeFile(join(dir, name), 'keep');
+      await mkdir(join(dir, 'sub'));
+      await writeFile(join(dir, 'sub', `api.json.${String(DEAD)}.${hex}.tmp`), 'keep');
+      expect(await sweepOrphanTemporaries(path, { alive: dead })).toEqual([]);
+      expect((await readdir(dir)).sort()).toEqual([...keep, 'sub'].sort());
+    });
+  });
+
+  it('is quiet about a folder that is not there', async () => {
+    await withDir(async (dir) => {
+      const onError = vi.fn();
+      expect(await sweepOrphanTemporaries(join(dir, 'gone', 'daemon-id'), { onError })).toEqual([]);
+      expect(onError).not.toHaveBeenCalled();
+    });
+  });
+
+  it('sweeps the three files of the daemon and says what it removed', async () => {
+    await withDir(async (dir) => {
+      for (const name of ['daemon-id', 'api-token', 'api.json']) {
+        await writeFile(join(dir, `${name}.${String(DEAD)}.${hex}.tmp`), 'half');
+      }
+      const info = vi.fn();
+      const removed = await sweepApiTemporaries(
+        ['daemon-id', 'api-token', 'api.json'].map((name) => join(dir, name)),
+        { logger: { info, warn: vi.fn() } as never, alive: () => false },
+      );
+      expect(removed).toHaveLength(3);
+      expect(await readdir(dir)).toEqual([]);
+      expect(info).toHaveBeenCalledOnce();
+    });
+  });
+
+  it('a removal that fails is a warning and a daemon.notice, and the start goes on', async () => {
+    await withDir(async (dir) => {
+      const stuck = `daemon-id.${String(DEAD)}.${hex}.tmp`;
+      // A folder with the name of a temporary: `rm` without `recursive` refuses it.
+      await mkdir(join(dir, stuck));
+      const warn = vi.fn();
+      const record = vi.fn();
+      const removed = await sweepApiTemporaries([join(dir, 'daemon-id')], {
+        logger: { info: vi.fn(), warn } as never,
+        situations: { record },
+        alive: () => false,
+      });
+      expect(removed).toEqual([]);
+      expect(warn).toHaveBeenCalledOnce();
+      expect(record).toHaveBeenCalledOnce();
+      expect(record).toHaveBeenCalledWith('daemon.notice', {
+        kind: 'temporary_cleanup_failed',
+        subject: stuck,
+        detail: expect.any(String) as string,
+      });
+      // The daemon still comes up: the id is made and written.
+      const id = await loadOrCreateDaemonId(join(dir, 'daemon-id'));
+      expect(id).toMatch(UUID);
+    });
   });
 });
