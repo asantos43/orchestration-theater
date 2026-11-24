@@ -1,7 +1,13 @@
 // SPDX-License-Identifier: MPL-2.0
 import type { AgentSession } from '@otheater/core';
 import { describeAgentSessionConformance, type AgentSessionHarness } from '@otheater/sdk';
-import { checkNothingOutlives, policy, profile, prompts, rig } from './testing/acp-e2e-rig.test-support.js';
+import {
+  checkNothingOutlives,
+  policy,
+  profile,
+  prompts,
+  rig,
+} from './testing/acp-e2e-rig.test-support.js';
 
 // End to end over ACP with the real fake agent: see `testing/acp-e2e-rig.test-support.ts`.
 
