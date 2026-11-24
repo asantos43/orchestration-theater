@@ -17,6 +17,13 @@ name: Chaos
 # tools/ci/chaos-shard.sh <index>/<count>: the long files split their cases (named points and random
 # instants) among the jobs, the other files are spread whole, and the jobs together run every case
 # once, with the same seeds and the same 50 instants (OT_CHAOS_INSTANTS) as before.
+#
+# Over the single executable (P12; docs/23, D6/N283): the job `chaos-sea` builds the executable of
+# Phase 10 for Linux and runs the suite in its mode `OT_CHAOS_TARGET=sea` (packages/daemon/src/chaos/
+# sea.chaos.test.ts, which has its own cases and takes no shard). It follows the same rules as the jobs
+# above (OT_CHAOS_CI, the paths, the nightly run): it runs when `chaos` runs. The other files need the
+# fixture that injects fakes into the daemon in process, which a compiled executable cannot take, so
+# they run in the default mode `source`, in the jobs above. macOS and Windows are not covered here.
 on:
   # Main runs after each merge that touches the paths below. A pull request is decided by the job
   # `changes` (a `paths:` filter on the event would leave a pending status when nothing matches).
@@ -135,3 +142,37 @@ jobs:
       - run: pnpm -s build
       # The harness prints its seed to stderr; a failed run is repeated with OT_CHAOS_SEED=<seed>.
       - run: bash tools/ci/chaos-shard.sh "${{ matrix.shard }}/${{ vars.OT_CHAOS_SHARDS || '6' }}"
+
+  # The kills over the compiled single executable, on Linux (P12). The standalone Node of setup-node is
+  # the one a SEA can be injected into; the build and the executable are the ones of dist-sea.yml. It
+  # publishes nothing: the executable stays on the runner.
+  chaos-sea:
+    needs: [changes, mode]
+    if: >-
+      ${{ !cancelled() && (
+        github.event_name == 'workflow_dispatch' ||
+        (github.event_name == 'pull_request' && needs.changes.outputs.run == 'true') ||
+        ((github.event_name == 'push' || github.event_name == 'schedule') && needs.mode.outputs.run == 'true')
+      ) }}
+    name: chaos sea (linux-x64)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm -s build
+        env:
+          NODE_OPTIONS: --max-old-space-size=6144
+      - name: Build the single executable
+        run: node tools/release/dist/cli.js build --target linux-x64 --out dist/sea
+      # The seed is printed to stderr; a failed run is repeated with OT_CHAOS_SEED=<seed>.
+      - name: Chaos over the executable
+        env:
+          OT_CHAOS_TARGET: sea
+          OT_CHAOS_SEA: dist/sea/linux-x64/otheater
+        run: pnpm exec vitest run -c vitest.chaos.config.ts --maxWorkers=2
