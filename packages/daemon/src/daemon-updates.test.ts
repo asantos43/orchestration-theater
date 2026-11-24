@@ -13,6 +13,9 @@ import { dataPaths } from './paths.js';
 import { makeTempDataDir, NO_CLIENTS } from './test-helpers.js';
 import { buildRelease, EXE_BYTES, makeKeys, type ReleaseSpec } from './updates/release-fixture.js';
 
+/** The deadline of the waits: long, for the slow Windows runner of the CI; a met wait returns at once. */
+const WAIT = { timeout: 15_000 };
+
 /**
  * The search for updates in a daemon that is running (Phase 10, P7): a version server on a loopback
  * port, a key made here, `GET /v1/updates`, `POST /v1/updates/check`, `GET /metrics` and the
@@ -134,7 +137,7 @@ describe('updates in a running daemon', () => {
           ready: '0.6.0',
           lastResult: 'ready',
         });
-      });
+      }, WAIT);
       const staged = join(r.dir, 'updates', 'staging', '0.6.0');
       expect(await readFile(join(staged, 'otheater-0.6.0-linux-x64'))).toEqual(EXE_BYTES);
       expect((await r.events()).map((e) => [e.type, e.payload.phase])).toEqual([
@@ -162,7 +165,7 @@ describe('updates in a running daemon', () => {
           ready: null,
         });
         expect(status.notes).toEqual([]);
-      });
+      }, WAIT);
       expect(await readdir(join(r.dir, 'updates', 'staging')).catch(() => [])).toEqual([]);
       const events = await r.events();
       expect(events.find((e) => e.payload.phase === 'rejected')?.payload).toMatchObject({
@@ -206,7 +209,7 @@ describe('updates in a running daemon', () => {
         await vi.waitFor(async () => {
           const status = ApiUpdateStatusSchema.parse(await (await r.get('/v1/updates')).json());
           expect(status).toMatchObject({ lastResult: 'failed', lastReason: 'no_network' });
-        });
+        }, WAIT);
         expect((await r.events()).map((e) => e.payload.phase)).toEqual(['failed']);
       },
     );
@@ -222,7 +225,7 @@ describe('updates in a running daemon', () => {
       await vi.waitFor(async () => {
         const status = ApiUpdateStatusSchema.parse(await (await r.get('/v1/updates')).json());
         expect(status.lastResult).toBe('up_to_date');
-      });
+      }, WAIT);
       serve(files, buildRelease(keys, spec()));
       const answer = await r.post('/v1/updates/check');
       expect(answer.status).toBe(200);
