@@ -181,6 +181,33 @@ describe('runEffect (architecture 5.21)', () => {
     await expect(runEffect(store.sideEffects, step())).rejects.toBeInstanceOf(Conflict);
   });
 
+  it('two callers at once for the same step run the effect once; the second one replays', async () => {
+    const store = makeStore();
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const spec = step({
+      execute: async (key) => {
+        await gate;
+        return { sha: key };
+      },
+    });
+    const first = runEffect(store.sideEffects, spec);
+    const second = runEffect(store.sideEffects, spec);
+    release();
+    const [a, b] = await Promise.all([first, second]);
+    expect(a).toMatchObject({ kind: 'done', origin: 'executed' });
+    expect(b).toMatchObject({
+      kind: 'done',
+      origin: 'replayed',
+      result: a.kind === 'done' ? a.result : {},
+    });
+    expect((await store.sideEffects.list()).map((r) => r.state)).toEqual(['done']);
+    // Once settled, the step is free again: a later call reads the record.
+    expect(await runEffect(store.sideEffects, spec)).toMatchObject({ origin: 'replayed' });
+  });
+
   it('effectKey keeps the base key for the first run', () => {
     expect(effectKey('k', 1)).toBe('k');
     expect(effectKey('k', 3)).toBe('k~3');
