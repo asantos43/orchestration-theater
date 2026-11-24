@@ -15,7 +15,7 @@ import { createSilentLogger } from '../logger.js';
 import type { ActivePlugin } from '../plugins/aggregate.js';
 import type { PluginNotice } from '../plugins/runtime-config.js';
 import { FIXTURE_SERVER_PATH, StaticPluginSource } from '../plugins/test-plugin-fixture.js';
-import { makeTempDataDir, TEST_PROFILE } from '../test-helpers.js';
+import { makeTempDataDir, NO_CLIENTS, TEST_PROFILE } from '../test-helpers.js';
 import { makeRepo } from './attempt-fixture.js';
 import type { AttemptSpec } from './attempt-runner.js';
 
@@ -97,7 +97,7 @@ async function withDaemon(
     config: CONFIG,
     overrides: { clock: new FakeClock(), vault: new InMemorySecretVault(), launcher: real },
     clients: (parts) => [
-      ...productionClients(CONFIG)(parts),
+      ...productionClients(CONFIG, NO_CLIENTS)(parts),
       new FakeClientAdapter({
         launcher: parts.launcher,
         baseEnv: {},

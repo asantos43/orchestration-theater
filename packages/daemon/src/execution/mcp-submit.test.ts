@@ -9,7 +9,7 @@ import { defaultLauncher, productionClients } from '../compose.js';
 import { parseConfig } from '../config.js';
 import { startDaemon, type DaemonHandle } from '../daemon.js';
 import { createSilentLogger } from '../logger.js';
-import { makeTempDataDir, TEST_PROFILE } from '../test-helpers.js';
+import { makeTempDataDir, NO_CLIENTS, TEST_PROFILE } from '../test-helpers.js';
 import { makeRepo } from './attempt-fixture.js';
 import type { AttemptSpec } from './attempt-runner.js';
 import { describeWithLauncher } from '../launcher-fixture.js';
@@ -74,7 +74,7 @@ async function withDaemon(
     config: CONFIG,
     overrides: { clock: new FakeClock(), vault: new InMemorySecretVault(), launcher: real },
     clients: (parts) => [
-      ...productionClients(CONFIG)(parts),
+      ...productionClients(CONFIG, NO_CLIENTS)(parts),
       new FakeClientAdapter({
         launcher: parts.launcher,
         baseEnv: {},
