@@ -961,6 +961,15 @@ export async function runAcceptance(options: AcceptanceOptions): Promise<Accepta
   } finally {
     await stopDaemon(r).catch(() => undefined);
     await server.close();
-    if (options.keep !== true) rmSync(root, { recursive: true, force: true });
+    if (options.keep !== true) {
+      // Windows keeps a file locked for a moment after its process ended: the folder is temporary,
+      // so a cleanup that still fails is a warning, never the verdict of the acceptance.
+      await sleep(1000);
+      try {
+        rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 500 });
+      } catch (error) {
+        log(`  warn  the temporary folder was not removed: ${(error as Error).message}`);
+      }
+    }
   }
 }
