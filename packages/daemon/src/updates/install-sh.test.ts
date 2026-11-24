@@ -823,6 +823,100 @@ describe.skipIf(PLATFORM === undefined)('install.sh', () => {
       expect(server.requests.length).toBe(3);
     });
 
+    /** What the applier leaves beside the executable after an update (layout.ts, journal.ts, trust.ts, main.ts). */
+    async function leaveUpdateFiles(): Promise<string[]> {
+      await mkdir(join(bin(), 'previous'), { recursive: true });
+      await mkdir(join(bin(), 'staging'), { recursive: true });
+      const files = [
+        'update-state.json',
+        'update-state.json.4242.tmp',
+        'update-apply.log',
+        join('previous', 'otheater'),
+        join('staging', 'otheater'),
+        join('staging', 'manifest.json'),
+        join('staging', 'manifest.json.sig'),
+      ].map((name) => join(bin(), name));
+      for (const file of files) await writeFile(file, 'left by an update\n');
+      return files;
+    }
+
+    it('removes what the updates left in bin/, and the folders that get empty (N303)', async () => {
+      await mkdir(bin(), { recursive: true });
+      await writeFile(installed(), '#!/bin/sh\n', { mode: 0o755 });
+      const left = await leaveUpdateFiles();
+      const data = await withData();
+      await writeFile(join(data, 'store.sqlite'), 'data\n');
+      const result = await runInstaller(['--uninstall'], { HOME: home, OT_INSTALL_SERVICE: 'off' });
+      expect(result.code).toBe(0);
+      for (const file of [installed(), ...left]) expect(await exists(file)).toBe(false);
+      expect(await exists(bin())).toBe(false);
+      expect(result.stdout).toContain(`Removed: ${join(bin(), 'update-apply.log')}`);
+      expect(result.stderr).not.toContain('WARNING');
+      // The data stays, and so does the folder that holds it (on Linux the app folder is the data folder).
+      expect(await readFile(join(data, 'config.yaml'), 'utf8')).toContain('locale: en');
+      expect(await readFile(join(data, 'store.sqlite'), 'utf8')).toBe('data\n');
+    });
+
+    it('keeps a file that is not its own in bin/, and the folder with it, and says so', async () => {
+      await mkdir(bin(), { recursive: true });
+      await writeFile(installed(), '#!/bin/sh\n', { mode: 0o755 });
+      const left = await leaveUpdateFiles();
+      await writeFile(join(bin(), 'my-notes.txt'), 'mine\n');
+      await writeFile(join(bin(), 'previous', 'extra.bin'), 'mine too\n');
+      await writeFile(join(bin(), 'update-state.json.abc.tmp'), 'not a pid\n');
+      const result = await runInstaller(['--uninstall'], { HOME: home, OT_INSTALL_SERVICE: 'off' });
+      expect(result.code).toBe(0);
+      for (const file of [installed(), ...left]) expect(await exists(file)).toBe(false);
+      expect(await readFile(join(bin(), 'my-notes.txt'), 'utf8')).toBe('mine\n');
+      expect(await readFile(join(bin(), 'previous', 'extra.bin'), 'utf8')).toBe('mine too\n');
+      expect(await exists(join(bin(), 'update-state.json.abc.tmp'))).toBe(true);
+      expect(await exists(join(bin(), 'staging'))).toBe(false);
+      expect(result.stderr).toContain('is not the OTheater');
+      expect(result.stderr).toContain('my-notes.txt');
+    });
+
+    it('says the same in Portuguese when the language is Portuguese', async () => {
+      await mkdir(bin(), { recursive: true });
+      await writeFile(join(bin(), 'my-notes.txt'), 'mine\n');
+      const result = await runInstaller(['--uninstall'], {
+        HOME: home,
+        OT_INSTALL_SERVICE: 'off',
+        LANG: 'pt_BR.UTF-8',
+      });
+      expect(result.code).toBe(0);
+      expect(result.stderr).toContain('não é do OTheater');
+      expect(await exists(join(bin(), 'my-notes.txt'))).toBe(true);
+    });
+
+    it('does not follow a previous/ or staging/ that is a link', async () => {
+      await mkdir(bin(), { recursive: true });
+      const outside = join(home, 'outside');
+      await mkdir(outside);
+      await writeFile(join(outside, 'otheater'), 'not ours\n');
+      await writeFile(join(outside, 'manifest.json'), 'not ours\n');
+      await symlink(outside, join(bin(), 'previous'));
+      await symlink(outside, join(bin(), 'staging'));
+      const result = await runInstaller(['--uninstall'], { HOME: home, OT_INSTALL_SERVICE: 'off' });
+      expect(result.code).toBe(0);
+      expect(await readFile(join(outside, 'otheater'), 'utf8')).toBe('not ours\n');
+      expect(await readFile(join(outside, 'manifest.json'), 'utf8')).toBe('not ours\n');
+    });
+
+    it('--purge-data still deletes everything, the leftovers of the updates with it', async () => {
+      await mkdir(bin(), { recursive: true });
+      await writeFile(installed(), '#!/bin/sh\n', { mode: 0o755 });
+      await leaveUpdateFiles();
+      const data = await withData();
+      const result = await runInstaller(['--uninstall', '--purge-data', '--yes'], {
+        HOME: home,
+        OT_INSTALL_SERVICE: 'off',
+      });
+      expect(result.code).toBe(0);
+      expect(result.stdout).toContain(`Data deleted: ${data}`);
+      expect(await exists(data)).toBe(false);
+      expect(await exists(bin())).toBe(false);
+    });
+
     it('with the service off it does not call the executable', async () => {
       publish();
       await install({ OT_INSTALL_SERVICE: 'off' });

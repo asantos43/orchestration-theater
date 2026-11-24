@@ -993,6 +993,15 @@ export async function runAcceptance(options: AcceptanceOptions): Promise<Accepta
       async (run0) => {
         await stopDaemon(run0);
         await publish(run0, { version: versionN, exe: exeN });
+        // The rows before this one applied updates: without their leftovers beside the executable
+        // the check below would prove nothing.
+        const folder = path.dirname(run0.installed);
+        const before = existsSync(folder) ? readdirSync(folder) : [];
+        if (!before.includes('update-state.json') || !before.includes('previous')) {
+          throw new Error(
+            `the updates left no journal or previous/ to clean (folder of the executable: ${before.join(', ')})`,
+          );
+        }
         if (run0.platform === 'win32') {
           rmSync(path.dirname(run0.installed), { recursive: true, force: true });
         } else {
@@ -1015,15 +1024,16 @@ export async function runAcceptance(options: AcceptanceOptions): Promise<Accepta
         ) {
           throw new Error('the data folder lost files');
         }
-        // `install.sh --uninstall` only removes what it installed: what the updates left in the
-        // folder of the executable (previous/, staging/, the journal) stays. It is not a failure of
-        // the row (the data is intact), but the report says it.
-        const left = existsSync(path.dirname(run0.installed))
-          ? readdirSync(path.dirname(run0.installed))
-          : [];
-        return `executable gone; the data folder (store, config, file of the user) is intact${
-          left.length === 0 ? '' : `; left in the folder of the executable: ${left.join(', ')}`
-        }`;
+        // N303: `install.sh --uninstall` also removes what the updates left beside the executable
+        // (previous/, staging/, the journal, the log of the applier), and the folder when it is
+        // empty. The row fails when any of it is still there, and when the folder is. (On Windows
+        // the step above removed the whole folder; the .msi has its own test, test-install.ps1.)
+        const left = existsSync(folder) ? readdirSync(folder) : [];
+        if (left.length > 0) {
+          throw new Error(`left in the folder of the executable: ${left.join(', ')}`);
+        }
+        const cleaned = before.filter((name) => name !== path.basename(run0.installed));
+        return `executable gone, and with it what the updates left (${cleaned.join(', ')}) and the folder; the data folder (store, config, file of the user) is intact`;
       },
     ],
     [

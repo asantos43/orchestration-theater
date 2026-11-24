@@ -86,10 +86,52 @@ describe('the sources of the .msi', () => {
   });
 
   it('never touches the data folder', () => {
-    expect(product).not.toMatch(/RemoveFile\b|RemoveFolderEx/);
+    expect(product).not.toMatch(/RemoveFolderEx/);
     // The data folder is only named as the argument given to `ot`.
     const mentions = [...product.matchAll(/OTheater&quot;/g)];
     expect(mentions).toHaveLength(2);
+  });
+
+  it('removes what the updates leave, by exact name, in the install folder only (N303)', () => {
+    const removals = [...product.matchAll(/<RemoveFile [^>]*>/g)].map((m) => m[0]);
+    const entries = removals.map((tag) => ({
+      directory: /Directory="([^"]+)"/.exec(tag)?.[1],
+      name: /Name="([^"]+)"/.exec(tag)?.[1],
+    }));
+    // Folders: the install folder and the two the applier makes in it, nothing else.
+    for (const entry of entries) {
+      expect(['INSTALLFOLDER', 'OtPreviousDir', 'OtStagingDir']).toContain(entry.directory);
+    }
+    // The only pattern is the temporary journal of a killed writer: no `*.*`, no `*`.
+    expect(entries.map((entry) => entry.name).filter((name) => /[*?]/.test(name ?? ''))).toEqual([
+      'update-state.json.*.tmp',
+    ]);
+    // The same list as install.sh (remove_update_leftovers), which the layout of the applier gives.
+    const script = read('installer', 'install.sh');
+    for (const name of [
+      'update-state.json',
+      'update-apply.log',
+      'manifest.json',
+      'manifest.json.sig',
+    ]) {
+      expect(entries.map((entry) => entry.name)).toContain(name);
+      expect(script).toContain(name);
+    }
+    expect(script).toContain('update-state.json.*.tmp');
+    expect(
+      entries.filter((entry) => entry.name === 'ot.exe').map((entry) => entry.directory),
+    ).toEqual(['OtPreviousDir', 'OtStagingDir']);
+    // No WiX extension: the elements above are core ones.
+    expect(product).not.toMatch(/xmlns:(util|ui|fire|netfx)=/);
+    // The component that holds them has its own fixed GUID (a registry key path, ICE38).
+    expect(product).toMatch(
+      /<Component Id="OtUpdateLeftovers" [^>]*Guid="[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}"/,
+    );
+  });
+
+  it('checks, in the test of the .msi, that the leftovers of an update are gone with the folder', () => {
+    expect(testScript).toMatch(/update-state\.json/);
+    expect(testScript).toMatch(/the install folder is gone/);
   });
 
   it('derives the version from the config the way build.ps1 does (it is a semver that fits an MSI)', () => {
