@@ -21,7 +21,7 @@ import {
   lockDigest,
   type InstallPlatform,
 } from './lock.js';
-import { readTarGz, TarError } from './tar.js';
+import { DEFAULT_MAX_ENTRIES, readTarGz, TarError } from './tar.js';
 
 /**
  * The installer of the managed ACP adapters (Phase 10, P13; N254 revised). It downloads the tarballs the
@@ -32,12 +32,17 @@ import { readTarGz, TarError } from './tar.js';
  */
 
 export const DEFAULT_REGISTRY = 'https://registry.npmjs.org';
+/** `clients.adapters.redirect_max` (the config test keeps the two equal). */
+export const DEFAULT_REDIRECT_MAX = 3;
+/** `clients.adapters.tar_max_entries` (the config test keeps the two equal). */
+export const DEFAULT_TAR_MAX_ENTRIES = DEFAULT_MAX_ENTRIES;
 
 /** Why an installation failed. */
 export type AdapterInstallErrorCode =
   | 'network'
   | 'registry_status'
   | 'registry_insecure'
+  | 'redirect'
   | 'integrity'
   | 'archive'
   | 'storage'
@@ -89,6 +94,15 @@ export interface InstallOptions {
   readonly lockStaleMs?: number;
   /** How long to wait for the lock another installer holds. Default 5 min. */
   readonly lockWaitMs?: number;
+  /**
+   * Host names a download may be redirected to besides the registry's own (`clients.adapters.redirect_hosts`).
+   * Default none.
+   */
+  readonly redirectHosts?: readonly string[];
+  /** Most redirects of one download (`clients.adapters.redirect_max`). Default {@link DEFAULT_REDIRECT_MAX}. */
+  readonly redirectMax?: number;
+  /** Most entries of one tarball (`clients.adapters.tar_max_entries`). Default {@link DEFAULT_TAR_MAX_ENTRIES}. */
+  readonly tarMaxEntries?: number;
   /** Largest tarball, in bytes. Default 256 MiB. */
   readonly maxTarballBytes?: number;
   /** Tarballs in flight. Default 4. */
@@ -170,6 +184,62 @@ function checkRegistry(registry: string): void {
   }
 }
 
+function isLoopbackHost(hostname: string): boolean {
+  return ['localhost', '127.0.0.1', '[::1]'].includes(hostname);
+}
+
+/**
+ * Reads the redirect of a response: the next URL, or a `redirect` error when the hop leaves what is
+ * allowed (more hops than the limit, not `https` (`http` on the loopback), a host that is neither the
+ * registry's nor listed). `fetch` is called with `redirect: 'manual'`, so nothing is followed unseen.
+ */
+function nextHop(
+  response: Response,
+  from: URL,
+  hops: number,
+  options: InstallOptions,
+  registryHost: string,
+  label: string,
+): URL {
+  const max = options.redirectMax ?? DEFAULT_REDIRECT_MAX;
+  if (hops >= max) {
+    throw new AdapterInstallError(
+      'redirect',
+      `${label}: more than ${String(max)} redirects (clients.adapters.redirect_max)`,
+    );
+  }
+  const location = response.headers.get('location');
+  let target: URL;
+  try {
+    if (location === null || location === '') throw new Error('no location');
+    target = new URL(location, from);
+  } catch {
+    throw new AdapterInstallError(
+      'redirect',
+      `${label}: the registry redirected without a usable Location`,
+    );
+  }
+  const secure =
+    target.protocol === 'https:' ||
+    (target.protocol === 'http:' && isLoopbackHost(target.hostname));
+  if (!secure || target.username !== '' || target.password !== '') {
+    throw new AdapterInstallError(
+      'redirect',
+      `${label}: refused a redirect to ${target.protocol}//${target.host} (https only, no credentials in the URL)`,
+    );
+  }
+  const allowed = [registryHost, ...(options.redirectHosts ?? [])].map((host) =>
+    host.toLowerCase(),
+  );
+  if (!allowed.includes(target.hostname.toLowerCase())) {
+    throw new AdapterInstallError(
+      'redirect',
+      `${label}: refused a redirect to ${target.host}; add it to clients.adapters.redirect_hosts if you trust it`,
+    );
+  }
+  return target;
+}
+
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -197,14 +267,21 @@ async function download(
 ): Promise<Buffer> {
   const doFetch = options.fetch ?? fetch;
   const url = tarballUrl(registry, entry);
+  const label = `${entry.name}@${entry.version}`;
+  const registryHost = new URL(registry).hostname;
   const tries = (options.retries ?? 2) + 1;
   let lastError: AdapterInstallError | undefined;
   for (let attempt = 0; attempt < tries; attempt += 1) {
     if (attempt > 0) await sleep(options.retryDelayMs ?? 500);
     try {
-      const response = await doFetch(url, {
-        signal: AbortSignal.timeout(options.requestTimeoutMs ?? 120_000),
-      });
+      const signal = AbortSignal.timeout(options.requestTimeoutMs ?? 120_000);
+      let current = new URL(url);
+      let response = await doFetch(current, { signal, redirect: 'manual' });
+      for (let hops = 0; [301, 302, 303, 307, 308].includes(response.status); hops += 1) {
+        current = nextHop(response, current, hops, options, registryHost, label);
+        await response.body?.cancel().catch(() => undefined);
+        response = await doFetch(current, { signal, redirect: 'manual' });
+      }
       if (response.status >= 500 || response.status === 429) {
         lastError = new AdapterInstallError(
           'registry_status',
@@ -221,7 +298,12 @@ async function download(
       return await readLimited(response, options.maxTarballBytes ?? 256 * 1024 * 1024);
     } catch (error) {
       if (error instanceof AdapterInstallError) {
-        if (error.code === 'registry_status' || error.code === 'archive') throw error;
+        if (
+          error.code === 'registry_status' ||
+          error.code === 'archive' ||
+          error.code === 'redirect'
+        )
+          throw error;
         lastError = error;
         continue;
       }
@@ -241,7 +323,12 @@ export function integrityMatches(integrity: string, data: Buffer): boolean {
   return `sha512-${createHash('sha512').update(data).digest('base64')}` === integrity;
 }
 
-async function extract(entry: AdapterLockEntry, data: Buffer, root: string): Promise<void> {
+async function extract(
+  entry: AdapterLockEntry,
+  data: Buffer,
+  root: string,
+  options: InstallOptions,
+): Promise<void> {
   if (!integrityMatches(entry.integrity, data)) {
     throw new AdapterInstallError(
       'integrity',
@@ -251,7 +338,7 @@ async function extract(entry: AdapterLockEntry, data: Buffer, root: string): Pro
   const base = path.join(root, ...entry.path.split('/'));
   let files;
   try {
-    files = readTarGz(data);
+    files = readTarGz(data, { maxEntries: options.tarMaxEntries ?? DEFAULT_TAR_MAX_ENTRIES });
   } catch (error) {
     if (error instanceof TarError) {
       throw new AdapterInstallError('archive', `${entry.name}@${entry.version}: ${error.message}`);
@@ -362,7 +449,7 @@ async function build(options: InstallOptions, registry: string, dir: string): Pr
   try {
     await mkdir(staging, { recursive: true });
     await pool(entries, options.concurrency ?? 4, async (entry) => {
-      await extract(entry, await download(entry, options, registry), staging);
+      await extract(entry, await download(entry, options, registry), staging, options);
     });
     const entryFile = adapterEntry(staging, lock);
     if (

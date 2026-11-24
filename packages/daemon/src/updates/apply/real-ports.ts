@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 import { homedir, tmpdir } from 'node:os';
+import { isAbsolute, relative, resolve } from 'node:path';
 import { composeClock, composeStoreFileTools, telemetryPath } from '../../compose.js';
 import { readDiscovery } from '../../api/files.js';
 import { loadConfig } from '../../config.js';
@@ -119,9 +120,16 @@ export function realApplyPorts(input: RealPortsInput): ApplyPorts {
       const lock = await InstanceLock.acquire(paths.lock, paths.lockInfo);
       try {
         const config = await loadConfig(paths.config);
+        // The journal names the backup, and a journal is a file a user can write (P8a): only a folder
+        // inside the backup folder of the configuration is restored, as `ot restore` would find it.
+        const root = resolve(paths.dataDir, config.backup.dir);
+        const relation = relative(root, resolve(backupDir));
+        if (relation === '' || relation.startsWith('..') || isAbsolute(relation)) {
+          throw new Error('the backup of the journal is not inside the backup folder');
+        }
         await restoreBackup({
           dataDir: paths.dataDir,
-          backupPath: backupDir,
+          backupPath: resolve(backupDir),
           tools: composeStoreFileTools(config, paths.dataDir),
           clock: composeClock(undefined),
           telemetryFile: telemetryPath(config, paths.dataDir),
