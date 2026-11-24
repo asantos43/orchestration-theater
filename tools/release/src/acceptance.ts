@@ -637,7 +637,7 @@ async function updateCase(r: Run, when: 'idle' | 'park'): Promise<string> {
     throw new Error(`the installed executable says "${exeVersion}"`);
   if (!existsSync(path.join(path.dirname(r.installed), 'previous')))
     throw new Error('no previous/ to roll back to');
-  return `apply_when ${when}: ${versionN} -> ${versionN1}, journal committed, pid ${String(pidN)} -> ${String(status.pid)}`;
+  return `apply_when ${when}: ${versionN} -> ${versionN1}, journal committed, pid ${String(pidN)} -> ${String(status.pid)}${retriesNote(r)}`;
 }
 
 /** The new version does not come up (it says a version other than the manifest's): back to N, store restored. */
@@ -696,7 +696,30 @@ async function rollbackCase(r: Run): Promise<string> {
   if (!exeVersion.includes(versionN))
     throw new Error(`the executable after the rollback says "${exeVersion}"`);
   rmSync(marker, { force: true });
-  return `${wrong}: rolled back to ${versionN} (reason ${rolled.reason}), backup ${path.basename(rolled.backup)} restored, new pid ${String(status.pid)}`;
+  return `${wrong}: rolled back to ${versionN} (reason ${rolled.reason}), backup ${path.basename(rolled.backup)} restored, new pid ${String(status.pid)}${retriesNote(r)}`;
+}
+
+/**
+ * What the applier had to repeat so far (a rename that the system refused for a moment, as Windows does
+ * while a scan or a process that just ended still holds a file), from its log: `""` when nothing, else
+ * `; file calls repeated: place staged EPERM x3`. A pass that needed it says so, and does not hide it.
+ */
+function retriesNote(r: Run): string {
+  const text = tailOf(path.join(path.dirname(r.installed), 'update-apply.log'), 1_000_000);
+  if (text === undefined) return '';
+  const counts = new Map<string, number>();
+  for (const line of text.split(/\r?\n/)) {
+    if (!line.includes('a file call was refused')) continue;
+    try {
+      const entry = JSON.parse(line) as { call?: string; code?: string };
+      const key = `${entry.call ?? '?'} ${entry.code ?? '?'}`;
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    } catch {
+      // A line that is not JSON is not one of ours.
+    }
+  }
+  if (counts.size === 0) return '';
+  return `; file calls repeated: ${[...counts].map(([key, n]) => `${key} x${String(n)}`).join(', ')}`;
 }
 
 /** The end of a text file, or undefined when it cannot be read. */
