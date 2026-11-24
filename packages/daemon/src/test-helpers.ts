@@ -188,10 +188,29 @@ export function captureLogger(): { logger: Logger; lines: LoggedLine[] } {
 }
 
 /**
- * Says no client is installed, so a daemon started without `clients` never looks at the real
- * `PATH` and the test stays hermetic.
+ * Says no client is installed, so a daemon started without `clients`, or `productionClients`
+ * called by a test, never looks at the real `PATH` and the test stays hermetic: no official client
+ * is found, so no managed ACP adapter is installed from the npm registry (this machine has the
+ * clients; the CI has not). As a second line, the `fetch` the installer would use refuses
+ * whatever is not a local address, so a test can never reach the real registry.
  */
-export const NO_CLIENTS = { env: { PATH: '' }, findExecutable: () => undefined } as const;
+export const NO_CLIENTS = {
+  env: { PATH: '' },
+  findExecutable: () => undefined,
+  adapters: { fetch: refuseNonLocalFetch },
+} as const;
+
+/** The `fetch` of {@link NO_CLIENTS}: only `127.0.0.1`, `localhost` and `[::1]` are reached. */
+async function refuseNonLocalFetch(
+  input: Parameters<typeof fetch>[0],
+  init?: Parameters<typeof fetch>[1],
+): Promise<Response> {
+  const url = new URL(typeof input === 'string' || input instanceof URL ? input : input.url);
+  if (!['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname)) {
+    throw new Error(`a test must not reach the network: ${url.origin}`);
+  }
+  return fetch(input, init);
+}
 
 /** What a {@link RecordingSituations} kept: the type, the payload and the correlation. */
 export interface RecordedSituation {
