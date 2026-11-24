@@ -7,13 +7,14 @@ import {
   FakeProcessLauncher,
   FakeSessionTransport,
   InMemorySecretVault,
+  InMemoryStore,
 } from '@otheater/core/testing';
 import { describe, expect, it } from 'vitest';
 import { isProfileAddLoginArgv, main, type CliDeps } from '../cli.js';
 import type { ClientFactory } from '../clients.js';
 import { dataPaths } from '../paths.js';
 import { makeTempDataDir } from '../test-helpers.js';
-import { loginDecision } from './command.js';
+import { loginDecision, loginSkippedReason } from './command.js';
 import type { ChildExit, ExecSpawn } from './exec.js';
 
 /**
@@ -38,6 +39,8 @@ interface Rig {
   readonly dir: string;
   readonly spawned: { cmd: string; args: readonly string[] }[];
   readonly asked: string[];
+  /** The payloads of the events of a type, in the order they were written. */
+  events(type: string): Promise<unknown[]>;
   /** What the fake client reports for a new account, and how the fake login ends. */
   loginState: 'logged_in' | 'logged_out' | 'unknown';
   exit: ChildExit;
@@ -50,6 +53,9 @@ interface Rig {
 async function withRig(body: (rig: Rig) => Promise<void>): Promise<void> {
   const tmp = await makeTempDataDir();
   const clock = new FakeClock(NOW);
+  const store = new InMemoryStore({ clock });
+  // The command closes its composition; the test still reads the events after it.
+  Object.assign(store, { close: () => Promise.resolve() });
   const vault = new InMemorySecretVault();
   const launcher = new FakeProcessLauncher();
   const transport = new FakeSessionTransport();
@@ -57,6 +63,8 @@ async function withRig(body: (rig: Rig) => Promise<void>): Promise<void> {
     dir: tmp.dir,
     spawned: [],
     asked: [],
+    events: async (type) =>
+      (await store.events.readFrom(0, 1000)).filter((e) => e.type === type).map((e) => e.payload),
     loginState: 'logged_out',
     exit: { code: 0, signal: null },
     run: async (argv, extra = {}) => {
@@ -92,7 +100,7 @@ async function withRig(body: (rig: Rig) => Promise<void>): Promise<void> {
         systemLocale: 'en',
         version: '1.2.3',
         cwd: '/work/repo',
-        overrides: { clock, vault, launcher, transport },
+        overrides: { clock, store, vault, launcher, transport },
         clients,
         execSpawn: spawn,
         execSignals: () => () => undefined,
@@ -227,6 +235,76 @@ describe('ot profile add: the login that goes with the account (profiles.add.log
     });
   });
 
+  it('auto without a terminal: one stderr line, the command, and the event profile.login.skipped (N273)', async () => {
+    await withRig(async (rig) => {
+      await setMode(rig, 'auto');
+      const result = await rig.run([...ADD]);
+      expect(result.code).toBe(0);
+      expect(rig.spawned).toEqual([]);
+      expect(result.err).toEqual([
+        'Login not started (profiles.add.login is auto, but there is no terminal here). To log in: ot profile exec claude-code/work login',
+      ]);
+      expect(result.out.join('\n')).not.toMatch(/Login not started/);
+      expect(await rig.events('profile.login.skipped')).toEqual([
+        { profileId: 'claude-code/work', reason: 'no_terminal' },
+      ]);
+    });
+  });
+
+  it('auto with --json: the warning is in the JSON, the stderr stays empty, and the event is written', async () => {
+    await withRig(async (rig) => {
+      await setMode(rig, 'auto');
+      const result = await rig.run([...ADD, '--json'], terminal(rig, true));
+      expect(result.code).toBe(0);
+      expect(result.err).toEqual([]);
+      expect(rig.spawned).toEqual([]);
+      expect(JSON.parse(result.out.join('\n'))).toMatchObject({
+        status: 'added',
+        loginSkipped: { reason: 'json', command: 'ot profile exec claude-code/work login' },
+      });
+      expect(await rig.events('profile.login.skipped')).toEqual([
+        { profileId: 'claude-code/work', reason: 'json' },
+      ]);
+    });
+  });
+
+  it('says nothing and records nothing when the login was not skipped by auto', async () => {
+    const skipped = async (rig: Rig): Promise<number> =>
+      (await rig.events('profile.login.skipped')).length;
+    // ask without a terminal, off, --no-login, and auto in a terminal: nothing was promised.
+    await withRig(async (rig) => {
+      const result = await rig.run([...ADD]);
+      expect(result.err).toEqual([]);
+      expect(await skipped(rig)).toBe(0);
+    });
+    await withRig(async (rig) => {
+      await setMode(rig, 'off');
+      const result = await rig.run([...ADD]);
+      expect(result.err).toEqual([]);
+      expect(await skipped(rig)).toBe(0);
+    });
+    await withRig(async (rig) => {
+      await setMode(rig, 'auto');
+      const result = await rig.run([...ADD, '--no-login']);
+      expect(result.err).toEqual([]);
+      expect(await skipped(rig)).toBe(0);
+    });
+    await withRig(async (rig) => {
+      await setMode(rig, 'auto');
+      const result = await rig.run([...ADD], terminal(rig, true));
+      expect(result.err).toEqual([]);
+      expect(await skipped(rig)).toBe(0);
+    });
+    // An account that already has a login has nothing to skip.
+    await withRig(async (rig) => {
+      await setMode(rig, 'auto');
+      rig.loginState = 'logged_in';
+      const result = await rig.run([...ADD]);
+      expect(result.err).toEqual([]);
+      expect(await skipped(rig)).toBe(0);
+    });
+  });
+
   it('off never offers the login in a terminal, but --login still does it', async () => {
     await withRig(async (rig) => {
       await setMode(rig, 'off');
@@ -313,6 +391,25 @@ describe('loginDecision and isProfileAddLoginArgv', () => {
     expect(loginDecision({ ...base, interactive: false, mode: 'auto' })).toBe('none');
     expect(loginDecision({ ...base, json: true, mode: 'auto' })).toBe('none');
     expect(loginDecision({ ...base, needsLogin: false, flag: true })).toBe('none');
+  });
+
+  it('loginSkippedReason: only `auto` with no flag, an account that needs a login, and no way to log in', () => {
+    const input = {
+      mode: 'auto',
+      flag: undefined,
+      json: false,
+      interactive: false,
+      needsLogin: true,
+    } as const;
+    expect(loginSkippedReason(input)).toBe('no_terminal');
+    expect(loginSkippedReason({ ...input, json: true })).toBe('json');
+    expect(loginSkippedReason({ ...input, json: true, interactive: true })).toBe('json');
+    expect(loginSkippedReason({ ...input, interactive: true })).toBeUndefined();
+    expect(loginSkippedReason({ ...input, mode: 'ask' })).toBeUndefined();
+    expect(loginSkippedReason({ ...input, mode: 'off' })).toBeUndefined();
+    expect(loginSkippedReason({ ...input, flag: false })).toBeUndefined();
+    expect(loginSkippedReason({ ...input, flag: true })).toBeUndefined();
+    expect(loginSkippedReason({ ...input, needsLogin: false })).toBeUndefined();
   });
 
   it('only `profile add ... --login` keeps Ctrl+C for the client', () => {

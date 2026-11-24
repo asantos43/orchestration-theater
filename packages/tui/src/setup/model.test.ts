@@ -3,12 +3,18 @@ import type { SetupPrompt, SetupRunView } from '@otheater/protocol';
 import { describe, expect, it } from 'vitest';
 import { profileOf } from './fake-api.test-support.js';
 import {
+  accountClients,
+  accountFormOf,
+  accountsCursorMoved,
+  accountsCursorStart,
   atFirstStep,
   draftKey,
   executorsItem,
   initialDraft,
   isFinished,
   itemCount,
+  loginCommandOf,
+  parseAccountLine,
   parseBudgetLine,
   parseExecutorLine,
   reordered,
@@ -244,5 +250,63 @@ describe('the place in the run', () => {
     expect(isFinished(run('review', steps, 'confirmed'))).toBe(true);
     expect(isFinished(run('review', steps, 'cancelled'))).toBe(true);
     expect(draftKey(run('preset', steps))).toBe('setup_a/preset');
+  });
+});
+
+describe('the step that adds an account (N274)', () => {
+  const detect: SetupPrompt = {
+    step: 'detect',
+    clients: [
+      { client: 'claude-code', installed: false },
+      { client: 'codex', installed: true },
+    ],
+    profiles: [],
+  };
+
+  it('lists the clients of the detection, or the three known ones when it names none', () => {
+    expect(accountClients(detect).map((entry) => entry.client)).toEqual(['claude-code', 'codex']);
+    expect(accountClients(null).map((entry) => entry.client)).toEqual([
+      'claude-code',
+      'codex',
+      'opencode',
+    ]);
+    expect(accountClients({ ...detect, clients: [] }).map((entry) => entry.client)).toEqual([
+      'claude-code',
+      'codex',
+      'opencode',
+    ]);
+  });
+
+  it('starts the cursor on the first client found, and keeps it inside the list', () => {
+    expect(accountsCursorStart(detect)).toBe(1);
+    expect(accountsCursorStart(null)).toBe(0);
+    expect(accountsCursorMoved(0, detect, -1)).toBe(0);
+    expect(accountsCursorMoved(0, detect, 1)).toBe(1);
+    expect(accountsCursorMoved(1, detect, 1)).toBe(1);
+  });
+
+  it('reads <name> [provider]: the provider is the default of the client when it has one', () => {
+    expect(parseAccountLine('claude-code', 'work')).toEqual({
+      name: 'work',
+      provider: 'anthropic',
+    });
+    expect(parseAccountLine('codex', '  alt  ')).toEqual({ name: 'alt', provider: 'openai' });
+    expect(parseAccountLine('codex', 'alt openrouter')).toEqual({
+      name: 'alt',
+      provider: 'openrouter',
+    });
+  });
+
+  it('asks for the provider of a client that has no default, and refuses what is not a line', () => {
+    expect(parseAccountLine('opencode', 'zen')).toBeUndefined();
+    expect(parseAccountLine('opencode', 'zen openai')).toEqual({ name: 'zen', provider: 'openai' });
+    expect(parseAccountLine('claude-code', '')).toBeUndefined();
+    expect(parseAccountLine('claude-code', 'a b c')).toBeUndefined();
+    expect(accountFormOf('opencode')).toBe('<name> <provider>');
+    expect(accountFormOf('codex')).toBe('<name> [provider]');
+  });
+
+  it('names the command that logs in to an account in a terminal', () => {
+    expect(loginCommandOf('claude-code/work')).toBe('ot profile exec claude-code/work login');
   });
 });

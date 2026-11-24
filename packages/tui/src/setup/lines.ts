@@ -2,7 +2,7 @@
 import type { SetupPlan, SetupPrompt, SetupRunView } from '@otheater/protocol';
 import type { TFunction } from 'i18next';
 import { TOKEN } from '../layout/theme.js';
-import { stepNumber, type Draft } from './model.js';
+import { accountClients, stepNumber, type Draft } from './model.js';
 
 /** One row of the setup screen, before it is cut to the width. */
 export interface SetupLine {
@@ -21,20 +21,70 @@ export interface SetupLinesInput {
   readonly t: TFunction;
   /** The label of the key that closes the finished screen (the `advance` key). */
   readonly closeKey: string;
+  /** The step that adds an account (N274): present only when the screen has it in this run. */
+  readonly accounts?: AccountsStage | undefined;
+}
+
+/** The step before the detection that adds an account; it is not a step of the daemon's run. */
+export interface AccountsStage {
+  /** It is the step on screen (otherwise it is behind the person: done). */
+  readonly active: boolean;
+  readonly cursor: number;
+  /** The accounts added in this run, in order. */
+  readonly added: readonly string[];
+  /** The labels of the keys that add an account and that continue. */
+  readonly addKey: string;
+  readonly nextKey: string;
 }
 
 const MARK = { done: '✓', now: '●', todo: '○' } as const;
 
-/** `✓ Accounts  ● Preset  ○ Executors  ○ Review`. */
-function progress(run: SetupRunView, t: TFunction): string {
-  const now = stepNumber(run) - 1;
-  return run.steps
-    .map((step, index) => {
-      const mark =
-        run.state === 'confirmed' || index < now ? MARK.done : index === now ? MARK.now : MARK.todo;
-      return `${mark} ${t(`setup.step.${step}`)}`;
-    })
-    .join('  ');
+/** `✓ Accounts  ● Preset  ○ Executors  ○ Review`, with `New account` ahead when the screen has that step. */
+function progress(run: SetupRunView, t: TFunction, accounts: AccountsStage | undefined): string {
+  const now = accounts?.active === true ? -1 : stepNumber(run) - 1;
+  const marks = run.steps.map((step, index) => {
+    const mark =
+      run.state === 'confirmed' || index < now ? MARK.done : index === now ? MARK.now : MARK.todo;
+    return `${mark} ${t(`setup.step.${step}`)}`;
+  });
+  if (accounts !== undefined) {
+    const lead = accounts.active ? MARK.now : MARK.done;
+    marks.unshift(`${lead} ${t('setup.step.accounts')}`);
+  }
+  return marks.join('  ');
+}
+
+/** The step that adds an account: the clients with a cursor, what was added, and the keys. */
+function accountsStageLines(run: SetupRunView, stage: AccountsStage, t: TFunction): SetupLine[] {
+  const lines: SetupLine[] = [
+    { key: 'h.clients', text: t('setup.accounts.clients'), color: TOKEN.accent, bold: true },
+  ];
+  const detected = run.prompt?.step === 'detect';
+  accountClients(run.prompt).forEach((entry, index) => {
+    const state = detected
+      ? t(entry.installed ? 'setup.accounts.installed' : 'setup.accounts.missing')
+      : '';
+    lines.push({
+      key: `c.${entry.client}`,
+      text: t('setup.accounts.row', { client: entry.client, state }),
+      selected: index === stage.cursor,
+    });
+  });
+  if (stage.added.length > 0) {
+    lines.push({ key: 'gap.added', text: '' });
+    lines.push({
+      key: 'added',
+      text: t('setup.accounts.added', { list: stage.added.join(', ') }),
+      color: TOKEN.ok,
+    });
+  }
+  lines.push({ key: 'gap.keys', text: '' });
+  lines.push({
+    key: 'keys',
+    text: t('setup.accounts.keys', { add: stage.addKey, next: stage.nextKey }),
+    dim: true,
+  });
+  return lines;
 }
 
 function usdText(value: number | null, t: TFunction): string {
@@ -283,14 +333,22 @@ function finishedLines(run: SetupRunView, closeKey: string, t: TFunction): Setup
 
 /** The rows of the screen: the progress, the hint of the step and the step itself (or the end). */
 export function setupLines(input: SetupLinesInput): SetupLine[] {
-  const { run, draft, t } = input;
+  const { run, draft, t, accounts } = input;
   const lines: SetupLine[] = [
-    { key: 'progress', text: progress(run, t), bold: true },
+    { key: 'progress', text: progress(run, t, accounts), bold: true },
     { key: 'gap', text: '' },
   ];
   const prompt = run.prompt;
   if (run.state !== 'active' || prompt === null) {
     return [...lines, ...finishedLines(run, input.closeKey, t)];
+  }
+  if (accounts?.active === true) {
+    lines.push(
+      { key: 'hint', text: t('setup.hint.accounts'), dim: true },
+      { key: 'gap2', text: '' },
+      ...accountsStageLines(run, accounts, t),
+    );
+    return lines;
   }
   lines.push(
     { key: 'hint', text: t(`setup.hint.${prompt.step}`), dim: true },
