@@ -5,6 +5,7 @@ import type { Logger } from '../../logger.js';
 import type { HealthProbe, HealthReading } from './health.js';
 import { FINAL_STEPS, readJournal, writeJournal, type UpdateJournal } from './journal.js';
 import type { InstallLayout } from './layout.js';
+import type { JournalTrust } from './trust.js';
 import {
   clearStaging,
   exists,
@@ -246,8 +247,9 @@ async function commit(
   ports: ApplyPorts,
   journal: UpdateJournal,
 ): Promise<ApplyOutcome> {
-  await clearStaging(layout);
+  // The journal first: while it still asks for something, the proof it rests on is beside it (P8a).
   await save(layout, ports, journal, { step: 'committed', reason: null, reported: false });
+  await clearStaging(layout);
   ports.logger.info({ from: journal.from, to: journal.to }, 'update: applied');
   return { kind: 'committed' };
 }
@@ -259,6 +261,8 @@ export type RecoveryResult =
   | { readonly kind: 'corrupt' }
   /** The applier is still running: it is not interrupted. */
   | { readonly kind: 'running' }
+  /** The journal asks for something no signed manifest backs (P8a): nothing is done. */
+  | { readonly kind: 'untrusted'; readonly detail: string }
   | { readonly kind: 'finished'; readonly outcome: ApplyOutcome };
 
 /**
@@ -276,6 +280,7 @@ export async function recoverInterrupted(
   layout: InstallLayout,
   ports: ApplyPorts,
   restart: boolean,
+  trust: (journal: UpdateJournal) => Promise<JournalTrust>,
 ): Promise<RecoveryResult> {
   const reading = await readJournal(layout.journal);
   if (reading.kind === 'none') return { kind: 'none' };
@@ -288,6 +293,15 @@ export async function recoverInterrupted(
     ports.isAlive(journal.applierPid)
   ) {
     return { kind: 'running' };
+  }
+  // A journal that no signed manifest backs is not followed: it moves nothing and starts nothing.
+  const trusted = await trust(journal);
+  if (!trusted.ok) {
+    ports.logger.error(
+      { step: journal.step, to: journal.to, detail: trusted.detail },
+      'update: the journal of an interrupted swap is not backed by a signed manifest; ignored',
+    );
+    return { kind: 'untrusted', detail: trusted.detail };
   }
   ports.logger.warn(
     { step: journal.step, to: journal.to },

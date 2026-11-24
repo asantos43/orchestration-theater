@@ -92,7 +92,36 @@ export function effectKey(key: string, n: number): string {
  * `resolve` (`after_execute`), after `resolve`, and between a verdict `done` and its `resolve`
  * (`after_verify`). They do nothing unless `faults.inject` armed a plan.
  */
-export async function runEffect(
+export function runEffect(registry: SideEffectRegistry, spec: EffectSpec): Promise<EffectOutcome> {
+  let running = inFlight.get(registry);
+  if (running === undefined) {
+    running = new Map();
+    inFlight.set(registry, running);
+  }
+  const active = running.get(spec.key);
+  if (active !== undefined) {
+    // A second caller for the same step (two resumes at once) waits for the first one and gets what
+    // it settled; for it the effect was not run now.
+    return active.then((outcome) =>
+      outcome.kind === 'done' ? { ...outcome, origin: 'replayed' } : outcome,
+    );
+  }
+  const map = running;
+  const run = runEffectOnce(registry, spec).finally(() => {
+    map.delete(spec.key);
+  });
+  map.set(spec.key, run);
+  return run;
+}
+
+/**
+ * The steps that are running in this process, per registry. It keeps two resumes at once from both
+ * reading "no record" and both running the effect; across processes the `intend` of the registry
+ * is what refuses the second (`Conflict`).
+ */
+const inFlight = new WeakMap<SideEffectRegistry, Map<string, Promise<EffectOutcome>>>();
+
+async function runEffectOnce(
   registry: SideEffectRegistry,
   spec: EffectSpec,
 ): Promise<EffectOutcome> {

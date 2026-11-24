@@ -97,6 +97,10 @@ export interface AdapterManagerOptions {
   readonly install: AdapterInstallMode;
   /** `clients.adapters.registry`. Default {@link DEFAULT_REGISTRY}. */
   readonly registry?: string | undefined;
+  /** `clients.adapters.redirect_hosts`, `redirect_max` and `tar_max_entries`. */
+  readonly redirectHosts?: readonly string[] | undefined;
+  readonly redirectMax?: number | undefined;
+  readonly tarMaxEntries?: number | undefined;
   readonly find: FindExecutable;
   readonly logger?: Pick<Logger, 'info' | 'warn'> | undefined;
   /** Where the notices go as `daemon.notice`. Absent: only the log. */
@@ -260,6 +264,9 @@ export class AdapterManager {
           lock,
           adaptersDir: this.#o.adaptersDir,
           registry,
+          ...(this.#o.redirectHosts === undefined ? {} : { redirectHosts: this.#o.redirectHosts }),
+          ...(this.#o.redirectMax === undefined ? {} : { redirectMax: this.#o.redirectMax }),
+          ...(this.#o.tarMaxEntries === undefined ? {} : { tarMaxEntries: this.#o.tarMaxEntries }),
           platform: this.#o.platform ?? hostPlatform(),
           ...(this.#o.fetch === undefined ? {} : { fetch: this.#o.fetch }),
           ...this.#o.installOptions,

@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
+import { createPublicKey } from 'node:crypto';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { build, type Metafile } from 'esbuild';
@@ -32,6 +33,12 @@ export interface BundleOptions {
   readonly supportedInk: string;
   /** Minify the bundle. Default false: readable stack traces matter more than a few MB. [proposta] */
   readonly minify?: boolean | undefined;
+  /**
+   * The text of the public key the daemon in the executable checks release manifests with (the define
+   * `__OT_UPDATE_PUBLIC_KEY__`). Read it with {@link readUpdatePublicKey}: a release build has no
+   * default and no fallback.
+   */
+  readonly updatePublicKey: string;
 }
 
 export interface BundleResult {
@@ -43,14 +50,42 @@ export interface BundleResult {
   readonly warnings: readonly string[];
 }
 
-/** The `define` map of the bundle: the version, the Ink patch version, `import.meta`, the build mode. */
+/**
+ * Reads the public key file of a release build (`tools/release/keys/update-public-key.pem`). The
+ * file must exist and hold either the word PLACEHOLDER (the owner has not made the production key,
+ * N246: the daemon then checks nothing, as today) or an Ed25519 public key in PEM. A missing file,
+ * an empty one or any other content stops the build: an executable that cannot verify updates
+ * must not be made by accident (finding of the review of 2026-11-23, P8a).
+ */
+export function readUpdatePublicKey(file: string): string {
+  let text: string;
+  try {
+    text = readFileSync(file, 'utf8');
+  } catch {
+    throw new Error(`the update public key file is missing or unreadable: ${file}`);
+  }
+  if (/^\s*PLACEHOLDER\s*$/u.test(text)) return text;
+  try {
+    if (createPublicKey(text).asymmetricKeyType === 'ed25519') return text;
+  } catch {
+    // falls through to the error below
+  }
+  throw new Error(`${file} is neither the PLACEHOLDER nor an Ed25519 public key in PEM`);
+}
+
+/**
+ * The `define` map of the bundle: the version, the Ink patch version, the update public key,
+ * `import.meta`, the build mode.
+ */
 export function bundleDefines(
   version: string,
   inkPatchedVersion: string | undefined,
+  updatePublicKey: string,
 ): Record<string, string> {
   return {
     'import.meta': '__otImportMeta',
     __OT_BUILD_VERSION__: JSON.stringify(version),
+    __OT_UPDATE_PUBLIC_KEY__: JSON.stringify(updatePublicKey),
     __OT_INK_PATCHED_VERSION__:
       inkPatchedVersion === undefined ? 'undefined' : JSON.stringify(inkPatchedVersion),
     // React and Ink pick their development or production build from this.
@@ -92,7 +127,7 @@ export async function bundle(options: BundleOptions): Promise<BundleResult> {
     legalComments: 'eof',
     minify: options.minify ?? false,
     banner: { js: IMPORT_META_BANNER },
-    define: bundleDefines(options.version, inkPatchedVersion),
+    define: bundleDefines(options.version, inkPatchedVersion, options.updatePublicKey),
     plugins: releasePlugins({ root, target, patchInk: inkPatchedVersion !== undefined, state }),
   });
   const output = result.outputFiles[0];
