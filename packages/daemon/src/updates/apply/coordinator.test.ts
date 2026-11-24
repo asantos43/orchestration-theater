@@ -221,6 +221,24 @@ async function exists(file: string): Promise<boolean> {
 
 const phases = (r: Rig): unknown[] => r.updates().map((event) => event.phase);
 
+describe('the file-call repetition keys reach the journal (N305)', () => {
+  it('writes updates.apply.fs_retry and fs_retry_timeout in the journal the applier reads', async () => {
+    const r = await rig({
+      settings: { apply_when: 'park', apply: { fs_retry: 'always', fs_retry_timeout: '45s' } },
+      manifest: SAME,
+    });
+    await r.checker.checkNow();
+    await vi.waitFor(() => {
+      expect(r.shutdowns).toEqual(['shutdown']);
+    }, WAIT);
+    const reading = await readJournal(r.layout.journal);
+    expect(reading.kind === 'ok' ? reading.journal : undefined).toMatchObject({
+      fsRetry: 'always',
+      fsRetryTimeoutMs: 45_000,
+    });
+  });
+});
+
 describe('park: applies at once', () => {
   it('writes the journal, puts the copy next to the executable, starts the applier and shuts down', async () => {
     const r = await rig({ settings: { apply_when: 'park' }, manifest: SAME });
@@ -244,6 +262,8 @@ describe('park: applies at once', () => {
       oldPid: 4242,
       rollback: 'auto',
       healthTimeoutMs: 60_000,
+      fsRetry: 'auto',
+      fsRetryTimeoutMs: 15_000,
       exe: r.layout.exe,
       backup: null,
       reported: false,
