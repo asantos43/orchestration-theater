@@ -190,6 +190,8 @@ export function failPoint(point: string, detail?: string): void {
 /**
  * The hooks the SQLite store calls around the commit of each transaction. `undefined` when nothing
  * is armed, so a daemon with `faults.inject: off` hands the store nothing at all.
+ * `store.write` is a fail point (Phase 11, P5): a plan that arms it makes the write fail with the
+ * code it names (`SQLITE_FULL`, `ENOSPC`) before the commit, so the transaction rolls back.
  */
 export function storeCommitHooks():
   | {
@@ -199,7 +201,10 @@ export function storeCommitHooks():
   | undefined {
   if (armed === undefined) return undefined;
   return {
-    beforeCommit: () => crashPoint('store.before_commit'),
+    beforeCommit: async () => {
+      failPoint('store.write');
+      await crashPoint('store.before_commit');
+    },
     afterCommit: () => crashPoint('store.after_commit'),
   };
 }

@@ -25,6 +25,7 @@ import {
   VERIFY_MODES,
 } from './config.js';
 import { FAULT_INJECT_MODES } from './chaos/faults.js';
+import { DISK_NOTIFY_MODES, DISK_ON_FULL_MODES } from './disk/settings.js';
 import { PLUGIN_INSTALL_SOURCES } from './plugins/install-sources.js';
 import {
   PLUGIN_APPROVAL_DETAIL_MODES,
@@ -663,6 +664,29 @@ describe('parseConfig, execution keys', () => {
     expect(() => parseConfig('faults:\n  inject: always\n')).toThrow(/inject/);
     expect(() => parseConfig('faults:\n  plan_file: ""\n')).toThrow(/plan_file/);
     expect(() => parseConfig('faults:\n  crash_at: x\n')).toThrow(/crash_at/);
+  });
+
+  it('disk: pause by default (N279), takes every mode and size, and refuses the rest (Phase 11, P5)', () => {
+    expect(parseConfig('').disk).toEqual({
+      on_full: 'pause',
+      min_free: 256 * 1024 ** 2,
+      notify: 'once',
+      check_every: 30_000,
+    });
+    for (const onFull of DISK_ON_FULL_MODES) {
+      expect(parseConfig(`disk:\n  on_full: ${onFull}\n`).disk.on_full).toBe(onFull);
+    }
+    for (const notify of DISK_NOTIFY_MODES) {
+      expect(parseConfig(`disk:\n  notify: ${notify}\n`).disk.notify).toBe(notify);
+    }
+    expect(parseConfig('disk:\n  min_free: 1GB\n').disk.min_free).toBe(1024 ** 3);
+    expect(parseConfig('disk:\n  min_free: off\n').disk.min_free).toBeNull();
+    expect(parseConfig('disk:\n  check_every: 5s\n').disk.check_every).toBe(5000);
+    expect(() => parseConfig('disk:\n  on_full: ignore\n')).toThrow(/on_full/);
+    expect(() => parseConfig('disk:\n  notify: always\n')).toThrow(/notify/);
+    expect(() => parseConfig('disk:\n  min_free: lots\n')).toThrow(/min_free/);
+    expect(() => parseConfig('disk:\n  check_every: 0s\n')).toThrow(/check_every/);
+    expect(() => parseConfig('disk:\n  limit: 1\n')).toThrow(/limit/);
   });
 
   it('defaults delivery to a PR without direct merge (N5) and takes the three modes', () => {

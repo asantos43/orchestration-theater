@@ -93,6 +93,8 @@ export interface OrchestrationRuntime {
   readonly chatFlow?: ChatFlow | undefined;
   /** The demands that wait for an Executor (P16), for what `status` says. */
   readonly selection?: Pick<RoleSelection, 'waiting'> | undefined;
+  /** The gate of the full disk: `open_play` is refused while it is closed (Phase 11, P5). */
+  readonly disk?: { paused(): boolean } | undefined;
 }
 
 /** "the actor waiting for quota of claude-code/a (demand d1)", for the Director. */

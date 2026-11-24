@@ -25,6 +25,7 @@ export const ERROR_CODES = {
   VAULT_LOCKED: 'VAULT_LOCKED',
   CANCELLED: 'CANCELLED',
   INVALID_INPUT: 'INVALID_INPUT',
+  DISK_FULL: 'DISK_FULL',
 } as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[keyof typeof ERROR_CODES];
@@ -104,6 +105,17 @@ export class InvalidInput extends OTheaterError<'INVALID_INPUT'> {
   }
 }
 
+/**
+ * The disk (or the file system, or the size cap of the database) has no room for the write: the
+ * `SQLITE_FULL` of the store, an `ENOSPC` of the file system. The write did not happen, and none of
+ * it became state. Waiting and trying again once space is free is the way out; trying at once is not.
+ */
+export class DiskFull extends OTheaterError<'DISK_FULL'> {
+  constructor(message: string, options?: ErrorOptions) {
+    super(ERROR_CODES.DISK_FULL, message, options);
+  }
+}
+
 /** All errors defined here, discriminated by `code`: `switch (e.code)` narrows each case. */
 export type KnownOTheaterError =
   | QuotaExhausted
@@ -114,7 +126,8 @@ export type KnownOTheaterError =
   | Conflict
   | VaultLocked
   | Cancelled
-  | InvalidInput;
+  | InvalidInput
+  | DiskFull;
 
 /** True for any OTheater error, including subclasses defined by adapters. */
 export function isOTheaterError(value: unknown): value is OTheaterError {
