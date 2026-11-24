@@ -83,6 +83,33 @@ describe('Workspace.createPlayBase', () => {
   );
 
   it(
+    'cleans the worktree a killed daemon left on the base, so the base can move',
+    async () => {
+      const main = await testGit(rig.repo, 'rev-parse', 'main');
+      // the daemon died between the creation of the worktree and its removal
+      await rig.vcs.createWorktree({
+        repo: rig.repo,
+        path: join(rig.worktreeRoot, PLAY, 'base'),
+        branch: playBranch(PLAY),
+        base: 'main',
+      });
+      const sha = await rig.workspace.createPlayBase({
+        repo: rig.repo,
+        playId: PLAY,
+        base: 'main',
+      });
+      expect(sha).toBe(main);
+      expect((await rig.vcs.listWorktrees(rig.repo)).map((entry) => entry.branch)).toEqual([
+        'main',
+      ]);
+      expect(await rig.workspace.moveBase({ repo: rig.repo, playId: PLAY, onto: 'main' })).toBe(
+        main,
+      );
+    },
+    T,
+  );
+
+  it(
     'rejects a base that does not exist',
     async () => {
       await expect(

@@ -165,7 +165,11 @@ export const DaemonNoticePayloadSchema = z.strictObject({
  *   `detail`: where it is, under the data folder);
  * - `direct_orphan_removed` (P27): the same worktree was removed, with its branch;
  * - `direct_orphan_failed` (P27): it could not be removed, or it was not safe to remove (a link, a
- *   folder that git does not list, a branch that is not its own), so it was left alone.
+ *   folder that git does not list, a branch that is not its own), so it was left alone;
+ * - `orphan_left` (Phase 11, P3; [proposta]): `recovery.orphans: report` and a client process of the
+ *   dead daemon is still alive, left as it is (`subject`: the client; `detail`: its session);
+ * - `play_not_started` (Phase 11, P3; [proposta]): a play the dead daemon had created but not started
+ *   (it was in NEED) could not be started at the restart (`subject`: the play; `detail`: why).
  * A failed backup is `daemon.backup` with `ok: false`, and the counts of a recovery are
  * `daemon.recovered`: neither is repeated here.
  */
@@ -178,6 +182,8 @@ export const RECOVERY_NOTICE_KINDS = [
   'direct_orphan_found',
   'direct_orphan_removed',
   'direct_orphan_failed',
+  'orphan_left',
+  'play_not_started',
 ] as const;
 export type RecoveryNoticeKind = (typeof RECOVERY_NOTICE_KINDS)[number];
 

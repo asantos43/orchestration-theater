@@ -134,6 +134,27 @@ describe('AttemptRunner, a normal attempt', () => {
   );
 
   it(
+    'takes over the worktree that a killed daemon left before it recorded the attempt',
+    async () => {
+      const r = await rig();
+      // What a SIGKILL between the worktree and the first record leaves: a branch and a directory,
+      // and no row in the registry.
+      const spec = specOf(r, 'hello there');
+      const leftover = await defaultVcs().createWorktree({
+        repo: r.repo,
+        path: join(r.worktreeRoot, 'play-1', 'demand-1-1'),
+        branch: 'play/play-1/attempts/demand-1/1',
+        base: 'main',
+      });
+      expect(await r.store.attempts.get('play-1/demand-1/1')).toBeUndefined();
+      const outcome = await r.runner.run(spec);
+      expect(outcome).toMatchObject({ state: 'completed', branch: leftover.branch });
+      expect(await testGit(outcome.worktree, 'branch', '--show-current')).toBe(outcome.branch);
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it(
     'ends a failed turn as failed, with the process gone',
     async () => {
       const r = await rig();

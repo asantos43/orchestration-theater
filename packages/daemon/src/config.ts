@@ -852,6 +852,16 @@ export const RECOVERY_NOTICE_MODES = ['always', 'unclean_only', 'off'] as const;
 export type RecoveryNoticeMode = (typeof RECOVERY_NOTICE_MODES)[number];
 
 /**
+ * `recovery.orphans` [proposta] (Phase 11, P3): what the start-up does with a client process that a
+ * dead daemon left alive (architecture 5.21, step 2). `kill` (default, what the code did before it
+ * was a key): end its tree, found by the pid and start instant of its `sessions` row or by the launch
+ * marker the row put in its environment; `report`: leave it and say so (`recovery.notice`
+ * `orphan_left`), to inspect a hung client while debugging.
+ */
+export const RECOVERY_ORPHAN_MODES = ['kill', 'report'] as const;
+export type RecoveryOrphanMode = (typeof RECOVERY_ORPHAN_MODES)[number];
+
+/**
  * Who counts as watching a play (decision of P15a, [proposta]; renamed in N175, 2026-11-20, from
  * `poll` with no alias: the old name is an invalid value). `connected` (default): an `ot chat`
  * connected to the scenario of the play, that is, with its chat WebSocket open, or that polled it
@@ -2295,6 +2305,7 @@ export const DaemonConfigSchema = z
     recovery: z
       .strictObject({
         notice: z.enum(RECOVERY_NOTICE_MODES).default('always'),
+        orphans: z.enum(RECOVERY_ORPHAN_MODES).default('kill'),
       })
       .prefault({}),
     /** Retries and checkpoints (architecture 5.16). Resolved: the preset is already applied. */

@@ -115,6 +115,64 @@ describe('orphan processes and sessions', () => {
     expect((await rig.store.sessions.get('s-orphan'))?.state).toBe('interrupted');
   });
 
+  it('finds the orphan of a row that has no pid yet by its launch marker (Phase 11, P3)', async () => {
+    // The daemon died after the process existed and before its pid was written.
+    rig.launcher.plantOrphan(31_337, 5_000, 'proc-window');
+    rig.launcher.plantOrphan(31_338, 5_000, 'proc-other');
+    await rig.store.sessions.open({ id: 'proc-window', client: 'fake', profile: 'one' });
+    const report = await reconcileBeforeResume(rig.deps());
+    expect(report.orphansKilled).toBe(1);
+    expect(report.orphansLeft).toBe(0);
+    expect(rig.launcher.orphanAlive(31_337)).toBe(false);
+    // A marker no live row names is not ours to end.
+    expect(rig.launcher.orphanAlive(31_338)).toBe(true);
+    expect((await rig.store.sessions.get('proc-window'))?.state).toBe('interrupted');
+  });
+
+  it('counts a row once when its pid and its marker name the same process', async () => {
+    rig.launcher.plantOrphan(31_337, 5_000, 'proc-both');
+    await rig.store.sessions.open({
+      id: 'proc-both',
+      client: 'fake',
+      profile: 'one',
+      pid: 31_337,
+      processStartedAt: 5_000,
+    });
+    const report = await reconcileBeforeResume(rig.deps());
+    expect(report.orphansKilled).toBe(1);
+    expect(rig.launcher.orphanAlive(31_337)).toBe(false);
+  });
+
+  it('recovery.orphans: report leaves the orphan alive and says so in a notice', async () => {
+    rig.launcher.plantOrphan(31_337, 5_000, 'proc-window');
+    await rig.store.sessions.open({ id: 'proc-window', client: 'fake', profile: 'one' });
+    const situations = new RecordingSituations();
+    const report = await reconcileBeforeResume(rig.deps({ orphans: 'report', situations }));
+    expect(report.orphansKilled).toBe(0);
+    expect(report.orphansLeft).toBe(1);
+    expect(rig.launcher.orphanAlive(31_337)).toBe(true);
+    expect(rig.launcher.orphanKills).toEqual([]);
+    expect(situations.of('recovery.notice')).toEqual([
+      expect.objectContaining({ kind: 'orphan_left', subject: 'fake' }),
+    ]);
+    expect((await rig.store.sessions.get('proc-window'))?.state).toBe('interrupted');
+  });
+
+  it('recovery.orphans: report does not count a recycled pid as left', async () => {
+    rig.launcher.plantOrphan(31_337, 9_000);
+    await rig.store.sessions.open({
+      id: 's-old',
+      client: 'fake',
+      profile: 'one',
+      pid: 31_337,
+      processStartedAt: 5_000,
+    });
+    const situations = new RecordingSituations();
+    const report = await reconcileBeforeResume(rig.deps({ orphans: 'report', situations }));
+    expect(report.orphansLeft).toBe(0);
+    expect(situations.recorded).toEqual([]);
+  });
+
   it('does not signal a recycled pid, but still parks the session', async () => {
     rig.launcher.plantOrphan(31_337, 9_000);
     await rig.store.sessions.open({
@@ -149,8 +207,10 @@ describe('orphan processes and sessions', () => {
     const broken: ProcessLauncher & {
       processStartedAt(): Promise<number>;
       killOrphan(): Promise<never>;
+      findMarked(): Promise<readonly never[]>;
     } = Object.assign(Object.create(rig.launcher) as ProcessLauncher, {
       processStartedAt: () => Promise.resolve(5_000),
+      findMarked: () => Promise.resolve([]),
       killOrphan: () => Promise.reject(new Error('EPERM')),
     });
     await rig.store.sessions.open({

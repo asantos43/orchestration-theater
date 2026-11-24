@@ -12,6 +12,8 @@ import {
   type LauncherCapabilities,
   type LaunchedProcess,
   type LaunchOptions,
+  type MarkedProcess,
+  type MarkerScanner,
   type OrphanKillReport,
   type OrphanReaper,
   type OrphanTarget,
@@ -24,6 +26,7 @@ import {
   type PosixLauncherConfig,
   type PosixLauncherConfigInput,
 } from './config.js';
+import { scanMarked, systemMarkerSource, type MarkerSource } from './marker-scan.js';
 import { killProcessTree, sendSignal, type KillDeps } from './kill-tree.js';
 import { START_TOLERANCE_MS, systemProcessTable, type ProcessTable } from './process-table.js';
 import { findSystemdRun, scopeCommand } from './systemd-scope.js';
@@ -34,6 +37,8 @@ const ROOT_REAP_WAIT_MS = 1000;
 /** What a test may replace; the defaults are the real system. */
 export interface PosixLauncherDeps {
   readonly table?: ProcessTable;
+  /** Reads the launch marker of each process (see `findMarked`). */
+  readonly markers?: MarkerSource;
 }
 
 /**
@@ -48,11 +53,12 @@ export interface PosixLauncherDeps {
  * - The streams are WHATWG streams over the pipes. The caller must read `stdout` and `stderr`: a
  *   child that fills a pipe nobody reads blocks (as in any pipe), until `killTree`.
  */
-export class PosixProcessLauncher implements ProcessLauncher, OrphanReaper {
+export class PosixProcessLauncher implements ProcessLauncher, OrphanReaper, MarkerScanner {
   readonly id: Adapter['id'] = POSIX_PROCESS_LAUNCHER_ADAPTER.id;
   readonly implements: Adapter['implements'] = POSIX_PROCESS_LAUNCHER_ADAPTER.implements;
   readonly config: PosixLauncherConfig;
   readonly #table: ProcessTable;
+  readonly #markers: MarkerSource;
 
   constructor(config: PosixLauncherConfigInput = {}, deps: PosixLauncherDeps = {}) {
     const parsed = PosixLauncherConfigSchema.safeParse(config);
@@ -63,6 +69,7 @@ export class PosixProcessLauncher implements ProcessLauncher, OrphanReaper {
     }
     this.config = parsed.data;
     this.#table = deps.table ?? systemProcessTable();
+    this.#markers = deps.markers ?? systemMarkerSource();
     if (this.config.memoryLimit === 'systemd-scope') {
       if (process.platform !== 'linux' || findSystemdRun() === undefined) {
         throw new AdapterUnavailable("memoryLimit 'systemd-scope' needs Linux with systemd-run");
@@ -81,6 +88,15 @@ export class PosixProcessLauncher implements ProcessLauncher, OrphanReaper {
   async processStartedAt(pid: number): Promise<number | undefined> {
     const info = (await this.#table()).get(pid);
     return info === undefined || info.zombie ? undefined : info.startedAtMs;
+  }
+
+  /**
+   * The live processes that carry a launch marker (`LAUNCH_MARKER_ENV`): the root the daemon
+   * started and every descendant that inherited the variable. It is how the reconciliation finds a
+   * process whose pid the daemon had no time to write down (Phase 11, P3).
+   */
+  async findMarked(): Promise<readonly MarkedProcess[]> {
+    return scanMarked(await this.#table(), this.#markers);
   }
 
   /**

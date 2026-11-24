@@ -13,6 +13,7 @@
     "src/chaos/harness.ts",
     "src/chaos/census.ts",
     "src/chaos/invariants.ts",
+    "src/chaos/torn-store.ts",
     "src/types/*.d.ts"
   ],
   "references": [

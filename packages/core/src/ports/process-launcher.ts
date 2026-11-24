@@ -157,6 +157,44 @@ export function supportsOrphanKill(
   );
 }
 
+/**
+ * The name of the environment variable that carries a launch marker (Phase 11, P3): the id of the
+ * `sessions` row the daemon wrote BEFORE it started the process. The child and its descendants
+ * inherit it, so a daemon that died between the start of the process and the write of its pid can
+ * still be found: see {@link MarkerScanner}.
+ */
+export const LAUNCH_MARKER_ENV = 'OT_LAUNCH_ID';
+
+/** A live process that carries a launch marker (see {@link MarkerScanner}). */
+export interface MarkedProcess {
+  /** The value of {@link LAUNCH_MARKER_ENV} in its environment. */
+  readonly marker: string;
+  readonly pid: number;
+  /** When it started (epoch ms, as the OS says), the same measure as {@link OrphanTarget.startedAt}. */
+  readonly startedAt: number;
+}
+
+/**
+ * Optional capability of a `ProcessLauncher` (Phase 11, P3; [proposta], so the port version does
+ * not change): find the live processes of this user that carry a {@link LAUNCH_MARKER_ENV}. It is
+ * what closes the window between "the process started" and "its pid is written down": the daemon
+ * writes the row first, puts its id in the child's environment, and the next daemon finds the
+ * process, and every descendant that inherited the variable, by that id. A launcher that cannot
+ * read the environment of other processes does not have it (Windows does not need it: the Job Object
+ * ends the tree when the daemon dies). Check with {@link supportsMarkerScan}.
+ */
+export interface MarkerScanner {
+  /** Every live process with a marker, at the moment of the call. Never rejects: an unreadable table is an empty one. */
+  findMarked(): Promise<readonly MarkedProcess[]>;
+}
+
+/** Narrows a `ProcessLauncher` to one that can scan for launch markers. */
+export function supportsMarkerScan(
+  launcher: ProcessLauncher,
+): launcher is ProcessLauncher & MarkerScanner {
+  return typeof (launcher as Partial<MarkerScanner>).findMarked === 'function';
+}
+
 const ABSOLUTE_PATH = /^(?:\/|[A-Za-z]:[\\/]|\\\\)/;
 
 /**

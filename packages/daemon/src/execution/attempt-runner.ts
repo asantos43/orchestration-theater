@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-import { stat } from 'node:fs/promises';
+import { rm, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
   AdapterUnavailable,
@@ -10,6 +10,7 @@ import {
   formatExecutorId,
   hasErrorCode,
   mcpToolsOf,
+  supportsBranchDelete,
   type AttemptRecord,
   type AttemptRecordInput,
   type Clock,
@@ -643,12 +644,7 @@ export class AttemptRunner {
       spec.playId,
       `${spec.demandId}-${String(spec.attempt)}`,
     );
-    await this.#options.vcs.createWorktree({
-      repo: spec.repo,
-      path: worktree,
-      branch,
-      base: spec.base,
-    });
+    await this.#createWorktree(spec, attemptId, branch, worktree);
     const record: AttemptRecordInput = {
       attemptId,
       playId: spec.playId,
@@ -674,6 +670,41 @@ export class AttemptRunner {
       prompt: spec.prompt,
       cause: undefined,
     });
+  }
+
+  /**
+   * Creates the worktree and the branch of a new attempt. A daemon killed after the worktree was made
+   * and before the attempt had its record leaves a branch (and a directory) that nothing in the
+   * registry knows: the play asks for the same attempt again after the restart and `createWorktree`
+   * says `Conflict`, which the play counts as a failed submission. Nothing was ever recorded for the
+   * attempt, so there is nothing to resume: the leftover is removed and the worktree is made once more.
+   * An attempt that has a record is never touched (the restore path owns it).
+   */
+  async #createWorktree(
+    spec: AttemptSpec,
+    attemptId: string,
+    branch: string,
+    worktree: string,
+  ): Promise<void> {
+    const { vcs, store, logger } = this.#options;
+    const make = (): Promise<unknown> =>
+      vcs.createWorktree({ repo: spec.repo, path: worktree, branch, base: spec.base });
+    try {
+      await make();
+      return;
+    } catch (error) {
+      if (!(error instanceof Conflict) || (await store.attempts.get(attemptId)) !== undefined) {
+        throw error;
+      }
+      logger.warn(
+        { attemptId, branch, worktree },
+        'attempt left over from a daemon that stopped before recording it: removing it',
+      );
+    }
+    await vcs.removeWorktree(worktree, { force: true, deleteBranch: true }).catch(() => undefined);
+    await rm(worktree, { recursive: true, force: true });
+    if (supportsBranchDelete(vcs)) await vcs.deleteBranch(spec.repo, branch);
+    await make();
   }
 
   /**

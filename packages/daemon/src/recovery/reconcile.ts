@@ -3,15 +3,18 @@ import { createHash } from 'node:crypto';
 import { access } from 'node:fs/promises';
 import {
   supportsHistory,
+  supportsMarkerScan,
   supportsOrphanKill,
   type CodeHost,
   type JsonObject,
+  type OrphanTarget,
   type ProcessLauncher,
   type SideEffectRecord,
   type Store,
   type Vcs,
 } from '@otheater/core';
 import { crashPoint } from '../chaos/crash-points.js';
+import type { RecoveryOrphanMode } from '../config.js';
 import type { Logger } from '../logger.js';
 import { DECISION_KINDS } from '../orchestration/play-effects.js';
 import { situationSubject, situationText, type SituationSink } from '../situations.js';
@@ -37,6 +40,8 @@ export interface RecoveryDeps {
   readonly pluginEffects?: PluginEffectRegistry | undefined;
   /** Where an effect nobody could settle is also written (`recovery.notice`, P24). */
   readonly situations?: SituationSink | undefined;
+  /** `recovery.orphans`: `kill` (default) ends the orphans, `report` only says they are there. */
+  readonly orphans?: RecoveryOrphanMode | undefined;
 }
 
 /** An effect nobody could settle: it waits for the Producer. */
@@ -58,6 +63,8 @@ export interface ResolvedEffect {
 /** What the part of the reconciliation that runs before anything is resumed found and did. */
 export interface RecoveryReport {
   readonly orphansKilled: number;
+  /** With `recovery.orphans: report`: how many were found alive and left alone. */
+  readonly orphansLeft: number;
   readonly sessionsInterrupted: number;
   readonly wipCommits: number;
   readonly effectsResolved: number;
@@ -100,6 +107,7 @@ export async function reconcileBeforeResume(deps: RecoveryDeps): Promise<Recover
   logger.info(
     {
       orphansKilled: orphans.killed,
+      orphansLeft: orphans.left,
       sessionsInterrupted: orphans.interrupted,
       wipCommits,
       effectsResolved: effects.resolved.length,
@@ -109,6 +117,7 @@ export async function reconcileBeforeResume(deps: RecoveryDeps): Promise<Recover
   );
   return {
     orphansKilled: orphans.killed,
+    orphansLeft: orphans.left,
     sessionsInterrupted: orphans.interrupted,
     wipCommits,
     effectsResolved: effects.resolved.length,
@@ -117,29 +126,84 @@ export async function reconcileBeforeResume(deps: RecoveryDeps): Promise<Recover
   };
 }
 
-async function endOrphans(deps: RecoveryDeps): Promise<{ killed: number; interrupted: number }> {
+/** [proposta] How far two readings of one process start may differ and still be the same process (as in the launcher). */
+const START_TOLERANCE_MS = 2000;
+
+/**
+ * The processes that belong to a live `sessions` row: the one its pid and start instant name, and
+ * every process that carries the row's launch marker (Phase 11, P3: the row is written before the
+ * process starts, so a daemon killed before the pid was written still leaves the marker to find it).
+ */
+function targetsOf(
+  row: {
+    readonly id: string;
+    readonly pid: number | null;
+    readonly processStartedAt: number | null;
+  },
+  marked: ReadonlyMap<string, readonly OrphanTarget[]>,
+): OrphanTarget[] {
+  const targets = new Map<number, OrphanTarget>();
+  if (row.pid !== null && row.processStartedAt !== null) {
+    targets.set(row.pid, { pid: row.pid, startedAt: row.processStartedAt });
+  }
+  for (const target of marked.get(row.id) ?? []) targets.set(target.pid, target);
+  return [...targets.values()];
+}
+
+async function endOrphans(
+  deps: RecoveryDeps,
+): Promise<{ killed: number; left: number; interrupted: number }> {
   const { store, launcher, logger } = deps;
+  const mode = deps.orphans ?? 'kill';
   const rows = await store.sessions.list({ states: LIVE_SESSION_STATES });
+  const reaper = launcher !== undefined && supportsOrphanKill(launcher) ? launcher : undefined;
+  const marked = new Map<string, OrphanTarget[]>();
+  if (launcher !== undefined && supportsMarkerScan(launcher)) {
+    for (const process of await launcher.findMarked().catch(() => [])) {
+      const list = marked.get(process.marker) ?? [];
+      list.push({ pid: process.pid, startedAt: process.startedAt });
+      marked.set(process.marker, list);
+    }
+  }
   let killed = 0;
+  let left = 0;
   let interrupted = 0;
   for (const row of rows) {
-    if (
-      row.pid !== null &&
-      row.processStartedAt !== null &&
-      launcher !== undefined &&
-      supportsOrphanKill(launcher)
-    ) {
+    let ended = false;
+    let stillThere = false;
+    let failed = false;
+    for (const target of reaper === undefined ? [] : targetsOf(row, marked)) {
       try {
-        const result = await launcher.killOrphan({
-          pid: row.pid,
-          startedAt: row.processStartedAt,
-        });
-        if (result.matched) killed += 1;
+        if (mode === 'report') {
+          const startedAt = await reaper?.processStartedAt(target.pid);
+          if (
+            startedAt !== undefined &&
+            Math.abs(startedAt - target.startedAt) <= START_TOLERANCE_MS
+          )
+            stillThere = true;
+        } else if ((await reaper?.killOrphan(target))?.matched === true) {
+          ended = true;
+        }
       } catch (error) {
         // The process may still be there: the row stays live and the next start tries again.
         logger.error({ err: error, sessionId: row.id }, 'recovery: an orphan could not be ended');
-        continue;
+        failed = true;
+        break;
       }
+    }
+    if (failed) continue;
+    if (ended) killed += 1;
+    if (stillThere) {
+      left += 1;
+      logger.warn(
+        { sessionId: row.id, client: row.client },
+        'recovery: a client process of the dead daemon is still alive (recovery.orphans: report)',
+      );
+      deps.situations?.record('recovery.notice', {
+        kind: 'orphan_left',
+        subject: situationText(row.client, 256),
+        detail: situationText(`session ${row.id}; recovery.orphans is report, so it was not ended`),
+      });
     }
     try {
       await store.sessions.update(row.id, { state: 'interrupted' });
@@ -148,7 +212,7 @@ async function endOrphans(deps: RecoveryDeps): Promise<{ killed: number; interru
       logger.error({ err: error, sessionId: row.id }, 'recovery: a session could not be parked');
     }
   }
-  return { killed, interrupted };
+  return { killed, left, interrupted };
 }
 
 async function exists(path: string): Promise<boolean> {

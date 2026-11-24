@@ -99,6 +99,40 @@ export async function openPlayFromNeed(
   return { ok: true, playId };
 }
 
+/**
+ * After a restart: starts the plays the daemon died too early to start. `openPlayFromNeed` writes
+ * the play in NEED (committed, with its `play.created`), then creates its base branch, then sends
+ * START; a daemon killed in between leaves a play in NEED, and `PlayRunner.resume` only asks for the
+ * effects of the state it finds (NEED has none), so it would wait for ever. Both steps are
+ * idempotent (`createPlayBase` returns the branch that is there), so repeating them is safe.
+ * Returns the ids it started; a play that cannot be started stays as it is and is reported by `fail`.
+ */
+export async function startStalledPlays(
+  opening: Pick<PlayOpening, 'runner' | 'workspace'> & {
+    readonly store: Pick<Store, 'plays' | 'scenarioRepos'>;
+  },
+  playIds: readonly string[],
+  fail: (playId: string, error: unknown) => void,
+): Promise<string[]> {
+  const started: string[] = [];
+  const { workspace } = opening;
+  if (workspace === undefined) return started;
+  for (const playId of playIds) {
+    try {
+      const record = await opening.store.plays.get(playId);
+      if (record?.state !== 'NEED') continue;
+      const repo = (await opening.store.scenarioRepos.list(record.scenarioId))[0];
+      if (repo === undefined) continue;
+      await workspace.createPlayBase({ repo: repo.path, playId, base: repo.mainBranch });
+      await opening.runner.send(playId, { type: 'START' });
+      started.push(playId);
+    } catch (error) {
+      fail(playId, error);
+    }
+  }
+  return started;
+}
+
 function diskFullRefusal(): OpenedPlay {
   return {
     ok: false,
