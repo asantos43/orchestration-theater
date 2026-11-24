@@ -123,7 +123,8 @@ import {
   type AdapterManagerOptions,
   type ManagedClientId,
 } from './adapters/manager.js';
-import { storeCommitHooks } from './chaos/crash-points.js';
+import { faultsArmed, storeCommitHooks } from './chaos/crash-points.js';
+import { DiskGuard, diskSettingsOf } from './disk/index.js';
 import { resolveClientVersioning, type ClientVersioning } from './client-version.js';
 import { sessionConfigReader } from './catalog-reader.js';
 import { clientWarningLog, type ClientWarningLog } from './client-warnings.js';
@@ -287,6 +288,18 @@ export interface Composition {
    */
   readonly situations: SituationLog;
   /**
+   * The full disk (Phase 11, P5; N279): hears the writes that found no room and decides, with
+   * `disk.on_full`, whether the daemon pauses, stops or goes on. The daemon starts it after
+   * `daemon.started`, binds what resumes a play and what stops the daemon, and stops it first.
+   */
+  readonly disk: DiskGuard;
+  /**
+   * Phase 11, P5 (test only): limits how many pages the store may still grow by (`undefined` lifts
+   * the limit), to make the disk of the store full on purpose. Set only while `faults.inject` has
+   * armed rules and the store is the SQLite adapter; otherwise `undefined`.
+   */
+  readonly limitStoreGrowth: ((pages: number | undefined) => Promise<number>) | undefined;
+  /**
    * The telemetry base (P1 of Phase 8, N54), or `undefined` when `telemetry.enabled` is `off`.
    * Never what the orchestration depends on: a failure here is a counted loss, not an error.
    */
@@ -379,8 +392,18 @@ function storeSection(config: DaemonConfig, paths: DataPaths): SqliteStoreConfig
  * with nothing armed it gets no hook at all. Exported so the test of those points goes through the
  * same call (adapters are imported here only, by `daemon-adapters-only-in-compose`).
  */
-export function openComposedStore(section: SqliteStoreConfig, clock: Clock): Promise<SqliteStore> {
-  return SqliteStore.open(section, clock, storeCommitHooks());
+export function openComposedStore(
+  section: SqliteStoreConfig,
+  clock: Clock,
+  onFailure?: (error: unknown) => void,
+): Promise<SqliteStore> {
+  const hooks = storeCommitHooks();
+  // Phase 11, P5: the disk guard hears every write the store could not make (`DiskFull`).
+  return SqliteStore.open(
+    section,
+    clock,
+    onFailure === undefined ? hooks : { ...hooks, onFailure },
+  );
 }
 
 /** Where the telemetry base lives: `telemetry.file`, relative to the data folder or absolute. */
@@ -810,6 +833,10 @@ export async function compose(config: DaemonConfig, options: ComposeOptions): Pr
     // P8: a rotation of `daemon.log` can fail before the situations exist; the error waits here.
     const rotateErrors: unknown[] = [];
     const rotate: { notice?: (error: unknown) => void } = {};
+    // Phase 11, P5: the writes that found no room (the store, the log) are told to the disk guard,
+    // which is built after the situations; until then there is nobody to tell.
+    const diskReport: { report?: (area: string, error: unknown) => void } = {};
+    let sqliteStore: SqliteStore | undefined;
     let logger = options.logger;
     if (logger === undefined) {
       daemonLogger = createLogger({
@@ -826,6 +853,9 @@ export async function compose(config: DaemonConfig, options: ComposeOptions): Pr
           if (rotate.notice === undefined) rotateErrors.push(error);
           else rotate.notice(error);
         },
+        onWriteError: (error) => {
+          diskReport.report?.('log', error);
+        },
       });
       logger = daemonLogger.logger;
     }
@@ -839,7 +869,10 @@ export async function compose(config: DaemonConfig, options: ComposeOptions): Pr
       adapters.push(overrideRecord('Store', STORE_PORT_VERSION));
     } else {
       adapters.push(checkAdapterRange(SQLITE_STORE_ADAPTER, 'Store', STORE_PORT_VERSION));
-      store = await openComposedStore(storeSection(config, paths), clock);
+      sqliteStore = await openComposedStore(storeSection(config, paths), clock, (error) => {
+        diskReport.report?.('store', error);
+      });
+      store = sqliteStore;
     }
 
     // Phase 6, P2: the hub is the innermost decorator, so every `append` that reaches the adapter
@@ -881,6 +914,22 @@ export async function compose(config: DaemonConfig, options: ComposeOptions): Pr
       });
     };
     for (const error of rotateErrors.splice(0)) rotate.notice(error);
+    const disk = new DiskGuard({
+      clock,
+      settings: () => diskSettingsOf(config.disk),
+      areas: () => [
+        { name: 'data', path: paths.dataDir },
+        { name: 'log', path: paths.logs },
+        { name: 'backup', path: paths.backups },
+        { name: 'worktrees', path: paths.worktrees },
+      ],
+      events: store.events,
+      logger,
+      probe: sqliteStore === undefined ? undefined : () => sqliteStore.probeWrite(),
+    });
+    diskReport.report = (area, error) => {
+      disk.report(area, error);
+    };
     // Phase 10, P2: `processes.windows_launcher: auto` found no `ot-job-launcher.exe`. Daemon.ts tells the
     // effect (`execution_off`, `no_launcher`); this tells the cause, in the log and as an event.
     if (launcherChoice.fallback !== undefined) {
@@ -961,6 +1010,11 @@ export async function compose(config: DaemonConfig, options: ComposeOptions): Pr
       codeHost: overrides.codeHost,
       usageSource,
       situations,
+      disk,
+      limitStoreGrowth:
+        sqliteStore !== undefined && faultsArmed()
+          ? (pages) => sqliteStore.limitGrowth(pages)
+          : undefined,
       telemetry,
       telemetryBackup,
       daemonSpans,

@@ -192,12 +192,18 @@ export function startOrchestration(input: OrchestrationInput): Orchestration {
     logger,
     attended: ({ scenarioId }) => presence.attended(scenarioId),
     clock: composition.clock,
+    onDiskFull: (playId) => {
+      composition.disk.hit(playId);
+    },
   });
   const runner = new PlayRunner({
     store,
     clock: composition.clock,
     effects,
     logger,
+    onDiskFull: (playId) => {
+      composition.disk.hit(playId);
+    },
     onFinish: (play) => {
       void late.ideas?.onPlayFinished(play).catch((error: unknown) => {
         logger.error(
@@ -209,7 +215,17 @@ export function startOrchestration(input: OrchestrationInput): Orchestration {
   });
   effects.bind(runner);
   const chatFlow = new ChatFlow({ store, logger });
-  handlers.bind({ store, runner, workspace, directors, config, logger, chatFlow, selection });
+  handlers.bind({
+    store,
+    runner,
+    workspace,
+    directors,
+    config,
+    logger,
+    chatFlow,
+    selection,
+    disk: composition.disk,
+  });
   const scenarios = new ScenarioService({
     store,
     vcs: composition.vcs,
@@ -249,7 +265,7 @@ export function startOrchestration(input: OrchestrationInput): Orchestration {
     adapters: execution.pool,
     config,
   });
-  const opening: PlayOpening = { store, runner, workspace, config };
+  const opening: PlayOpening = { store, runner, workspace, config, disk: composition.disk };
   const ideas = new IdeaQueueService({
     store,
     vcs: composition.vcs,

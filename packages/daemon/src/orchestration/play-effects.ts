@@ -40,6 +40,7 @@ import {
 import { buildDaemonEvent, type PlayNoticeKind } from '@otheater/protocol';
 import { z } from 'zod';
 import type { DaemonConfig, PlayLimits } from '../config.js';
+import { isDiskFull } from '../disk/guard.js';
 import type { Execution } from '../execution/service.js';
 import type { Logger } from '../logger.js';
 import type { DataPaths } from '../paths.js';
@@ -182,6 +183,12 @@ export interface OrchestrationEffectsOptions {
   readonly attended?: ((scope: PlayEffectScope) => boolean) | undefined;
   /** The time of the question of `delivery.mode: ask` (`delivery.ask.timeout`). */
   readonly clock: Clock;
+  /**
+   * Phase 11, P5: the work of a play hit a full disk. The effect does not send its failure event (a
+   * full disk is not the play's failure): the play stays in its state and the disk guard asks the
+   * runner to dispatch the effects of that state again when the space is back.
+   */
+  readonly onDiskFull?: ((playId: string) => void) | undefined;
 }
 
 /** How much of the diff of an earlier attempt goes into the prompt of the next one. */
@@ -529,10 +536,25 @@ export class OrchestrationEffects implements PlayEffects {
     return this.#generations.get(playId) ?? 0;
   }
 
+  /**
+   * Whether `error` is a full disk. If it is, the disk guard hears of the play and the caller does
+   * not turn it into a failure of the play: the write that failed changed nothing.
+   */
+  #diskFull(playId: string, error: unknown): boolean {
+    if (!isDiskFull(error)) return false;
+    this.#options.logger.warn(
+      { err: error, playId },
+      'the disk is full: the work of the play waits',
+    );
+    this.#options.onDiskFull?.(playId);
+    return true;
+  }
+
   #spawn(label: string, scope: PlayEffectScope, work: () => Promise<void>): void {
     const task: Promise<void> = work()
       .catch((error: unknown) => {
         if (this.#closed) return;
+        if (this.#diskFull(scope.playId, error)) return;
         this.#options.logger.error(
           { err: error, playId: scope.playId, effect: label },
           'a play effect failed',
@@ -732,6 +754,7 @@ export class OrchestrationEffects implements PlayEffects {
     try {
       submission = await this.#runStageAttempt(effect, scope, generation);
     } catch (error) {
+      if (this.#diskFull(playId, error)) return;
       await fail(messageOf(error));
       return;
     }
@@ -749,6 +772,7 @@ export class OrchestrationEffects implements PlayEffects {
     }
     await this.#stageResult(effect, scope, generation, submission.output).catch(
       async (error: unknown) => {
+        if (this.#diskFull(playId, error)) return;
         await fail(messageOf(error));
       },
     );
@@ -1383,6 +1407,7 @@ export class OrchestrationEffects implements PlayEffects {
       }
       await this.#send(playId, generation, { type: 'DEMAND_APPROVED', demandId: demand.id });
     } catch (error) {
+      if (this.#diskFull(playId, error)) return;
       await store.demands.update(playId, demand.id, { state: 'failed' }).catch(() => undefined);
       await failed(messageOf(error));
     }
@@ -1690,6 +1715,7 @@ export class OrchestrationEffects implements PlayEffects {
         await fail(result.reason);
       }
     } catch (error) {
+      if (this.#diskFull(playId, error)) return;
       await fail(messageOf(error));
     }
   }

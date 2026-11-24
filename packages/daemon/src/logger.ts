@@ -44,6 +44,8 @@ export interface CreateLoggerOptions {
   readonly rotate?: LogRotation | undefined;
   /** Told when a rotation fails (the log goes on in the same file). */
   readonly onRotateError?: ((error: unknown) => void) | undefined;
+  /** Told when a line could not be written (a full disk, P5 of Phase 11); the line is lost. */
+  readonly onWriteError?: ((error: unknown) => void) | undefined;
 }
 
 export interface DaemonLogger {
@@ -75,6 +77,7 @@ export function createLogger(options: CreateLoggerOptions): DaemonLogger {
               maxBytes: options.rotate.maxBytes,
               keep: options.rotate.keep,
               onError: options.onRotateError,
+              onWriteError: options.onWriteError,
             });
       streams.push(file);
       closers.push(() => {

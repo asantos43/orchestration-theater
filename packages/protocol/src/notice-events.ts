@@ -87,7 +87,13 @@ const detail = z.string().min(1).max(512).nullable();
  *   - `adapter_missing`: the client is on `PATH`, the adapter is not installed, and the mode
  *     (`ask`, `command` or `off`) does not install it by itself (`detail`: what to run);
  *   - `adapter_fallback`: `clients.<id>.adapter: managed` could not be used and the one in `PATH`
- *     runs instead (`detail`: why).
+ *     runs instead (`detail`: why);
+ *   - `disk_full` (Phase 11, P5, N279): a write found no room (the database, the log, a backup) or
+ *     the free space went below `disk.min_free`; `subject` is the area, `detail` what the daemon
+ *     does about it (`disk.on_full`: it pauses new plays, stops, or goes on). Told as `disk.notify`
+ *     says; with `off` it is only logged;
+ *   - `disk_recovered`: the space came back; the daemon went back to work (the plays the full disk
+ *     had stopped were resumed).
  */
 export const DAEMON_NOTICE_KINDS = [
   'vault_locked',
@@ -120,6 +126,8 @@ export const DAEMON_NOTICE_KINDS = [
   'adapter_install_failed',
   'adapter_missing',
   'adapter_fallback',
+  'disk_full',
+  'disk_recovered',
 ] as const;
 export type DaemonNoticeKind = (typeof DAEMON_NOTICE_KINDS)[number];
 

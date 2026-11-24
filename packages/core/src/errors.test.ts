@@ -4,6 +4,7 @@ import {
   AdapterUnavailable,
   Cancelled,
   Conflict,
+  DiskFull,
   ERROR_CODES,
   InvalidInput,
   NotFound,
@@ -28,6 +29,7 @@ const samples: KnownOTheaterError[] = [
   new VaultLocked('v'),
   new Cancelled('x'),
   new InvalidInput('i'),
+  new DiskFull('d'),
 ];
 
 describe('typed errors', () => {
@@ -42,6 +44,7 @@ describe('typed errors', () => {
       ['VaultLocked', 'VAULT_LOCKED'],
       ['Cancelled', 'CANCELLED'],
       ['InvalidInput', 'INVALID_INPUT'],
+      ['DiskFull', 'DISK_FULL'],
     ]);
     expect(samples[0]?.message).toBe('q');
   });
@@ -69,6 +72,7 @@ describe('typed errors', () => {
       switch (e.code) {
         case 'QUOTA_EXHAUSTED':
         case 'TRANSIENT':
+        case 'DISK_FULL':
           return 'retry-later';
         case 'ADAPTER_UNAVAILABLE':
         case 'VAULT_LOCKED':

@@ -17,6 +17,20 @@
  *   the kill lands before the client exists whatever the speed of the machine;
  * - `OT_CHILD_INJECT`: the value of `faults.inject` (default `env`; a test sets `off` to prove nothing fires);
  * - `OT_CHILD_DAEMON_DIST`, `OT_CHILD_CORE_TESTING`, `OT_CHILD_FAKE_AGENT`: where the compiled code is;
+ * - `OT_CHILD_WAIT`: with `1`, mode `first` goes on, after the Producer's message, to wait for the play
+ *   to end and print the report like `resume` (the disk tests: the play must finish in this process);
+ * - `OT_CHILD_REAL_LOG`: with `1` the daemon keeps its own log file instead of the silent logger;
+ * - `OT_CHILD_EXIT_ON_STOP`: with `1` the process ends, printing `STOPPED`, when the daemon stops by
+ *   itself (`disk.on_full: stop`);
+ * - `OT_CHILD_DISK_ON_FULL`, `OT_CHILD_DISK_NOTIFY`, `OT_CHILD_DISK_MIN_FREE`, `OT_CHILD_DISK_CHECK_EVERY`:
+ *   the keys of the `disk` block of the config (Phase 11, P5), each only when set;
+ * - `OT_CHILD_CONTROL`: a folder the test writes commands to, one file each, named
+ *   `<seq>-<command>`; the child runs them in order, deletes the file and writes `<name>.done` with
+ *   the answer as JSON. Commands: `cap <pages>|off` (the store may grow by that many pages: the
+ *   `max_page_count` mechanism), `fault <point[:detail]=CODE[#n[xTimes]]>` and `fault-off` (the fail
+ *   points), `fill <dir>` and `free <dir>` (a ballast file that takes the free space of a small
+ *   file system the test mounted, and gives it back), `open-play` (asks to open a play: the gate of
+ *   the full disk answers `disk_full`), `status` (the state of the disk guard);
  * - `OT_TEST_CRASH_AT=<point>[:<detail>][#n]`: with `faults.inject: env` in its config (the one key
  *   this program sets for it), the daemon kills itself at that named point (`chaos/crash-points.ts`)
  *   after writing `CRASHPOINT <json>` on stdout, with the pids of its live clients.
@@ -28,7 +42,19 @@
  */
 export const CRASH_CHILD_SCRIPT = String.raw`
 import { execFileSync } from 'node:child_process';
-import { appendFileSync, closeSync, existsSync, fsyncSync, openSync, readFileSync } from 'node:fs';
+import {
+  appendFileSync,
+  closeSync,
+  existsSync,
+  fsyncSync,
+  mkdirSync,
+  openSync,
+  readdirSync,
+  readFileSync,
+  unlinkSync,
+  writeFileSync,
+  writeSync,
+} from 'node:fs';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { pathToFileURL } from 'node:url';
 
@@ -39,7 +65,9 @@ const { startDaemon } = await import(pathToFileURL(dist + '/daemon.js').href);
 const { defaultLauncher, productionClients } = await import(pathToFileURL(dist + '/compose.js').href);
 const { parseConfig } = await import(pathToFileURL(dist + '/config.js').href);
 const { createSilentLogger } = await import(pathToFileURL(dist + '/logger.js').href);
-const { setCrashDescriber } = await import(pathToFileURL(dist + '/chaos/crash-points.js').href);
+const { armFaults, setCrashDescriber } = await import(pathToFileURL(dist + '/chaos/crash-points.js').href);
+const { EMPTY_FAULT_PLAN, parseFailSpec } = await import(pathToFileURL(dist + '/chaos/faults.js').href);
+const { openPlayFromNeed } = await import(pathToFileURL(dist + '/orchestration/open-play.js').href);
 
 const fake = new testing.FakeCodeHost();
 let daemon;
@@ -141,6 +169,14 @@ const config = parseConfig(
     '    model: fake-model',
     'faults:',
     '  inject: ' + (env.OT_CHILD_INJECT ?? 'env'),
+    ...(['ON_FULL', 'NOTIFY', 'MIN_FREE', 'CHECK_EVERY'].some((key) => env['OT_CHILD_DISK_' + key] !== undefined)
+      ? [
+          'disk:',
+          ...['on_full', 'notify', 'min_free', 'check_every']
+            .filter((key) => env['OT_CHILD_DISK_' + key.toUpperCase()] !== undefined)
+            .map((key) => '  ' + key + ': ' + env['OT_CHILD_DISK_' + key.toUpperCase()]),
+        ]
+      : []),
   ].join('\n'),
 );
 daemon = await startDaemon({
@@ -166,7 +202,8 @@ daemon = await startDaemon({
       command: { cmd: process.execPath, args: [env.OT_CHILD_FAKE_AGENT] },
     }),
   ],
-  logger: createSilentLogger(),
+  // With OT_CHILD_REAL_LOG=1 the daemon writes its own log file (data dir, logs, daemon.log).
+  ...(env.OT_CHILD_REAL_LOG === '1' ? {} : { logger: createSilentLogger() }),
   version: '0.0.0-test',
 });
 
@@ -215,15 +252,81 @@ setCrashDescriber(async () => {
   return { pids: rows.map((row) => row.pid).filter((pid) => typeof pid === 'number') };
 });
 process.stdout.write('STARTED\n');
+if (env.OT_CHILD_EXIT_ON_STOP === '1') {
+  void daemon.stopped.then(() => {
+    process.stdout.write('STOPPED\n');
+    process.exit(0);
+  });
+}
+
+// The control folder of the disk tests (see OT_CHILD_CONTROL above).
+async function control(command, argument) {
+  if (command === 'cap') {
+    if (daemon.limitStoreGrowth === undefined) throw new Error('the store cannot be limited here');
+    await daemon.limitStoreGrowth(argument === 'off' ? undefined : Number(argument));
+  } else if (command === 'fault') {
+    armFaults({ crash: [], fail: [parseFailSpec(argument)] });
+  } else if (command === 'fault-off') {
+    armFaults(EMPTY_FAULT_PLAN);
+  } else if (command === 'fill') {
+    const fd = openSync(argument + '/ballast', 'w');
+    const chunk = Buffer.alloc(64 * 1024, 1);
+    try {
+      for (;;) writeSync(fd, chunk);
+    } catch (error) {
+      if (error.code !== 'ENOSPC') throw error;
+    } finally {
+      closeSync(fd);
+    }
+  } else if (command === 'free') {
+    unlinkSync(argument + '/ballast');
+  } else if (command === 'open-play') {
+    const opened = await openPlayFromNeed(
+      { store: daemon.store, runner: daemon.execution.runner, workspace: undefined, config, disk: daemon.disk },
+      'no-scenario',
+      'a need',
+    );
+    return { opened: opened.ok, code: opened.ok ? null : opened.code };
+  }
+  return {};
+}
+if (env.OT_CHILD_CONTROL !== undefined) {
+  mkdirSync(env.OT_CHILD_CONTROL, { recursive: true });
+  const done = new Set();
+  let busy = false;
+  setInterval(async () => {
+    if (busy) return;
+    busy = true;
+    try {
+      for (const name of readdirSync(env.OT_CHILD_CONTROL).sort()) {
+        if (name.endsWith('.done') || name.endsWith('.tmp') || done.has(name)) continue;
+        done.add(name);
+        const path = env.OT_CHILD_CONTROL + '/' + name;
+        const [command, ...rest] = readFileSync(path, 'utf8').trim().split(' ');
+        let answer = {};
+        try {
+          answer = await control(command, rest.join(' '));
+        } catch (error) {
+          answer = { error: String(error) };
+        }
+        const status = daemon.disk.status();
+        writeFileSync(path + '.done', JSON.stringify({ ...answer, paused: daemon.disk.paused(), disk: status }));
+        unlinkSync(path);
+      }
+    } finally {
+      busy = false;
+    }
+  }, 20).unref();
+}
 
 if (env.OT_CHILD_MODE === 'first') {
   const { scenarioId } = await daemon.producer.openChat({ repo: env.OT_CHILD_REPO });
   await daemon.producer.send(scenarioId, '#ot-play write alpha and beta #outcome:approved');
   // The test kills this process at the crash point.
-  await new Promise(() => undefined);
+  if (env.OT_CHILD_WAIT !== '1') await new Promise(() => undefined);
 }
 
-const deadline = Date.now() + 90000;
+const deadline = Date.now() + Number(env.OT_CHILD_DEADLINE_MS ?? '90000');
 let timedOut = false;
 for (;;) {
   const plays = await daemon.store.plays.list({});

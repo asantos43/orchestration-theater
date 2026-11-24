@@ -128,6 +128,7 @@ import { RecoveryGate } from './recovery/gate.js';
 import { announceRecovery } from './recovery/notice.js';
 import { armFaults, disarmFaults } from './chaos/crash-points.js';
 import { faultPlanPath, resolveFaultPlan } from './chaos/faults.js';
+import type { DiskGuard } from './disk/index.js';
 import { reconcileBeforeResume, type RecoveryReport } from './recovery/reconcile.js';
 import { BackupScheduler, type ActivityProbe } from './recovery/schedule.js';
 import { TrackingLauncher } from './recovery/tracking-launcher.js';
@@ -247,6 +248,13 @@ export interface DaemonHandle {
    * through it.
    */
   readonly eventHub: EventHub;
+  /** Phase 11, P5 (N279): the full disk (`status()`, `paused()`); see `DiskGuard`. */
+  readonly disk: DiskGuard;
+  /**
+   * Phase 11, P5 (test only): fills the disk of the store on purpose (see `Composition`); `undefined`
+   * unless `faults.inject` armed a rule.
+   */
+  readonly limitStoreGrowth: ((pages: number | undefined) => Promise<number>) | undefined;
   /**
    * P3 (Phase 6): the HTTP API of the daemon, listening on `127.0.0.1` since the start. `api.handlers`
    * is where P4 to P7 register the handler of each route of `API_ROUTES` (`api.handlers.register(id,
@@ -756,6 +764,9 @@ async function run(input: RunInput): Promise<DaemonHandle> {
   // P24 (N146): what compose and the vault noticed before this point is written now, after
   // `daemon.started`, and what comes later is written as it happens.
   composition.situations.open();
+  // Phase 11, P5 (N279): the check of the free space starts here; `stop` and the resume of the
+  // plays a full disk hit are bound below, once the handle and the runner exist.
+  composition.disk.start();
   // P4 (N214): the spans of the daemon are projected from the log from here on.
   composition.daemonSpans?.start();
 
@@ -977,6 +988,13 @@ async function run(input: RunInput): Promise<DaemonHandle> {
   }
   // The machines of the plays come back from their snapshots; the orders were recomputed by
   // `directives.start()` above (it emits the transitions the stop made it miss).
+  const diskRunner = orchestration?.runner;
+  composition.disk.bind({
+    resume: diskRunner === undefined ? undefined : (playId) => diskRunner.resume(playId),
+    stop: () => {
+      void handle.stop('error');
+    },
+  });
   const resumed = (await orchestration?.runner.resumeAll()) ?? { resumed: [], refused: [] };
   await store.events.append(
     buildDaemonEvent(
@@ -1151,6 +1169,8 @@ async function run(input: RunInput): Promise<DaemonHandle> {
       };
       // First: no new request reaches a service that is about to stop (and `api.json` goes away).
       await attempt('api', () => api.stop());
+      // Phase 11, P5: the check of the disk ends (and the notices on their way are written) first.
+      await attempt('disk guard', () => composition.disk.stop());
       // The `!` commands end (their whole process tree) before the services they report to stop.
       await attempt('shell commands', async () => shellCommands?.close());
       // The direct sessions end (their worktrees are taken) before the pool they lease from stops.
@@ -1551,6 +1571,8 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     // The store as the adapter built it; the daemon's own code appends through the validated one.
     store: composition.rawStore,
     eventHub: composition.eventHub,
+    disk: composition.disk,
+    limitStoreGrowth: composition.limitStoreGrowth,
     api,
     daemonId,
     vault,

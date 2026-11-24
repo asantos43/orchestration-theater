@@ -3,7 +3,7 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { appendFileSync, mkdirSync, realpathSync, mkdtempSync } from 'node:fs';
-import { rm, writeFile } from 'node:fs/promises';
+import { readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
@@ -194,6 +194,28 @@ export interface StartOptions {
   /** `<point>[:<detail>][#<n>]`: the daemon kills itself there (`OT_TEST_CRASH_AT`, `faults.inject: env`). */
   readonly crashAt?: string | undefined;
   readonly env?: Readonly<Record<string, string>> | undefined;
+  /**
+   * A command (with its arguments) that starts the child: `['unshare', '-rm', 'sh', '-c', '...', 'sh']`
+   * puts it in a mount namespace of its own (the full-disk test of a small file system, Phase 11, P5).
+   * The program (`node`) and the script are added after it. Default: none.
+   */
+  readonly prefix?: readonly string[] | undefined;
+}
+
+/** What the child answers to a command of the control folder (`OT_CHILD_CONTROL`, see the fixture). */
+export interface ControlAnswer {
+  readonly error?: string;
+  /** `open-play`: whether the play opened, and the code of the refusal if not. */
+  readonly opened?: boolean;
+  readonly code?: string | null;
+  /** The gate of new work of the disk guard after the command. */
+  readonly paused: boolean;
+  readonly disk: {
+    readonly state: 'ok' | 'full';
+    readonly since: number | null;
+    readonly areas: readonly string[];
+    readonly hitPlays: readonly string[];
+  };
 }
 
 /** The crash line a killed daemon wrote, with the data the fixture added. */
@@ -246,11 +268,16 @@ export class ChaosRig {
   readonly stateDir: string;
   readonly repo: string;
   readonly journalPath: string;
+  /** Where a test writes commands to the child (the disk tests) and reads its answers. */
+  readonly controlDir: string;
+  /** The test gate of the client launches: the child holds a launch until this file exists. */
+  readonly holdGate: string;
   readonly ledger: CommitLedger;
   readonly #script: string;
   readonly #lineTimeoutMs: number;
   readonly #children: ChildDaemon[] = [];
   #starts = 0;
+  #commands = 0;
 
   private constructor(runDir: string, options: RigOptions) {
     this.runDir = runDir;
@@ -258,6 +285,8 @@ export class ChaosRig {
     this.stateDir = join(runDir, 'state');
     this.repo = join(runDir, 'repo');
     this.journalPath = join(runDir, 'code-host.jsonl');
+    this.controlDir = join(runDir, 'control');
+    this.holdGate = join(runDir, 'hold-launch');
     this.ledger = new CommitLedger(join(runDir, 'ledger.jsonl'));
     this.#script = join(runDir, 'child.mjs');
     this.#lineTimeoutMs = options.lineTimeoutMs ?? 120_000;
@@ -289,7 +318,10 @@ export class ChaosRig {
   /** Starts a daemon on the folder of the run. Its pid is written to the state directory (census, source 2). */
   start(options: StartOptions): ChildDaemon {
     this.#starts += 1;
-    const child = spawn(process.execPath, [this.#script], {
+    const prefix = options.prefix ?? [];
+    const [program, ...programArgs] =
+      prefix.length === 0 ? [process.execPath] : [...prefix, process.execPath];
+    const child = spawn(program, [...programArgs, this.#script], {
       env: {
         ...process.env,
         OT_CHILD_MODE: options.mode,
@@ -302,6 +334,7 @@ export class ChaosRig {
         OT_CHILD_CORE_TESTING: CORE_TESTING,
         OT_CHILD_FAKE_AGENT: FAKE_AGENT_CLI,
         OT_CHAOS_RUN: this.runDir,
+        OT_CHILD_CONTROL: this.controlDir,
         ...(options.crashAt === undefined ? {} : { [CRASH_AT_VARIABLE]: options.crashAt }),
         ...options.env,
       },
@@ -351,7 +384,7 @@ export class ChaosRig {
     mode: StartOptions['mode'] = 'first',
     hold?: { readonly allow: number },
   ): Promise<KillResult> {
-    const gate = join(this.runDir, 'hold-launch');
+    const gate = this.holdGate;
     const child = this.start({
       mode,
       ...(hold === undefined
@@ -370,6 +403,46 @@ export class ChaosRig {
     child.process.kill('SIGKILL');
     const exit = await child.exited;
     return { how: 'instant', delayMs, signal: exit.signal, census: this.census() };
+  }
+
+  /**
+   * Waits until the child holds a client launch at the test gate (`OT_CHILD_HOLD_LAUNCH`: the test
+   * passes `OT_CHILD_HOLD_LAUNCH: rig.holdGate` and `OT_CHILD_HOLD_AFTER` in the `env` of `start`).
+   */
+  async waitHeld(timeoutMs = this.#lineTimeoutMs): Promise<void> {
+    const deadline = Date.now() + timeoutMs;
+    while (!existsSync(`${this.holdGate}.held`)) {
+      if (Date.now() > deadline) throw new Error('The test gate never held a client launch.');
+      await sleep(10);
+    }
+  }
+
+  /** Lets the held launch (and every later one) go. */
+  async release(): Promise<void> {
+    await writeFile(this.holdGate, '');
+  }
+
+  /**
+   * Sends one command to the control folder of the running child and waits for its answer (see
+   * `OT_CHILD_CONTROL` in the fixture): `cap 0`, `fault store.write=SQLITE_FULL`, `status`...
+   */
+  async control(command: string, argument = '', timeoutMs = 30_000): Promise<ControlAnswer> {
+    this.#commands += 1;
+    mkdirSync(this.controlDir, { recursive: true });
+    const name = `${String(this.#commands).padStart(4, '0')}-${command}`;
+    const path = join(this.controlDir, name);
+    // Written whole under another name and renamed, so the child never reads half of it.
+    await writeFile(`${path}.tmp`, `${command} ${argument}`.trim());
+    await rename(`${path}.tmp`, path);
+    const deadline = Date.now() + timeoutMs;
+    while (!existsSync(`${path}.done`)) {
+      if (Date.now() > deadline) throw new Error(`The child did not answer "${command}".`);
+      await sleep(20);
+    }
+    const answer = JSON.parse(await readFile(`${path}.done`, 'utf8')) as ControlAnswer;
+    if (answer.error !== undefined)
+      throw new Error(`"${command}" failed in the child: ${answer.error}`);
+    return answer;
   }
 
   /** Starts another daemon on the same folder and waits for its report (the play ended and it stopped). */
