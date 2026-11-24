@@ -129,5 +129,11 @@ describe.skipIf(!built)('the compiled ot (dist/cli.js)', () => {
         await tmp.dispose();
       }
     },
+    // The vitest default (5 s) is for in-process tests. This one boots a real daemon (scrypt, the
+    // store, the listener) and stops it, while the macOS runner of the CI runs the whole suite in
+    // parallel: it timed out at 5 s there with nothing wrong in the daemon (PR #312, run
+    // 45160394046, which does not touch the start of the daemon). It is a deadline, not a mask: a
+    // daemon that hangs still fails, at TIMEOUT_MS the child is killed and the test ends.
+    TIMEOUT_MS + 10_000,
   );
 });

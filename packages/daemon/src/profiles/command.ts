@@ -112,6 +112,24 @@ export function loginDecision(input: {
   return 'none';
 }
 
+/**
+ * Why `profiles.add.login: auto` did not start the login of a new account (N273, 2026-11-22), or
+ * `undefined` when it was not skipped. Skipped means: the key says `auto`, no flag was typed, the
+ * account needs a login, and the login did not go because of `--json` or because there is no
+ * terminal. `ask` and `off` skip nothing that the person was promised, so they say nothing.
+ */
+export function loginSkippedReason(input: {
+  readonly mode: ProfileAddLoginMode;
+  readonly flag: boolean | undefined;
+  readonly json: boolean;
+  readonly interactive: boolean;
+  readonly needsLogin: boolean;
+}): 'json' | 'no_terminal' | undefined {
+  if (input.mode !== 'auto' || input.flag !== undefined || !input.needsLogin) return undefined;
+  if (input.json) return 'json';
+  return input.interactive ? undefined : 'no_terminal';
+}
+
 /** [proposta] The provider of an account of a client whose account has only one possible provider. */
 const DEFAULT_PROVIDER: Readonly<Record<string, string>> = {
   'claude-code': 'anthropic',
@@ -350,16 +368,30 @@ async function runProfileAction(
           ...(apiKey === undefined ? {} : { apiKey }),
           acceptNotice: options.acceptNotice,
         });
-        const code = reportAdd(context, options, service, result);
-        if (result.status === 'added') {
-          const decision = loginDecision({
-            mode: config.profiles.add.login,
-            flag: options.login,
-            json: options.json,
-            interactive: deps.interactive === true,
-            canAsk: deps.confirm !== undefined,
-            needsLogin: result.profile.kind === 'token_plan' && result.login !== 'logged_in',
+        const loginInput =
+          result.status === 'added'
+            ? {
+                mode: config.profiles.add.login,
+                flag: options.login,
+                json: options.json,
+                interactive: deps.interactive === true,
+                needsLogin: result.profile.kind === 'token_plan' && result.login !== 'logged_in',
+              }
+            : undefined;
+        // N273: `auto` that did not log in says so (the line, or the JSON) and records the event.
+        const skipped =
+          loginInput === undefined || result.status !== 'added'
+            ? undefined
+            : loginSkippedReason(loginInput);
+        if (skipped !== undefined && result.status === 'added') {
+          composition.situations.record('profile.login.skipped', {
+            profileId: result.profile.id,
+            reason: skipped,
           });
+        }
+        const code = reportAdd(context, options, service, result, skipped);
+        if (result.status === 'added' && loginInput !== undefined) {
+          const decision = loginDecision({ ...loginInput, canAsk: deps.confirm !== undefined });
           if (decision !== 'none') {
             pending.profileId = result.profile.id;
             pending.decision = decision;
@@ -424,6 +456,7 @@ function reportAdd(
   options: ProfileOptions,
   service: ProfileService,
   result: AddProfileResult,
+  loginSkipped?: 'json' | 'no_terminal',
 ): number {
   const { t, out } = context;
   if (result.status === 'needs_notice') {
@@ -438,16 +471,26 @@ function reportAdd(
     }
     return EXIT_FAILED;
   }
+  const { profile } = result;
+  const loginCommand = `ot profile exec ${profile.id} login`;
   if (options.json) {
-    printJson(context, result);
+    // N273: with `--json` the warning is part of the JSON, not a loose line on the stderr.
+    printJson(
+      context,
+      loginSkipped === undefined
+        ? result
+        : { ...result, loginSkipped: { reason: loginSkipped, command: loginCommand } },
+    );
     return EXIT_OK;
   }
-  const { profile } = result;
   out(t('profile.added', { id: profile.id, kind: profile.kind, provider: profile.provider }));
   if (result.hasSecret) {
     out(t('profile.addedKey', { backend: result.secretBackend ?? service.vaultBackend }));
   }
   if (result.login !== null) out(t('profile.addedLogin', { state: result.login }));
+  if (loginSkipped !== undefined) {
+    context.err(t('profile.loginNotStarted', { id: profile.id, command: loginCommand }));
+  }
   if (result.notice !== null) {
     out(
       t('profile.noticeAccepted', {

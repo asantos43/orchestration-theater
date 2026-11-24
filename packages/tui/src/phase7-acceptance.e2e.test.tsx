@@ -180,9 +180,11 @@ describe.skipIf(NO_LAUNCHER).each(LOCALES)(
           const T = (key: string, vars?: Record<string, unknown>): string => flat(t(key, vars));
 
           // 1. The setup assistant opens by itself on the first run.
+          await seenAll(app, T('setup.title.first_run'), T('setup.hint.accounts'));
+          // The step that adds an account comes first (N274): skip it.
+          await press(app, ENTER);
           await seenAll(
             app,
-            T('setup.title.first_run'),
             T('setup.step.detect'),
             T('setup.hint.detect'),
             'claude-code/main',
