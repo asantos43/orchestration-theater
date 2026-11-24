@@ -5,6 +5,7 @@ import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { basename, isAbsolute, join, resolve } from 'node:path';
 import { PlaywrightBrowserSession } from '@otheater/adapter-browser-playwright';
+import { onSeaNativeSweepFailure } from '@otheater/client/node';
 import {
   CLAUDE_CODE_ACP_PACKAGES,
   CLAUDE_CODE_ADAPTER_VERSION,
@@ -1062,6 +1063,19 @@ export async function compose(config: DaemonConfig, options: ComposeOptions): Pr
       });
     };
     for (const error of rotateErrors.splice(0)) rotate.notice(error);
+    // Phase 11 (N306): an orphan temporary of an extracted native addon (SEA) that could not be removed
+    // is a log warning and an event; the store extracted its addon before the situations existed.
+    const stopNativeSweepNotices = onSeaNativeSweepFailure(({ name, error }) => {
+      logger.warn(
+        { err: situationText(error, 200), file: name },
+        'an orphan temporary file of a native addon could not be removed',
+      );
+      situations.record('daemon.notice', {
+        kind: 'temporary_cleanup_failed',
+        subject: situationSubject(name),
+        detail: situationText(error),
+      });
+    });
     const disk = new DiskGuard({
       clock,
       settings: () => diskSettingsOf(config.disk),
@@ -1150,7 +1164,16 @@ export async function compose(config: DaemonConfig, options: ComposeOptions): Pr
         ? undefined
         : new WaitEvents({ situations, clock, thresholdMs: config.events.wait_threshold });
 
-    const opened = { store, vault, sandbox, browser, situations, eventHub, telemetry };
+    const opened = {
+      store,
+      vault,
+      sandbox,
+      browser,
+      situations,
+      eventHub,
+      telemetry,
+      stopNativeSweepNotices,
+    };
     let closing: Promise<void> | undefined;
     return {
       clock,
@@ -1197,11 +1220,13 @@ async function closeParts(
     situations?: SituationLog | undefined;
     eventHub?: EventHub | undefined;
     telemetry?: TelemetryStore | undefined;
+    stopNativeSweepNotices?: (() => void) | undefined;
   },
   daemonLogger: DaemonLogger | undefined,
   logger: Logger | undefined,
 ): Promise<void> {
   const failures: unknown[] = [];
+  parts.stopNativeSweepNotices?.();
   try {
     await parts.browser?.close();
   } catch (error) {

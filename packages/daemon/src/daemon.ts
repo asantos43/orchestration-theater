@@ -28,7 +28,7 @@ import {
   type DaemonState,
   type DaemonStatus,
 } from '@otheater/protocol';
-import { loadOrCreateApiToken, loadOrCreateDaemonId } from './api/files.js';
+import { loadOrCreateApiToken, loadOrCreateDaemonId, sweepApiTemporaries } from './api/files.js';
 import { ApiFailure } from './api/handlers.js';
 import { registerChatRoutes } from './api/chat-socket.js';
 import { registerEventRoutes } from './api/routes/events.js';
@@ -782,6 +782,11 @@ async function run(input: RunInput): Promise<DaemonHandle> {
 
   // P3 (Phase 6): the API listens from here, before the reconciliation. A read (`GET /v1/status`)
   // answers at once with the state `recovering`; a command waits on the gate (5.21).
+  // Phase 11 (N306): the temporaries a killed daemon left beside these three files go before they are written.
+  await sweepApiTemporaries([paths.daemonId, paths.apiToken, paths.apiDiscovery], {
+    logger,
+    situations: composition.situations,
+  });
   const daemonId = await loadOrCreateDaemonId(paths.daemonId, logger);
   const api = await ApiServer.start({
     port: config.api.port,
