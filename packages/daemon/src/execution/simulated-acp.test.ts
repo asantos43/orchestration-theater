@@ -10,7 +10,7 @@ import { defaultLauncher, productionClients } from '../compose.js';
 import { parseConfig } from '../config.js';
 import { startDaemon } from '../daemon.js';
 import { createSilentLogger } from '../logger.js';
-import { makeTempDataDir, TEST_PROFILE } from '../test-helpers.js';
+import { makeTempDataDir, NO_CLIENTS, TEST_PROFILE } from '../test-helpers.js';
 import { makeRepo } from './attempt-fixture.js';
 import type { AttemptSpec } from './attempt-runner.js';
 import { itWithLauncher } from '../launcher-fixture.js';
@@ -73,7 +73,7 @@ describe('simulated attempts over the real ACP stdio transport', () => {
         config: CONFIG,
         overrides: { clock: new FakeClock(), vault: new InMemorySecretVault(), launcher: real },
         clients: (parts) => [
-          ...productionClients(CONFIG)(parts),
+          ...productionClients(CONFIG, NO_CLIENTS)(parts),
           new FakeClientAdapter({
             launcher: parts.launcher,
             baseEnv: {},
