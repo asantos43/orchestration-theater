@@ -102,6 +102,7 @@ import { OrchestrationHandlers } from './orchestration/handlers.js';
 import { loadCrossCheckNotices } from './orchestration/cross-check-notices.js';
 import { deprecationWarnings } from './orchestration/role-executors.js';
 import { ScenarioHandlers } from './scenarios/handlers.js';
+import { attachmentRootsPolicy } from './scenarios/attachment-roots.js';
 import { AttachmentService } from './scenarios/attachments.js';
 import { DirectSessionService } from './direct/service.js';
 import { ShellCommandService } from './shell/service.js';
@@ -446,6 +447,7 @@ export async function startDaemon(options: StartDaemonOptions): Promise<DaemonHa
     const workDeps: ToolsDeps = {
       store: composition.store,
       config: config.tools,
+      shell: config.shell,
       // The commands are processes too: they are written down like the clients' (5.21).
       launcher:
         composition.launcher === undefined
@@ -766,13 +768,14 @@ async function run(input: RunInput): Promise<DaemonHandle> {
   const daemonId = await loadOrCreateDaemonId(paths.daemonId, logger);
   const api = await ApiServer.start({
     port: config.api.port,
-    token: await loadOrCreateApiToken(paths.apiToken, config.api.token),
+    token: await loadOrCreateApiToken(paths.apiToken, config.api.token, logger),
     tokenMode: config.api.token,
     tokenFile: paths.apiToken,
     discoveryFile: paths.apiDiscovery,
     daemonId,
     corsOrigins: config.api.cors.origins,
     maxBodyBytes: config.api.max_body_bytes,
+    maxJsonDepth: config.api.max_json_depth,
     rejectionWindowMs: config.api.rejection_events.every,
     now: () => clock.now(),
     logger,
@@ -902,6 +905,14 @@ async function run(input: RunInput): Promise<DaemonHandle> {
       handoff,
       home: homedir(),
     });
+    const attachmentRoots = attachmentRootsPolicy({
+      config: () => config.security.attachment_roots,
+      store,
+      worktrees: paths.worktrees,
+      env: process.env,
+      platform: process.platform,
+      homedir: homedir(),
+    });
     // P6 (Phase 7): the `!` command of the Producer (N43). Its processes are written down like the
     // clients' (5.21); the sandbox is the one of layer 3, and `app.terminal` says whether it is used.
     shellCommands = new ShellCommandService({
@@ -926,6 +937,7 @@ async function run(input: RunInput): Promise<DaemonHandle> {
           maxSize: config.scenarios.attachment_max_size,
           readMax: config.scenarios.attachment_read_max,
         }),
+        roots: attachmentRoots,
       }),
       channel: orchestration.channel,
       ask: (scenarioId, question) => input.orchestrationHandlers.openApproval(scenarioId, question),
@@ -971,6 +983,9 @@ async function run(input: RunInput): Promise<DaemonHandle> {
       logger,
       now: () => clock.now(),
       ticketTtlMs: config.api.chat.ticket_ttl,
+      maxTickets: config.api.chat.max_tickets,
+      maxSockets: config.api.chat.max_sockets,
+      maxQueuedMessages: config.api.chat.max_queued_messages,
       heartbeatMs: config.api.chat.heartbeat,
       stateIntervalMs: config.api.chat.state_interval,
       resumeWindowMs: config.api.chat.resume_window,
@@ -1491,6 +1506,14 @@ async function run(input: RunInput): Promise<DaemonHandle> {
         maxSize: config.scenarios.attachment_max_size,
         readMax: config.scenarios.attachment_read_max,
       }),
+      roots: attachmentRootsPolicy({
+        config: () => config.security.attachment_roots,
+        store,
+        worktrees: paths.worktrees,
+        env: process.env,
+        platform: process.platform,
+        homedir: homedir(),
+      }),
     }),
   });
 
@@ -1521,6 +1544,7 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     config,
     reloader: configReloader,
     idempotencyTtlMs: () => config.api.idempotency_ttl,
+    idempotencyMaxEntries: () => config.api.idempotency_max_entries,
     layout,
     channel: orchestration?.channel,
     runner: orchestration?.runner,

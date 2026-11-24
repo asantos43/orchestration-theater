@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 import { createHash } from 'node:crypto';
 import { createReadStream } from 'node:fs';
-import { copyFile, mkdir, open, stat, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, open, realpath, stat, writeFile } from 'node:fs/promises';
 import { basename, extname, join, resolve } from 'node:path';
 import {
   type AttachmentRecord,
@@ -9,9 +9,11 @@ import {
   type Clock,
   InvalidInput,
   NotFound,
+  PermissionDenied,
   type Store,
 } from '@otheater/core';
 import { buildDaemonEvent } from '@otheater/protocol';
+import { type AttachmentRootsPolicy, isUnderRoots } from './attachment-roots.js';
 
 /** The limits of `scenarios.*` the service works under. */
 export interface AttachmentLimits {
@@ -27,6 +29,11 @@ export interface AttachmentServiceOptions {
   /** `<dataDir>/scenarios`: the copies live in `<scenarios>/<scenario>/attachments`. */
   readonly scenariosDir: string;
   readonly limits: () => AttachmentLimits;
+  /**
+   * Where a file taken by `path` may come from (`security.attachment_roots`, N287). Required, so a
+   * caller cannot forget it; `ANY_ATTACHMENT_ROOT` is the policy of `mode: any` and of the tests.
+   */
+  readonly roots: AttachmentRootsPolicy;
 }
 
 /** What `add` takes: a file, by copy (default) or by reference. */
@@ -183,11 +190,16 @@ export class AttachmentService {
   async addFile(scenarioId: string, input: AddFileInput): Promise<AttachmentRecord> {
     const { store, scenariosDir, limits } = this.#options;
     await this.#scenario(scenarioId);
-    const source = resolve(input.path);
-    const info = await stat(source).catch(() => undefined);
-    if (!info?.isFile()) {
-      throw new InvalidInput(`"${source}" is not a file that can be attached`);
+    const requested = resolve(input.path);
+    // The real path (links followed) is what is checked, copied, hashed and, for a reference, kept: a
+    // link inside a root that points out of it does not carry the file in, and a link swapped after
+    // the check is not followed again.
+    const source = await realpath(requested).catch(() => undefined);
+    const info = source === undefined ? undefined : await stat(source).catch(() => undefined);
+    if (source === undefined || !info?.isFile()) {
+      throw new InvalidInput(`"${requested}" is not a file that can be attached`);
     }
+    await this.#assertRoot(scenarioId, source);
     const mode = input.mode ?? 'copy';
     const { maxSize } = limits();
     if (mode === 'copy' && maxSize > 0 && info.size > maxSize) {
@@ -195,7 +207,7 @@ export class AttachmentService {
         `"${basename(source)}" has ${String(info.size)} bytes, over scenarios.attachment_max_size (${String(maxSize)} bytes); attach it by reference instead`,
       );
     }
-    const name = input.name ?? basename(source);
+    const name = input.name ?? basename(requested);
     const mime = mimeOf(name, await headOf(source, 512));
     const hash = await sha256Of(source);
     let path = source;
@@ -272,6 +284,12 @@ export class AttachmentService {
     const { readMax } = this.#options.limits();
     const max = readMax > 0 ? readMax : Number.MAX_SAFE_INTEGER;
     const kind = kindOf(record.mime);
+    // A reference points at a file the daemon does not own: it is checked against the roots again at
+    // each read (the link may have been swapped since, or the roots narrowed). A copy is the daemon's.
+    if (record.source === 'reference') {
+      const real = await realpath(record.path).catch(() => undefined);
+      if (real !== undefined) await this.#assertRoot(record.scenarioId, real);
+    }
     const info = await stat(record.path).catch(() => undefined);
     if (!info?.isFile()) {
       throw new NotFound(`The file of attachment ${record.id} is gone (${record.source})`);
@@ -304,6 +322,16 @@ export class AttachmentService {
       content: Buffer.from(bytes).toString('base64'),
       truncated: false,
     };
+  }
+
+  /** `PermissionDenied` when `real` is not under a root of `security.attachment_roots`. */
+  async #assertRoot(scenarioId: string, real: string): Promise<void> {
+    const roots = await this.#options.roots(scenarioId);
+    if (roots === 'any' || (await isUnderRoots(real, roots))) return;
+    // The message does not name the path (an answer of the API carries no absolute path).
+    throw new PermissionDenied(
+      'The file is outside the folders an attachment may come from (security.attachment_roots)',
+    );
   }
 
   async #scenario(scenarioId: string): Promise<void> {

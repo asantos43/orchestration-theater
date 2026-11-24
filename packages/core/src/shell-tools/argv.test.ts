@@ -300,3 +300,53 @@ describe('splitCommandLine', () => {
     expect(reasonOf(() => splitCommandLine('echo "oops'))).toBe('invalid_argument');
   });
 });
+
+describe('assertNoForbiddenFlags: node inline (N290)', () => {
+  const refused = (argv: string[], nodeInline?: 'deny' | 'allow') =>
+    reasonOf(() => {
+      assertNoForbiddenFlags(argv, nodeInline === undefined ? undefined : { nodeInline });
+    });
+
+  it.each([
+    ['-e', ['node', '-e', '1+1']],
+    ['--eval', ['node', '--eval', '1+1']],
+    ['--eval=', ['node', '--eval=1+1']],
+    ['-p', ['node', '-p', '1+1']],
+    ['--print', ['node', '--print', '1']],
+    ['--print=', ['node', '--print=1']],
+    ['-r', ['node', '-r', 'x', 'a.js']],
+    ['-r glued', ['node', '-rx', 'a.js']],
+    ['--require', ['node', '--require', 'x', 'a.js']],
+    ['--require=', ['node', '--require=x', 'a.js']],
+    ['--import', ['node', '--import', 'x', 'a.js']],
+    ['--import=', ['node', '--import=data:text/javascript,1', 'a.js']],
+    ['--input-type', ['node', '--input-type', 'module']],
+    ['--input-type=', ['node', '--input-type=module', '-']],
+    ['-e glued', ['node', '-e1+1']],
+    ['-pe cluster', ['node', '-pe', '1']],
+    ['underscore spelling', ['node', '--input_type=module']],
+    ['--loader', ['node', '--loader', 'x', 'a.js']],
+    ['--experimental-loader=', ['node', '--experimental-loader=x', 'a.js']],
+    ['after another flag', ['node', '--no-warnings', '-e', '1']],
+    ['after a flag value', ['node', '--env-file', '.env', '-e', '1']],
+  ])('refuses %s by default', (_name, argv) => {
+    expect(refused(argv)).toBe('forbidden_flag');
+    expect(refused(argv, 'deny')).toBe('forbidden_flag');
+  });
+
+  it('lets every one of them through with node_inline: allow', () => {
+    assertNoForbiddenFlags(['node', '-e', '1'], { nodeInline: 'allow' });
+    assertNoForbiddenFlags(['node', '--import=x', 'a.js'], { nodeInline: 'allow' });
+  });
+
+  it('lets a script, its own flags and the plain flags of node through', () => {
+    assertNoForbiddenFlags(['node', 'script.mjs']);
+    assertNoForbiddenFlags(['node', '--test', 'a.test.js']);
+    assertNoForbiddenFlags(['node', '--no-warnings', '--max-old-space-size=4096', 'a.js']);
+    assertNoForbiddenFlags(['node', '--version']);
+    assertNoForbiddenFlags(['node', '--', 'script.js', '-p', '-e']);
+    // Only node is read: another program with the same flags is not this rule's business.
+    assertNoForbiddenFlags(['rg', '-e', 'x']);
+    assertNoForbiddenFlags(['git', 'log', '-p']);
+  });
+});

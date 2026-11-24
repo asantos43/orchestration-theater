@@ -60,4 +60,69 @@ describe('the tickets of the chat socket (P7)', () => {
     tickets.issue('s1');
     expect(tickets.size).toBe(1);
   });
+
+  describe('the cap and the epoch (P8b of the phase 11 review)', () => {
+    const capped = (maxTickets: number, epoch: { value: number } = { value: 0 }) => {
+      const clock = new FakeClock();
+      return {
+        clock,
+        epoch,
+        tickets: new ChatTickets({
+          ttlMs: 30_000,
+          now: () => clock.now(),
+          maxTickets,
+          epoch: () => epoch.value,
+        }),
+      };
+    };
+
+    it('answers 503 unavailable past api.chat.max_tickets, and the room comes back as tickets are spent', () => {
+      const { tickets } = capped(2);
+      const first = tickets.issue('s1');
+      tickets.issue('s1');
+      expect(() => tickets.issue('s1')).toThrow(
+        expect.objectContaining({ code: 'unavailable', details: { maxTickets: 2 } }) as Error,
+      );
+      expect(tickets.redeem(first.ticket, 's1')).toBe(true);
+      expect(() => tickets.issue('s1')).not.toThrow();
+    });
+
+    it('drops the expired tickets before it counts, so a full map of old tickets is not a refusal', async () => {
+      const { clock, tickets } = capped(3);
+      for (let i = 0; i < 3; i += 1) tickets.issue('s1');
+      await clock.advance(30_000);
+      expect(() => tickets.issue('s1')).not.toThrow();
+      expect(tickets.size).toBe(1);
+    });
+
+    it('purges from the oldest and stops at the first live ticket (the cost is what it removes)', async () => {
+      const { clock, tickets } = capped(10_000);
+      for (let i = 0; i < 5_000; i += 1) tickets.issue('s1');
+      await clock.advance(10_000);
+      const live = tickets.issue('s1').ticket;
+      await clock.advance(20_000);
+      // The first 5000 are expired and go; the one issued 20 s ago is still good.
+      expect(tickets.redeem(live, 's1')).toBe(true);
+      expect(tickets.size).toBe(0);
+    });
+
+    it('refuses to issue for a token that was rotated while the call ran', () => {
+      const { tickets, epoch } = capped(10);
+      expect(() => tickets.issue('s1', 0)).not.toThrow();
+      epoch.value = 1;
+      expect(() => tickets.issue('s1', 0)).toThrow(
+        expect.objectContaining({ code: 'unauthorized' }) as Error,
+      );
+      expect(() => tickets.issue('s1', 1)).not.toThrow();
+    });
+
+    it('refuses to redeem a ticket asked for under an epoch that is gone', () => {
+      const { tickets, epoch } = capped(10);
+      const old = tickets.issue('s1').ticket;
+      epoch.value = 1;
+      expect(tickets.redeem(old, 's1')).toBe(false);
+      const fresh = tickets.issue('s1').ticket;
+      expect(tickets.redeem(fresh, 's1')).toBe(true);
+    });
+  });
 });

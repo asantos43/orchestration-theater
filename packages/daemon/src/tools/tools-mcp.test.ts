@@ -40,6 +40,10 @@ security:
 tools:
   commands:
     test: [node, -e, "console.log('tests pass')"]
+shell:
+  http_get:
+    # The test server is on 127.0.0.1, which block_private refuses by default.
+    block_private: off
 `);
 
 /**

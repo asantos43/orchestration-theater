@@ -70,7 +70,7 @@ async function argvOf(
     const { argv } = call.input as { argv: string[] };
     validateArgv(argv);
     checkAllowed(argv, settings);
-    assertNoForbiddenFlags(argv);
+    assertNoForbiddenFlags(argv, { nodeInline: context.deps.shell?.node_inline ?? 'deny' });
     await confineArgv(host, worktree, argv);
     return argv;
   }

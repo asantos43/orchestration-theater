@@ -10,6 +10,7 @@ import { ToolFailure, ToolHandlers, ToolWithImage, type ToolCall } from '../mcp/
 import { AttachmentService } from './attachments.js';
 import type { ConsultService } from './consult.js';
 import { ScenarioHandlers } from './handlers.js';
+import { ANY_ATTACHMENT_ROOT } from './attachment-roots.js';
 
 const PNG = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0]);
 
@@ -39,6 +40,7 @@ beforeEach(async () => {
   });
   const attachments = new AttachmentService({
     store,
+    roots: ANY_ATTACHMENT_ROOT,
     clock,
     scenariosDir: join(root, 'scenarios'),
     limits: () => ({ maxSize: 0, readMax: 1024 }),

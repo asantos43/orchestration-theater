@@ -13,6 +13,8 @@ describe('parseConfig, the api block (P3 of docs/17)', () => {
       max_body_bytes: 1_048_576,
       rejection_events: { every: 10_000 },
       idempotency_ttl: 86_400_000,
+      idempotency_max_entries: 10_000,
+      max_json_depth: 64,
       sse: {
         buffer_events: 1000,
         heartbeat: 15_000,
@@ -28,6 +30,9 @@ describe('parseConfig, the api block (P3 of docs/17)', () => {
         max_pending_pongs: 60,
         state_interval: 1000,
         resume_window: 250,
+        max_tickets: 64,
+        max_sockets: 32,
+        max_queued_messages: 256,
       },
     });
   });
@@ -111,6 +116,9 @@ describe('parseConfig, the api block (P3 of docs/17)', () => {
       max_pending_pongs: 3,
       state_interval: 250,
       resume_window: 100,
+      max_tickets: 64,
+      max_sockets: 32,
+      max_queued_messages: 256,
     });
     for (const bad of [
       'ticket_ttl: 0s',
