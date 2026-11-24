@@ -314,6 +314,9 @@ export interface RigOptions {
   readonly lineTimeoutMs?: number | undefined;
 }
 
+/** How long `dispose` waits for the processes it killed to be gone. */
+const DISPOSE_WAIT_MS = 5_000;
+
 export class ChaosRig {
   /** The unique folder of the run: everything is inside it, and the census searches for it. */
   readonly runDir: string;
@@ -549,13 +552,18 @@ export class ChaosRig {
         child.process.kill('SIGKILL');
       }
     }
-    for (const entry of aliveEntries(this.census())) {
+    const census = this.census();
+    for (const entry of aliveEntries(census)) {
       try {
         process.kill(entry.pid, 'SIGKILL');
       } catch {
         // Gone in the meantime.
       }
     }
+    // SIGKILL is delivered, not awaited: a process in the middle of a disk write ends a moment later.
+    // Wait for the census to empty, so a caller that checks right after sees none of them alive.
+    const deadline = Date.now() + DISPOSE_WAIT_MS;
+    while (aliveEntries(census).length > 0 && Date.now() < deadline) await sleep(25);
     // A process that was just killed may still hold a file for an instant.
     await rm(this.runDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
   }
