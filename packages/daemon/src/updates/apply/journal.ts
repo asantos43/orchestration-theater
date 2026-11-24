@@ -2,7 +2,7 @@
 import { readdir, open, readFile, rename, rm } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
 import { crashPoint } from '../../chaos/crash-points.js';
-import { retryFs, type FsRetryPolicy } from './fs-retry.js';
+import { FS_RETRY_MODES, retryFs, type FsRetryPolicy } from './fs-retry.js';
 import { UPDATE_REASONS, UPDATE_ROLLBACK_MODES } from '@otheater/protocol';
 import { z } from 'zod';
 
@@ -59,6 +59,12 @@ export const JournalSchema = z.strictObject({
   healthTimeoutMs: z.int().min(1),
   /** How long the new daemon must answer without a drop after its first good answer. */
   stableMs: z.int().min(0),
+  /**
+   * `updates.apply.fs_retry` and `updates.apply.fs_retry_timeout` (N305), in milliseconds. Absent in
+   * a journal written before the keys existed: the applier then uses `auto` and 15 s.
+   */
+  fsRetry: z.enum(FS_RETRY_MODES).optional(),
+  fsRetryTimeoutMs: z.int().min(1).optional(),
   /** The backup made before a migration (its folder), or `null` when none was made. */
   backup: z.string().min(1).nullable(),
   reason: z.enum(UPDATE_REASONS).nullable(),

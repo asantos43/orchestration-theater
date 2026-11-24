@@ -54,6 +54,11 @@ import { parse as parseYaml, YAMLParseError } from 'yaml';
 import { z } from 'zod';
 import { PLUGIN_INSTALL_SOURCES } from './plugins/install-sources.js';
 import {
+  FS_RETRY_MODES,
+  FS_RETRY_TIMEOUT_MAX_MS,
+  FS_RETRY_TIMEOUT_MIN_MS,
+} from './updates/apply/fs-retry.js';
+import {
   PLUGIN_APPROVAL_DETAIL_MODES,
   PLUGIN_EXTERNAL_WRITE_APPROVAL_MODES,
   PLUGIN_EXTERNAL_WRITE_MODES,
@@ -1800,6 +1805,15 @@ export const UPDATES_MIN_CHECK_INTERVAL_MS = 5 * 60_000;
  *   is checked, so a daemon that is up to date does not complain when the latest release ages.
  * - `health_timeout` (P8; default `60s`): how long the applier waits for the new daemon to answer
  *   `GET /v1/health`; then it watches 30 s more without a drop.
+ * - `apply` (N305): how the applier treats a file the system refuses for a moment (Windows holds
+ *   a file while the antivirus or the indexer looks at it: `EPERM`, `EBUSY`, `EACCES`). A group
+ *   of its own, as the decision names the keys; the keys above are flat.
+ *   - `apply.fs_retry` (default `auto`): `auto` repeats the refused call only on Windows;
+ *     `always` repeats on every system; `off` never repeats (the first refusal is the failure).
+ *   - `apply.fs_retry_timeout` (default `15s`): how long one call may keep trying. [proposta]
+ *     Between 1s and 5m. After it the applier gives up with `swap_failed` and goes back to the
+ *     previous version by itself; the next check tries again.
+ *   The daemon writes both in the journal of the swap, and the applier reads them from there.
  *
  * The public key that checks the manifest is not a key here: it is embedded in the executable
  * (`tools/release/keys/update-public-key.pem`), so that a changed file cannot choose who signs.
@@ -1827,6 +1841,15 @@ export const UpdatesConfigSchema = z
     health_timeout: DurationSchema.refine((value) => value >= 1000, {
       message: 'the shortest health_timeout is 1s',
     }).prefault('60s'),
+    apply: z
+      .strictObject({
+        fs_retry: z.enum(FS_RETRY_MODES).default('auto'),
+        fs_retry_timeout: DurationSchema.refine(
+          (value) => value >= FS_RETRY_TIMEOUT_MIN_MS && value <= FS_RETRY_TIMEOUT_MAX_MS,
+          { message: 'updates.apply.fs_retry_timeout must be between 1s and 5m' },
+        ).prefault('15s'),
+      })
+      .prefault({}),
   })
   .superRefine((value, ctx) => {
     if (value.source === 'url' && value.url === undefined) {
