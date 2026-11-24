@@ -272,6 +272,8 @@ export interface DaemonHandle {
   readonly registryHolder: RegistryHolder;
   /** Which adapter of each port is running (what `daemon.started` recorded). */
   readonly adapters: Composition['adapters'];
+  /** The code host the plays deliver to (`adapters.code_host`, P13 of Phase 11). */
+  readonly codeHost: Composition['codeHost'];
   /** Whether the vault is open now (a vault without a master password is always open). */
   readonly vaultLocked: boolean;
   /** The execution of attempts; `undefined` when no clients were given or there is no launcher. */
@@ -1558,6 +1560,7 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     plugins,
     registryHolder,
     adapters: composition.adapters,
+    codeHost: composition.codeHost,
     execution,
     mcpUrl: mcp.url,
     mcp,

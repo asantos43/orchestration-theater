@@ -89,6 +89,7 @@ Conferido no código em 2026-11-22, no commit `3c84693` (a main depois do PR #31
 | P10 | Documentação: o guia de adaptadores e plugins (D5), com exemplo que roda | P9 | P3 a P7 | a fazer |
 | P11 | Roteiro de caos do dono (nível manual) e, se a D1 mandar, a VM | P3, P4, P5, P6, P7 | P12 (a parte automática) | a fazer |
 | P12 | Aceite da fase | P1 a P11 | nada | a fazer |
+| P13 | Fiação do CodeHost e da entrega (N289) | P9 | P3 a P7, P10 | feito |
 
 Ondas **[proposta]**:
 
@@ -146,6 +147,7 @@ Toda regra ou padrão novo vira chave, com padrão e modos. Tudo **[proposta]**;
 | `disk.notify` | `once`, `every_hour`, `off` | `once` | P5 | Quantas vezes avisar o Producer enquanto o disco está cheio |
 | `recovery.orphans` | `kill`, `report` | `kill` (o que o código faz hoje) | P3 | Hoje a morte do órfão é fixa em `reconcile.ts`. O P3 confere se já é chave; se não for, vira `kill` (padrão) ou `report` (só relata, para depuração) |
 | `security.*` | a definir pelo P8 | a definir | P8 | O que a revisão achar e for regra nova (limite de corpo, limite de pedidos, expiração de token) entra como chave, nunca como constante |
+| `adapters.code_host` | `auto`, `github`, `none`, `fake` | `auto` (proposta do P13; a N289 não fixou o padrão) | P13 | Qual `CodeHost` o daemon monta. `auto`: GitHub quando o remoto `origin` do repositório está em github.com e há credencial; senão, sem hospedagem (a entrega termina na branch local, com aviso). `github`: sempre o adaptador do GitHub. `none`: nunca hospeda. `fake`: hospedagem em memória, com diário, para os testes ponta a ponta |
 
 O que o sistema faz com provedor fora do ar, com Executor travado e com perfil vencido já é política por causa (§5.16) e já tem chaves (`limits.*`, `resume.*`). O caos **testa** essas políticas. Se achar uma lacuna, o PR do P4 propõe a chave na seção "Como ficou".
 
@@ -480,6 +482,27 @@ Marcas: **[V]** verificado agora, **[N]** não confirmado. Onde a afirmação do
 **Aceite (§10):** roteiro de caos sem perda de estado nem processo órfão: I1 a I8 verdes em todos os cenários, na CI e no nível manual do dono.
 
 **Como ficou:** a preencher.
+
+### P13. Fiação do CodeHost e da entrega
+
+**O que fazer:** a revisão do P9 achou que o `codehost-github` não era montado em produção [V], e sem `CodeHost` o `wiring.ts` não cria o `Workspace` (`no_code_host`): nenhuma peça chegava à entrega. A N289 decidiu a chave `adapters.code_host: github | none | fake`, montada no `compose.ts`, com ponta a ponta sobre o falso.
+- A chave, o adaptador do GitHub com a credencial do cofre, o `none` e o `fake` no `compose.ts`, e o `daemon.codeHost` no handle.
+- O `none` e o `fake` são uma classe de produção (`LocalCodeHost`), sem importar `@otheater/core/testing` (regra `testing-only-from-tests`).
+- Três testes: ponta a ponta com o `fake` (o diário mostra o PR aberto), ponta a ponta com o `none` (entrega sem PR, com aviso e evento) e composição provando que o adaptador real `github` é montado, com um lançador falso (o adaptador usa a CLI `gh`).
+
+**Arquivos:** `daemon/src/code-host.ts` (novo), `compose.ts`, `config.ts` (diff mínimo), `daemon.ts`, `orchestration/e2e-fixture.ts`, `protocol/src/notice-events.ts`, `daemon/package.json` e `tsconfig.src.json` (dependência do adaptador), os testes. Não mexe em `workspace/{effects,verifiers,workspace}.ts` (P7).
+
+**Aceite:** um play chega à entrega com `fake` (o diário do falso mostra o PR aberto); com `none` entrega sem PR, com aviso e evento; o adaptador `github` é montado quando pedido; nada usa a rede nem lê `~/.config/gh`.
+
+**Como ficou:** feito em 2026-11-23; verificado localmente, em Linux, salvo onde marcado. Nada rodou contra o GitHub de verdade.
+- **Chave e padrão [proposta, vai ao dono]:** `adapters.code_host` aceita `auto | github | none | fake`; a N289 não fixou o padrão, e o P13 propõe `auto`. `auto` monta o adaptador do GitHub só para o repositório cujo remoto `origin` está em github.com **e** que tem credencial (token no cofre ou login do `gh`); nos demais usa o modo `none`. A escolha é guardada por repositório até o daemon reiniciar, para uma entrega não trocar de hospedagem no meio. A seção `code_host:` do `config.yaml` leva a config do adaptador (`ghBinary`, `gitBinary`, `timeoutMs`, `inheritEnv`, `env`) e `token_secret` (chave do cofre, padrão `code-host/github/token`).
+- **Credencial [V: testado com cofre e lançador falsos]:** o token do cofre vai ao `gh` como `GH_TOKEN`; sem token, vale o login do próprio `gh`. O código do daemon não lê `~/.config/gh`; o adaptador herda do ambiente do daemon só os nomes da sua lista (entre eles `GH_TOKEN`, `HOME` e `SSH_AUTH_SOCK`). Um token trocado depois só vale no próximo início do daemon.
+- **`none`:** `pushRef` e `remoteRef` respondem com a cabeça local da branch (nada é enviado); `openPullRequest` guarda um registro local (URL `https://code-host.invalid/none/pull/N`, número >= 1, porque o `Workspace` exige) e gera o aviso `delivery_without_pr` (log `warn` mais evento `daemon.notice`). A peça termina `DONE` com o trabalho na branch local. `mergeBranch` falha com `AdapterUnavailable`: merge direto precisa de hospedagem.
+- **`fake`:** mesmo código (`LocalCodeHost`), com o remoto em memória e um diário (`calls`, `pullRequests()`), sem aviso. É a classe de produção, não o `FakeCodeHost` do `core/testing`, porque o `daemon` só importa `core/testing` em teste (regra `testing-only-from-tests`).
+- **Quando o `github` não pode ser montado** (sem lançador de processos): o daemon cai para `none` com o aviso `code_host_unavailable`. Os dois tipos de aviso entraram em `DAEMON_NOTICE_KINDS` (protocol).
+- **Testes:** `code-host.test.ts` (12), `compose.test.ts` (casos novos: `auto` padrão, `none` com evento, `fake` sem evento, `github` montado com `FakeProcessLauncher` e `GH_TOKEN` do cofre, `github` sem lançador, `auto` com remoto ausente, chave desconhecida recusada) e `orchestration/code-host-e2e.test.ts` (2: peça até a entrega com `fake`, com o diário mostrando o PR aberto; com `none`, sem PR de verdade, com o aviso e o evento). Os testes de lista de adaptadores (`config.test.ts`, `daemon.test.ts`) ganharam o `auto`.
+- **O que falta para o teste real do dono (TUI até um PR numa conta GitHub) [N: nada disso foi rodado]:** (1) `gh` instalado e logado (`gh auth login`), ou um token no cofre em `code-host/github/token`; (2) credencial de **push** do `git`: `GH_TOKEN` sozinho não autentica um `git push` por HTTPS sem `gh auth setup-git`, um credential helper ou SSH; (3) o repositório precisa de um `origin` em github.com (GitHub Enterprise exige `adapters.code_host: github`, porque o `auto` só reconhece github.com); (4) ver o PR de verdade no GitHub e o evento `delivery.completed` com o número. O primeiro uso real do adaptador `github` pelo daemon será esse teste.
+- **Fora do escopo, achado:** `phase5-acceptance-e2e.test.ts` já falha na main (o instalador de adaptadores ACP baixa pacotes do npm no teste e gera avisos `adapter_installing`); não é do P13 [V: falha igual sem as mudanças].
 
 ## Perguntas novas ao dono
 

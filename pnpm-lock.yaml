@@ -443,6 +443,9 @@ importers:
       '@otheater/adapter-clock-system':
         specifier: workspace:*
         version: link:../adapters/clock-system
+      '@otheater/adapter-codehost-github':
+        specifier: workspace:*
+        version: link:../adapters/codehost-github
       '@otheater/adapter-platform-posix':
         specifier: workspace:*
         version: link:../adapters/platform-posix

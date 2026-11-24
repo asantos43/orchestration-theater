@@ -4,9 +4,11 @@ import { join } from 'node:path';
 import {
   AdapterUnavailable,
   InvalidInput,
+  Secret,
   type Adapter,
   type Sandbox,
   type SandboxAvailability,
+  type Vcs,
 } from '@otheater/core';
 import {
   FakeClock,
@@ -15,6 +17,7 @@ import {
   InMemoryStore,
 } from '@otheater/core/testing';
 import { describe, expect, it, vi } from 'vitest';
+import { LocalCodeHost } from './code-host.js';
 import {
   assertRealKeyringAllowed,
   checkAdapterRange,
@@ -112,6 +115,7 @@ describe('compose', () => {
         'Clock:system',
         'SecretVault:encrypted-file',
         'Store:sqlite',
+        'CodeHost:auto',
         'TelemetryStore:sqlite',
       ]);
       await access(join(tmp.dir, 'store.sqlite'));
@@ -179,6 +183,7 @@ describe('compose', () => {
         'override',
         'override',
         'override',
+        'auto',
       ]);
       await composition.close();
       await composition.close();
@@ -652,5 +657,176 @@ describe('chooseLauncher (processes.windows_launcher, Phase 10 P2)', () => {
         composed('processes:\n  windows_launcher: job_object\n', win([]).deps),
       ).rejects.toMatchObject({ code: 'ADAPTER_UNAVAILABLE' });
     });
+  });
+});
+
+describe('compose: the code host (Phase 11, P13, N289)', () => {
+  const HEAD = 'c'.repeat(40);
+  const vcs = {
+    resolveRef: () => Promise.resolve(HEAD),
+    findCommitByTrailer: () => Promise.resolve(undefined),
+  } as unknown as Vcs;
+  const TOKEN_KEY = 'code-host/github/token';
+  const PR = {
+    repo: '/work/repo',
+    head: 'play/p1/integration',
+    base: 'main',
+    title: 'Deliver play p1',
+    body: 'body',
+  };
+
+  async function composed(
+    config: string,
+    extra: { launcher?: FakeProcessLauncher; vault?: InMemorySecretVault } = {},
+  ) {
+    const tmp = await makeTempDataDir();
+    const clock = new FakeClock(1000);
+    const composition = await compose(parseConfig(config), {
+      dataDir: tmp.dir,
+      overrides: {
+        clock,
+        store: new InMemoryStore({ clock }),
+        vault: extra.vault ?? new InMemorySecretVault(),
+        sandbox: 'none',
+        vcs,
+        ...(extra.launcher === undefined
+          ? { launcherDeps: { platform: 'win32' as const } }
+          : { launcher: extra.launcher }),
+      },
+    });
+    return { composition, dispose: tmp.dispose };
+  }
+  const NO_LAUNCHER = 'processes:\n  windows_launcher: off\n';
+  const noticesOf = async (composition: Awaited<ReturnType<typeof composed>>['composition']) => {
+    composition.situations.open();
+    await composition.situations.idle();
+    return (await composition.store.events.readFrom(0, 1000))
+      .filter((event) => event.type === 'daemon.notice')
+      .map((event) => event.payload);
+  };
+
+  it('defaults to auto, and an override replaces it', async () => {
+    const { composition, dispose } = await composed(NO_LAUNCHER);
+    try {
+      expect(composition.codeHost?.id).toBe('auto');
+      expect(composition.adapters).toContainEqual(
+        expect.objectContaining({ port: 'CodeHost', id: 'auto' }),
+      );
+    } finally {
+      await composition.close();
+      await dispose();
+    }
+  });
+
+  it('none: the delivery gets a local record, a warning and an event', async () => {
+    const { composition, dispose } = await composed(`adapters:\n  code_host: none\n${NO_LAUNCHER}`);
+    try {
+      const host = composition.codeHost;
+      expect(host).toBeInstanceOf(LocalCodeHost);
+      expect(await host?.pushRef({ repo: PR.repo, branch: PR.head })).toBe(HEAD);
+      const pull = await host?.openPullRequest(PR);
+      expect(pull?.number).toBe(1);
+      expect(await noticesOf(composition)).toContainEqual({
+        kind: 'delivery_without_pr',
+        subject: PR.head,
+        detail: expect.stringContaining('adapters.code_host is none') as string,
+      });
+    } finally {
+      await composition.close();
+      await dispose();
+    }
+  });
+
+  it('fake: a host in memory, with no event', async () => {
+    const { composition, dispose } = await composed(`adapters:\n  code_host: fake\n${NO_LAUNCHER}`);
+    try {
+      const host = composition.codeHost as LocalCodeHost;
+      expect(host.id).toBe('fake');
+      await host.pushRef({ repo: PR.repo, branch: PR.head });
+      await host.openPullRequest(PR);
+      expect(host.pullRequests().map((pull) => pull.headBranch)).toEqual([PR.head]);
+      expect(await noticesOf(composition)).toEqual([]);
+    } finally {
+      await composition.close();
+      await dispose();
+    }
+  });
+
+  it('github: mounts the real adapter, which runs gh through the launcher with the token of the vault', async () => {
+    const launcher = new FakeProcessLauncher();
+    const vault = new InMemorySecretVault();
+    await vault.set(TOKEN_KEY, new Secret('test-token-not-real'));
+    const { composition, dispose } = await composed(
+      'adapters:\n  code_host: github\ncode_host:\n  ghBinary: /opt/fake/gh\n',
+      { launcher, vault },
+    );
+    try {
+      expect(composition.codeHost?.id).toBe('github');
+      expect(composition.adapters).toContainEqual(
+        expect.objectContaining({ port: 'CodeHost', id: 'github' }),
+      );
+      const found = composition.codeHost?.findPullRequest({ repo: PR.repo, head: PR.head });
+      const failed = found?.catch((error: unknown) => error);
+      await vi.waitFor(() => {
+        expect(launcher.launched).toHaveLength(1);
+      });
+      const process = launcher.launched[0];
+      expect(process?.options.cmd).toBe('/opt/fake/gh');
+      expect(process?.options.args.slice(0, 2)).toEqual(['pr', 'list']);
+      expect(process?.options.cwd).toBe(PR.repo);
+      expect(process?.options.env.GH_TOKEN).toBe('test-token-not-real');
+      process?.exit(1);
+      expect(await failed).toBeInstanceOf(Error);
+    } finally {
+      await composition.close();
+      await dispose();
+    }
+  });
+
+  it('github without a launcher: a warning and an event, and the deliveries end as with none', async () => {
+    const { composition, dispose } = await composed(
+      `adapters:\n  code_host: github\n${NO_LAUNCHER}`,
+    );
+    try {
+      expect(composition.codeHost).toBeInstanceOf(LocalCodeHost);
+      expect(await noticesOf(composition)).toContainEqual(
+        expect.objectContaining({ kind: 'code_host_unavailable', subject: 'github' }),
+      );
+    } finally {
+      await composition.close();
+      await dispose();
+    }
+  });
+
+  it('auto: a repository whose remote is not on GitHub is delivered without a pull request, with the reason', async () => {
+    const launcher = new FakeProcessLauncher();
+    const { composition, dispose } = await composed('', { launcher });
+    try {
+      const opened = composition.codeHost?.openPullRequest(PR).catch((error: unknown) => error);
+      // The probe asks git for the remote of the repository.
+      await vi.waitFor(() => {
+        expect(launcher.launched).toHaveLength(1);
+      });
+      expect(launcher.launched[0]?.options.args).toEqual(['remote', 'get-url', 'origin']);
+      launcher.launched[0]?.exit(2);
+      expect(await opened).toMatchObject({ number: 1 });
+      expect(await noticesOf(composition)).toContainEqual(
+        expect.objectContaining({
+          kind: 'delivery_without_pr',
+          detail: expect.stringContaining('no remote "origin"') as string,
+        }),
+      );
+    } finally {
+      await composition.close();
+      await dispose();
+    }
+  });
+
+  it('rejects a code_host section the adapter does not know, naming the key', async () => {
+    await expect(
+      composed('adapters:\n  code_host: github\ncode_host:\n  bogus: 1\n', {
+        launcher: new FakeProcessLauncher(),
+      }),
+    ).rejects.toThrow(/code_host/);
   });
 });
