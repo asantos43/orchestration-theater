@@ -143,9 +143,9 @@ export default {
     {
       name: 'testing-only-from-tests',
       comment:
-        'The fakes of @otheater/core/testing are for tests: outside testing/ itself, only *.test.ts files may import them (decision N50).',
+        'The fakes of @otheater/core/testing are for tests: outside testing/ itself, only *.test.ts files and the *.test-support.ts helpers they share (left out of the build) may import them (decision N50).',
       severity: 'error',
-      from: { pathNot: ['^packages/core/src/testing/', '\\.test\\.tsx?$'] },
+      from: { pathNot: ['^packages/core/src/testing/', '\\.(test|test-support)\\.tsx?$'] },
       to: {
         path: [
           '^packages/core/(src|dist)/testing/',

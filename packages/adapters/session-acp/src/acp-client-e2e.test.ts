@@ -9,9 +9,9 @@ import {
   prompts,
   rig,
   script,
-} from './testing/acp-e2e-rig.js';
+} from './testing/acp-e2e-rig.test-support.js';
 
-// End to end over ACP with the real fake agent: see `testing/acp-e2e-rig.ts`.
+// End to end over ACP with the real fake agent: see `testing/acp-e2e-rig.test-support.ts`.
 
 checkNothingOutlives();
 
