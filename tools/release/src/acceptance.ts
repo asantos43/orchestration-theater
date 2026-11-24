@@ -172,6 +172,8 @@ interface Run {
   /** Where the installed executable is, once installed. */
   installed: string;
   daemon: ChildProcess | undefined;
+  /** The output of the last daemon started as a child (the one the applier starts is not ours). */
+  daemonOutput: () => string;
 }
 
 async function publish(run: Run, spec: PublishSpec): Promise<void> {
@@ -408,6 +410,7 @@ async function startDaemon(r: Run): Promise<number> {
   });
   r.daemon = child;
   let seen = '';
+  r.daemonOutput = () => seen;
   child.stdout.on('data', (chunk: Buffer) => (seen += chunk.toString('utf8')));
   child.stderr.on('data', (chunk: Buffer) => (seen += chunk.toString('utf8')));
   try {
@@ -693,6 +696,58 @@ async function rollbackCase(r: Run): Promise<string> {
   return `${wrong}: rolled back to ${versionN} (reason ${String(rolled.reason)}), backup ${path.basename(rolled.backup)} restored, new pid ${String(status.pid)}`;
 }
 
+/** The end of a text file, or undefined when it cannot be read. */
+function tailOf(file: string, chars: number): string | undefined {
+  try {
+    const text = readFileSync(file, 'utf8');
+    return text.length > chars ? `...${text.slice(-chars)}` : text;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * What a failed step leaves to read in the log of the run: the journal of the applier, the folder of the
+ * executable, the end of each log there and in the data folder, and the end of the output of the daemon
+ * child. A timeout alone says nothing of where the update stopped.
+ */
+function diagnosticsOf(r: Run): string[] {
+  const lines: string[] = [];
+  const add = (title: string, text: string | undefined): void => {
+    if (text === undefined || text.trim() === '') return;
+    lines.push(`--- ${title}`);
+    for (const line of text.trimEnd().split(/\r?\n/)) lines.push(line);
+  };
+  if (r.installed !== '') {
+    const bin = path.dirname(r.installed);
+    try {
+      add(`files in ${bin}`, readdirSync(bin).join(' '));
+    } catch {
+      // No folder: nothing to list.
+    }
+    add('update-state.json', tailOf(path.join(bin, 'update-state.json'), 2000));
+    add('update-apply.log', tailOf(path.join(bin, 'update-apply.log'), 3000));
+  }
+  const logs: string[] = [];
+  const walk = (dir: string, depth: number): void => {
+    let names: string[];
+    try {
+      names = readdirSync(dir);
+    } catch {
+      return;
+    }
+    for (const name of names) {
+      const full = path.join(dir, name);
+      if (name.endsWith('.log')) logs.push(full);
+      else if (depth > 0 && !name.includes('.')) walk(full, depth - 1);
+    }
+  };
+  walk(r.data, 2);
+  for (const file of logs.slice(0, 6)) add(path.relative(r.data, file), tailOf(file, 1500));
+  add('output of the daemon child', r.daemonOutput().slice(-1500));
+  return lines;
+}
+
 async function runSteps(
   r: Run,
   steps: [string, StepBody][],
@@ -731,6 +786,7 @@ async function runSteps(
       const detail = error instanceof Error ? error.message : String(error);
       done.push({ name, ok: false, skipped: false, detail, ms: Date.now() - started });
       log(`  FAIL  ${name}: ${detail}`);
+      for (const line of diagnosticsOf(r)) log(`        | ${line}`);
       broken = true;
     }
   }
@@ -758,6 +814,7 @@ export async function runAcceptance(options: AcceptanceOptions): Promise<Accepta
     server,
     installed: '',
     daemon: undefined,
+    daemonOutput: () => '',
   };
   r.installed = installedPath(r);
   const { versionN, versionN1, exeN, exeN1 } = options;
