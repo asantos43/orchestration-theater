@@ -2,6 +2,7 @@
 import { readdir, open, readFile, rename, rm } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
 import { crashPoint } from '../../chaos/crash-points.js';
+import { retryFs, type FsRetryPolicy } from './fs-retry.js';
 import { UPDATE_REASONS, UPDATE_ROLLBACK_MODES } from '@otheater/protocol';
 import { z } from 'zod';
 
@@ -73,10 +74,10 @@ export type JournalReading =
   | { readonly kind: 'corrupt' }
   | { readonly kind: 'ok'; readonly journal: UpdateJournal };
 
-export async function readJournal(file: string): Promise<JournalReading> {
+export async function readJournal(file: string, retry?: FsRetryPolicy): Promise<JournalReading> {
   let text: string;
   try {
-    text = await readFile(file, 'utf8');
+    text = await retryFs('read journal', () => readFile(file, 'utf8'), retry);
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return { kind: 'none' };
     return { kind: 'corrupt' };
@@ -92,7 +93,11 @@ export async function readJournal(file: string): Promise<JournalReading> {
 export const JOURNAL_CRASH_POINT = 'journal.before_rename';
 
 /** Writes the journal whole and to the disk before the next step; a reader never sees half of it. */
-export async function writeJournal(file: string, journal: UpdateJournal): Promise<void> {
+export async function writeJournal(
+  file: string,
+  journal: UpdateJournal,
+  retry?: FsRetryPolicy,
+): Promise<void> {
   const temporary = `${file}.${String(process.pid)}.tmp`;
   const handle = await open(temporary, 'w', 0o600);
   try {
@@ -103,7 +108,8 @@ export async function writeJournal(file: string, journal: UpdateJournal): Promis
   }
   await crashPoint(JOURNAL_CRASH_POINT);
   try {
-    await rename(temporary, file);
+    // On Windows a reader of the journal (the daemon, the interface, a scan) can hold it for a moment.
+    await retryFs('rename journal', () => rename(temporary, file), retry);
   } catch (error) {
     await rm(temporary, { force: true }).catch(() => undefined);
     throw error;

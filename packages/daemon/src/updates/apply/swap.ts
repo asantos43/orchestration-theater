@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 import { chmod, copyFile, link, mkdir, rename, rm, stat } from 'node:fs/promises';
 import { crashPoint } from '../../chaos/crash-points.js';
+import { retryFs, type FsRetryPolicy } from './fs-retry.js';
 import type { InstallLayout } from './layout.js';
 
 /**
@@ -39,43 +40,46 @@ export async function exists(file: string): Promise<boolean> {
   }
 }
 
-/** Puts the running executable at `previous/`, replacing the one that was there. */
-export async function linkPrevious(layout: InstallLayout): Promise<void> {
+/**
+ * Puts the running executable at `previous/`, replacing the one that was there. `retry` is the policy
+ * of every file call below: a hold of the file that ends in a moment is not a failed step.
+ */
+export async function linkPrevious(layout: InstallLayout, retry?: FsRetryPolicy): Promise<void> {
   await crashPoint(SWAP_CRASH_POINTS.beforeLink);
   await mkdir(layout.previousDir, { recursive: true });
-  await rm(layout.previousExe, { force: true });
+  await retryFs('rm previous', () => rm(layout.previousExe, { force: true }), retry);
   await crashPoint(SWAP_CRASH_POINTS.afterUnlinkPrevious);
   try {
     await link(layout.exe, layout.previousExe);
   } catch {
-    await copyFile(layout.exe, layout.previousExe);
+    await retryFs('copy previous', () => copyFile(layout.exe, layout.previousExe), retry);
     await chmod(layout.previousExe, EXECUTABLE_MODE);
   }
   await crashPoint(SWAP_CRASH_POINTS.afterLink);
 }
 
 /** Makes the staged executable the executable. The old one is still at `previous/`. */
-export async function placeStaged(layout: InstallLayout): Promise<void> {
+export async function placeStaged(layout: InstallLayout, retry?: FsRetryPolicy): Promise<void> {
   await crashPoint(SWAP_CRASH_POINTS.beforePlace);
   await chmod(layout.stagingExe, EXECUTABLE_MODE);
-  await rename(layout.stagingExe, layout.exe);
+  await retryFs('place staged', () => rename(layout.stagingExe, layout.exe), retry);
   await crashPoint(SWAP_CRASH_POINTS.afterPlace);
 }
 
 /** Takes the old executable back: `previous/` replaces the executable. */
-export async function restorePrevious(layout: InstallLayout): Promise<void> {
+export async function restorePrevious(layout: InstallLayout, retry?: FsRetryPolicy): Promise<void> {
   await crashPoint(SWAP_CRASH_POINTS.beforeRestore);
-  await rename(layout.previousExe, layout.exe);
+  await retryFs('restore previous', () => rename(layout.previousExe, layout.exe), retry);
   await crashPoint(SWAP_CRASH_POINTS.afterRestore);
 }
 
 /** Forgets the copy at `previous/` (the swap did not get to place the new one). */
-export async function undoLink(layout: InstallLayout): Promise<void> {
-  await rm(layout.previousExe, { force: true });
+export async function undoLink(layout: InstallLayout, retry?: FsRetryPolicy): Promise<void> {
+  await retryFs('rm previous', () => rm(layout.previousExe, { force: true }), retry);
 }
 
 /** Removes what is left of the staging folder. */
-export async function clearStaging(layout: InstallLayout): Promise<void> {
+export async function clearStaging(layout: InstallLayout, retry?: FsRetryPolicy): Promise<void> {
   await crashPoint(SWAP_CRASH_POINTS.beforeClearStaging);
-  await rm(layout.stagingDir, { recursive: true, force: true });
+  await retryFs('rm staging', () => rm(layout.stagingDir, { recursive: true, force: true }), retry);
 }

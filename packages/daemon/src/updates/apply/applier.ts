@@ -5,6 +5,7 @@ import { crashPoint } from '../../chaos/crash-points.js';
 import type { Logger } from '../../logger.js';
 import type { HealthProbe, HealthReading } from './health.js';
 import { FINAL_STEPS, readJournal, writeJournal, type UpdateJournal } from './journal.js';
+import type { FsRetryPolicy } from './fs-retry.js';
 import type { InstallLayout } from './layout.js';
 import type { JournalTrust } from './trust.js';
 import {
@@ -52,6 +53,8 @@ export interface ApplyPorts {
   readonly oldExitTimeoutMs?: number | undefined;
   /** The time between two looks. Default 500 ms. */
   readonly pollMs?: number | undefined;
+  /** How the file calls of the swap and of the journal repeat after a refusal that passes (Windows). */
+  readonly fsRetry?: FsRetryPolicy | undefined;
 }
 
 export type ApplyOutcome =
@@ -78,6 +81,17 @@ export const APPLY_CRASH_POINTS = {
 const OLD_EXIT_TIMEOUT_MS = 60_000;
 const POLL_MS = 500;
 
+/** The policy of the ports, with each repeated call told in the log: a step that took long says why. */
+function retryOf(ports: ApplyPorts): FsRetryPolicy {
+  return {
+    ...ports.fsRetry,
+    onRetry: (info) => {
+      ports.fsRetry?.onRetry?.(info);
+      ports.logger.warn(info, 'update: a file call was refused; trying again');
+    },
+  };
+}
+
 async function save(
   layout: InstallLayout,
   ports: ApplyPorts,
@@ -86,7 +100,8 @@ async function save(
 ): Promise<UpdateJournal> {
   const next = { ...journal, ...patch, updatedAt: ports.clock.now() };
   await crashPoint(APPLY_CRASH_POINTS.beforeJournal, next.step);
-  await writeJournal(layout.journal, next);
+  await writeJournal(layout.journal, next, retryOf(ports));
+  ports.logger.info({ step: next.step, reason: next.reason }, 'update: journal');
   await crashPoint(APPLY_CRASH_POINTS.afterJournal, next.step);
   return next;
 }
@@ -111,7 +126,7 @@ async function abortBeforeSwap(
   journal: UpdateJournal,
   reason: UpdateReason,
 ): Promise<ApplyOutcome> {
-  await undoLink(layout);
+  await undoLink(layout, retryOf(ports));
   ports.logger.warn(
     { reason, to: journal.to },
     'update: the swap did not start; nothing was changed',
@@ -150,7 +165,7 @@ export async function rollBack(
       );
     }
   }
-  if (await exists(layout.previousExe)) await restorePrevious(layout);
+  if (await exists(layout.previousExe)) await restorePrevious(layout, retryOf(ports));
   if (restart) {
     const started = await ports.startDaemon();
     if (!started.ok)
@@ -226,14 +241,14 @@ export async function runApply(
     return await abortBeforeSwap(layout, ports, journal, 'hash_changed');
 
   try {
-    await linkPrevious(layout);
+    await linkPrevious(layout, retryOf(ports));
   } catch (error) {
     ports.logger.error({ err: error }, 'update: the old executable could not be kept');
     return await abortBeforeSwap(layout, ports, journal, 'swap_failed');
   }
   journal = await save(layout, ports, journal, { step: 'linked' });
   try {
-    await placeStaged(layout);
+    await placeStaged(layout, retryOf(ports));
   } catch (error) {
     ports.logger.error({ err: error }, 'update: the new executable could not be put in place');
     return await abortBeforeSwap(layout, ports, journal, 'swap_failed');
@@ -270,7 +285,7 @@ async function commit(
   await crashPoint(APPLY_CRASH_POINTS.beforeCommit);
   // The journal first: while it still asks for something, the proof it rests on is beside it (P8a).
   await save(layout, ports, journal, { step: 'committed', reason: null, reported: false });
-  await clearStaging(layout);
+  await clearStaging(layout, retryOf(ports));
   ports.logger.info({ from: journal.from, to: journal.to }, 'update: applied');
   return { kind: 'committed' };
 }
@@ -303,7 +318,7 @@ export async function recoverInterrupted(
   restart: boolean,
   trust: (journal: UpdateJournal) => Promise<JournalTrust>,
 ): Promise<RecoveryResult> {
-  const reading = await readJournal(layout.journal);
+  const reading = await readJournal(layout.journal, retryOf(ports));
   if (reading.kind === 'none') return { kind: 'none' };
   if (reading.kind === 'corrupt') return { kind: 'corrupt' };
   const { journal } = reading;
@@ -331,7 +346,7 @@ export async function recoverInterrupted(
 
   switch (journal.step) {
     case 'waiting': {
-      await undoLink(layout);
+      await undoLink(layout, retryOf(ports));
       await save(layout, ports, journal, {
         step: 'rolled_back',
         reason: 'interrupted',
@@ -343,7 +358,7 @@ export async function recoverInterrupted(
       const inPlace =
         (await exists(layout.exe)) && (await ports.sha256(layout.exe)) === journal.sha256;
       if (!inPlace) {
-        await undoLink(layout);
+        await undoLink(layout, retryOf(ports));
         await save(layout, ports, journal, {
           step: 'rolled_back',
           reason: 'interrupted',
