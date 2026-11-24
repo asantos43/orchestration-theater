@@ -12,7 +12,9 @@
     "src/chaos/harness.ts",
     "src/chaos/census.ts",
     "src/chaos/invariants.ts",
-    "src/chaos/torn-store.ts"
+    "src/chaos/torn-store.ts",
+    "src/chaos/sea-rig.ts",
+    "src/chaos/target.ts"
   ],
   "references": [
     { "path": "../core/tsconfig.src.json" },
