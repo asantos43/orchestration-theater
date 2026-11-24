@@ -37,7 +37,7 @@ Todas são chaves de configuração do instalador com modos e padrão documentad
 
 ### Argumentos
 
-- `--uninstall`: para e remove o serviço (`ot uninstall`), apaga o executável e o link `ot` (só se for dele). Os dados ficam.
+- `--uninstall`: para e remove o serviço (`ot uninstall`), apaga o executável e o link `ot` (só se for dele) e o que as atualizações deixaram ao lado dele em `bin/` (N303): `update-state.json` (e o `update-state.json.<pid>.tmp` de um escritor que morreu), `update-apply.log`, `previous/<exe>` e `staging/<exe>`, `staging/manifest.json` e `staging/manifest.json.sig`, um por um, pelo nome, nunca por curinga de pasta. Depois tira com `rmdir` as pastas que ficaram vazias (`previous/`, `staging/`, `bin/` e a pasta do app); uma pasta com um arquivo que não é do OTheater fica, com o arquivo, e o script avisa na saída. Os dados (store, configuração, arquivos do usuário) ficam.
 - `--uninstall --purge-data`: apaga também a pasta de dados. Pergunta antes (`[y/N]`); sem terminal, exige `--yes`. Só apaga uma pasta que tenha `config.yaml`, `store.sqlite` ou `daemon-id`, e nunca a raiz nem o HOME. O chaveiro do sistema não é tocado.
 - `--help`.
 

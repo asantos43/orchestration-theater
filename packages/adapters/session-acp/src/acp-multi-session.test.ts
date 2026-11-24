@@ -466,7 +466,9 @@ describe('AcpTransport, several sessions on one process', () => {
 
   it('a start that times out does not take the other sessions down', async () => {
     const r = rig({ silentNewFrom: 1 });
-    const { transport } = transportOf({ startTimeoutMs: 300 });
+    // The deadline covers the first start too, with the handshake of a fresh process: 300 ms was
+    // short for a loaded Windows runner (seen on 2026-11-24, the first session timed out as well).
+    const { transport } = transportOf({ startTimeoutMs: 2000 });
     const a = await openOn(transport, r);
     await expect(openOn(transport, r)).rejects.toMatchObject({ code: 'ADAPTER_UNAVAILABLE' });
     const seen = listen(a);

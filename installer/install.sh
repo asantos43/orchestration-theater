@@ -126,6 +126,7 @@ fmt() {
       uninstall_nothing) echo 'Não há instalação em %s.' ;;
       uninstall_service_failed) echo 'AVISO: "ot uninstall" falhou; se o serviço ficou registrado, rode "ot service uninstall" à mão ou remova a definição dele.' ;;
       removed) echo 'Removido: %s' ;;
+      left_behind) echo 'AVISO: em %s ficou algo que não é do OTheater (%s): não apaguei isso nem a pasta.' ;;
       uninstalled) echo 'Desinstalado. Os dados foram preservados em %s.' ;;
       purge_confirm) echo 'Apagar TODOS os dados em %s? Isso não tem volta. [s/N] ' ;;
       purge_need_yes) echo 'sem terminal para perguntar: confirme com --yes' ;;
@@ -186,6 +187,7 @@ fmt() {
       uninstall_nothing) echo 'There is no install in %s.' ;;
       uninstall_service_failed) echo 'WARNING: "ot uninstall" failed; if the service stayed registered, run "ot service uninstall" by hand or remove its definition.' ;;
       removed) echo 'Removed: %s' ;;
+      left_behind) echo 'WARNING: %s holds something that is not the OTheater'"'"'s (%s): I did not delete it, nor the folder.' ;;
       uninstalled) echo 'Uninstalled. The data was kept in %s.' ;;
       purge_confirm) echo 'Delete ALL the data in %s? This cannot be undone. [y/N] ' ;;
       purge_need_yes) echo 'no terminal to ask on: confirm with --yes' ;;
@@ -795,6 +797,58 @@ confirm_purge() {
   esac
 }
 
+# remove_update_leftovers BIN NAME: removes what the updates (the applier, Phase 10 P8) create beside
+# the executable NAME in the folder BIN, by exact name and never by wildcard on a whole folder: the
+# journal `update-state.json` (and its `update-state.json.<pid>.tmp` of a writer that was killed), the
+# log `update-apply.log`, the copy of the old executable `previous/NAME` and the staged one
+# `staging/NAME` with its two proofs. The names come from packages/daemon/src/updates/apply/layout.ts,
+# journal.ts, trust.ts and main.ts: when the applier gets a file, it goes here, in
+# installer/wix/Product.wxs (RemoveFile) and in the check of tools/release/src/acceptance.ts. Then
+# `previous` and `staging` go with `rmdir`, so a folder with anything else in it stays. A folder that
+# is a link is not entered.
+remove_update_leftovers() {
+  rul_bin=$1
+  rul_name=$2
+  rul_dir=''
+  for rul_rel in update-state.json update-apply.log \
+    "previous/$rul_name" "staging/$rul_name" staging/manifest.json staging/manifest.json.sig; do
+    case $rul_rel in
+      */*)
+        rul_dir=${rul_rel%/*}
+        [ -L "$rul_bin/$rul_dir" ] && continue
+        ;;
+    esac
+    if [ -f "$rul_bin/$rul_rel" ] || [ -L "$rul_bin/$rul_rel" ]; then
+      rm -f "$rul_bin/$rul_rel"
+      say removed "$rul_bin/$rul_rel"
+    fi
+  done
+  for rul_tmp in "$rul_bin"/update-state.json.*.tmp; do
+    [ -f "$rul_tmp" ] || continue
+    rul_mid=${rul_tmp##*/update-state.json.}
+    rul_mid=${rul_mid%.tmp}
+    case $rul_mid in
+      '' | *[!0-9]*) continue ;;
+    esac
+    rm -f "$rul_tmp"
+    say removed "$rul_tmp"
+  done
+  for rul_dir in previous staging; do
+    [ -L "$rul_bin/$rul_dir" ] || rmdir "$rul_bin/$rul_dir" 2>/dev/null || true
+  done
+}
+
+# warn_left_behind DIR: names what is still in DIR (a folder the OTheater made) after the cleanup.
+warn_left_behind() {
+  wlb_list=''
+  for wlb_item in "$1"/* "$1"/.[!.]* "$1"/..?*; do
+    [ -e "$wlb_item" ] || [ -L "$wlb_item" ] || continue
+    wlb_list="${wlb_list:+$wlb_list, }${wlb_item##*/}"
+  done
+  [ -n "$wlb_list" ] && warn left_behind "$1" "$wlb_list"
+  return 0
+}
+
 do_uninstall() {
   UNAME_S=$(uname -s)
   APP_DIR=$(app_dir_of "$UNAME_S")
@@ -829,7 +883,10 @@ do_uninstall() {
     say removed "$APP_DIR/THIRD_PARTY_NOTICES.md"
   fi
   rm -rf "$BIN_DIR"/.install.* 2>/dev/null || true
-  rmdir "$BIN_DIR" 2>/dev/null || true
+  # What the updates left beside the executable goes too (N303); the data (store, config, the files
+  # of the user) is never in this list. A folder with a stranger's file in it stays, and says so.
+  remove_update_leftovers "$BIN_DIR" "${EXE##*/}"
+  if [ -d "$BIN_DIR" ] && ! rmdir "$BIN_DIR" 2>/dev/null; then warn_left_behind "$BIN_DIR"; fi
   rmdir "$APP_DIR" 2>/dev/null || true
 
   if [ "$PURGE" = 1 ]; then

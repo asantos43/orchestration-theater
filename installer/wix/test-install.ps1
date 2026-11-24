@@ -127,16 +127,42 @@ for ($i = 0; $i -lt 60 -and -not $running; $i++) {
 if ($running) { Write-Host 'ok   the daemon is running' }
 else { Write-Host '::warning::the daemon did not start from the task on this runner; the stop in the uninstall is not exercised' }
 
+Step 'What an update leaves beside ot.exe (N303): the uninstall has to take it away too'
+# The names the applier gives them (packages/daemon/src/updates/apply/layout.ts, journal.ts, trust.ts,
+# main.ts): the journal and the temporary one of a writer that was killed, the log, the copy of the old
+# executable, and the staged executable with its two proofs. Made by hand: nothing here runs an update.
+New-Item -ItemType Directory -Force -Path (Join-Path $InstallDir 'previous'), (Join-Path $InstallDir 'staging') | Out-Null
+$updateLeftovers = @(
+  'update-state.json', 'update-state.json.4242.tmp', 'update-apply.log',
+  'previous\ot.exe', 'staging\ot.exe', 'staging\manifest.json', 'staging\manifest.json.sig'
+)
+foreach ($name in $updateLeftovers) { Set-Content -Path (Join-Path $InstallDir $name) -Value 'left by an update' }
+Check (@($updateLeftovers | Where-Object { Test-Path (Join-Path $InstallDir $_) }).Count -eq $updateLeftovers.Count) 'the leftovers of an update are in place'
+# A file that is not the OTheater's (decided by the owner on 2026-11-24): the uninstall must keep it, and
+# with it the folder, since Windows Installer only removes a folder that is empty. Removed at the end.
+$stranger = Join-Path $InstallDir 'not-ours.txt'
+Set-Content -Path $stranger -Value 'a file of someone else'
+Check (Test-Path $stranger) 'a file that is not the OTheater''s is in the install folder'
+
 Step 'Uninstall: msiexec /x /qn'
 $code = Invoke-Msi @('/x', "`"$Msi`"") 'msi-uninstall.log'
 Check ($code -eq 0) "msiexec /x exited with 0 (got $code)"
 Check (-not (Test-Path (Join-Path $InstallDir 'ot.exe'))) 'ot.exe is gone'
 Check (-not (Test-Path (Join-Path $InstallDir 'ot-job-launcher.exe'))) 'ot-job-launcher.exe is gone'
-Check (-not (Test-Path $InstallDir)) 'the install folder is gone'
+Check (Test-Path $stranger) 'the file that is not the OTheater''s stayed'
+Check (Test-Path $InstallDir) 'the install folder stayed, with that file in it'
+Check (-not (Test-Path (Join-Path $InstallDir 'previous'))) 'the empty previous folder is gone'
+Check (-not (Test-Path (Join-Path $InstallDir 'staging'))) 'the empty staging folder is gone'
+foreach ($name in $updateLeftovers) { Check (-not (Test-Path (Join-Path $InstallDir $name))) "$name (left by an update) is gone" }
 Check (-not (Test-TaskExists)) "the Scheduled Task $TaskName is gone"
 Check (-not ((Get-UserPathEntries) -contains $InstallDir)) 'the install folder left the PATH of the user'
 Check (((Get-UserPathEntries) -join ';') -eq $pathBefore) 'the PATH of the user is what it was before'
 Check (Test-Path (Join-Path $DataDir 'marker.txt')) 'the data folder kept its files'
+
+# What the stranger case made: the file and then the folder it kept (the MSI no longer owns it).
+Remove-Item -LiteralPath $stranger -Force -ErrorAction SilentlyContinue
+Remove-Item -LiteralPath $InstallDir -Force -ErrorAction SilentlyContinue
+Check (-not (Test-Path $InstallDir)) 'the install folder is gone once the stranger file is removed'
 
 # Do not leave anything on the runner when a check failed in the middle.
 if ($failures.Count -gt 0) {

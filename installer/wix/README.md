@@ -10,6 +10,7 @@ Phase 10, P4. A per-user `.msi` (no administrator) built with the WiX Toolset **
 
 What goes into the package: `ot.exe` (the single executable of P1, installed under this name), `ot-job-launcher.exe` (P2, next to it, where the adapter looks first), `LICENSE` and the third-party notices.
 The data folder (`%LOCALAPPDATA%\OTheater`) is not part of the package: install, upgrade and uninstall never touch it.
+What an update leaves in the install folder (the journal `update-state.json`, its `.tmp`, `update-apply.log`, `previous\ot.exe`, `staging\ot.exe` and the two proofs in `staging\`) is removed by the uninstall (`RemoveFile`, core WiX, one name each; component `OtUpdateLeftovers`), so the folder can go; a file of the user in it stays, and the folder with it (N303).
 
 Build on a Windows machine, after `pnpm build`, the SEA (`node tools/release/dist/cli.js build --target win32-x64 --out dist/sea`) and `cargo build --release --locked` in `native/job-launcher`:
 
