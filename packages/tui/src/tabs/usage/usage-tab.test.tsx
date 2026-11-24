@@ -2,6 +2,7 @@
 import { ApiRequestError } from '@otheater/client';
 import {
   API_ROUTES,
+  LAYOUT_VERSION,
   type ApiBudget,
   type ApiUsage,
   type ApiUsageTotals,
@@ -71,7 +72,7 @@ const BUDGET: ApiBudget = {
 
 function prefs(): string {
   const base: LayoutPreferences = {
-    version: 1,
+    version: LAYOUT_VERSION,
     sidebarCollapsed: false,
     chatWidth: 56,
     openTabs: ['usage'],

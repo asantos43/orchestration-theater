@@ -52,7 +52,7 @@ import {
   useQuotaRows,
   useScenarioRows,
 } from './data.js';
-import { computeGeometry, steppedChatWidth } from './geometry.js';
+import { computeGeometry, steppedChatWidth, steppedSidebarWidth } from './geometry.js';
 import { Header } from './header.js';
 import { initialRepo, NewProjectPrompt } from './new-project.js';
 import { HelpOverlay, PaletteOverlay, TabPickerOverlay } from './overlays.js';
@@ -84,7 +84,7 @@ import { TOKEN } from './theme.js';
 import { useUiTranslate } from './use-ui-translate.js';
 
 /** The areas the focus walks, in the order Tab takes it. */
-type Focus = 'chat' | 'edge' | 'panel' | 'sidebar';
+type Focus = 'chat' | 'edge' | 'panel' | 'sidebar' | 'sidebarEdge';
 type Overlay = 'palette' | 'help' | 'picker';
 
 const FOCUS_CONTEXT: Readonly<Record<Focus, UiContext>> = {
@@ -92,6 +92,7 @@ const FOCUS_CONTEXT: Readonly<Record<Focus, UiContext>> = {
   edge: 'edge',
   panel: 'panel',
   sidebar: 'sidebar',
+  sidebarEdge: 'sidebarEdge',
 };
 
 /** What the overlay lets through of the global keys: the palette (to toggle it) and the way out. */
@@ -203,8 +204,11 @@ function ShellBody(props: ShellProps): ReactNode {
     sidebarCollapsed: preferences.sidebarCollapsed,
     panelOpen: isPanelOpen(preferences),
     chatWidth: preferences.chatWidth,
+    sidebarWidth: preferences.sidebarWidth,
     tuning,
   });
+  // `ui.tuiLayout.sidebarEdge` (N277): `tab` has the border as a stop of Tab and a drag, `mouse` the drag only, `off` neither.
+  const sidebarAdjustable = tuning.sidebarEdge !== 'off' && geometry.sidebar.mode === 'expanded';
   const folded = useMemo(() => foldedSections(preferences), [preferences]);
 
   // The focus falls back to the chat when the area it was on is not on screen.
@@ -213,8 +217,9 @@ function ShellBody(props: ShellProps): ReactNode {
       'chat',
       ...(geometry.panel === undefined ? [] : (['edge', 'panel'] as const)),
       ...(geometry.sidebar.mode === 'hidden' ? [] : (['sidebar'] as const)),
+      ...(sidebarAdjustable && tuning.sidebarEdge === 'tab' ? (['sidebarEdge'] as const) : []),
     ],
-    [geometry.panel, geometry.sidebar.mode],
+    [geometry.panel, geometry.sidebar.mode, sidebarAdjustable, tuning.sidebarEdge],
   );
   const focus: Focus = order.includes(focusState) ? focusState : 'chat';
 
@@ -384,6 +389,19 @@ function ShellBody(props: ShellProps): ReactNode {
     layoutStore.setChatWidth(width);
   };
 
+  const widenSidebarTo = (width: number): void => {
+    if (!sidebarAdjustable) return;
+    layoutStore.setSidebarWidth(width);
+  };
+
+  const widenSidebar = (cells: number): void => {
+    if (!sidebarAdjustable) return;
+    // From the width the store has now (or the setting it starts from): two presses in the same tick both count.
+    layoutStore.setSidebarWidth(
+      steppedSidebarWidth(geometry, cells, layoutStore.layout.sidebarWidth ?? tuning.sidebarWidth),
+    );
+  };
+
   const widen = (cells: number): void => {
     if (geometry.panel === undefined) return;
     // From the width the store has now: two presses in the same tick (key repeat) both count.
@@ -438,6 +456,16 @@ function ShellBody(props: ShellProps): ReactNode {
     widenTo(steppedChatWidth(geometry, drag.dx, chatDragFrom.current));
   };
 
+  const sidebarDragFrom = useRef(0);
+  const dragSidebarEdge = (drag: DragInfo): void => {
+    if (drag.phase === 'start') {
+      sidebarDragFrom.current = geometry.sidebar.width;
+      if (tuning.sidebarEdge === 'tab') setFocus('sidebarEdge');
+      return;
+    }
+    widenSidebarTo(steppedSidebarWidth(geometry, drag.dx, sidebarDragFrom.current));
+  };
+
   const copyNotice = useCallback(
     (outcome: CopyOutcome): void => {
       if (outcome.ok) {
@@ -476,6 +504,12 @@ function ShellBody(props: ShellProps): ReactNode {
       case 'layout.widenChat':
       case 'edge.widen':
         widen(tuning.chatStep);
+        return;
+      case 'sidebarEdge.narrow':
+        widenSidebar(-tuning.chatStep);
+        return;
+      case 'sidebarEdge.widen':
+        widenSidebar(tuning.chatStep);
         return;
       case 'layout.focusNext':
         moveFocus(1);
@@ -703,6 +737,14 @@ function ShellBody(props: ShellProps): ReactNode {
               onFocus={() => {
                 setFocus('sidebar');
               }}
+              resizable={sidebarAdjustable}
+              edgeFocused={focus === 'sidebarEdge'}
+              widthLabel={
+                focus === 'sidebarEdge'
+                  ? t('layout.sidebar.widthLabel', { cols: geometry.sidebar.width })
+                  : undefined
+              }
+              onResizeDrag={dragSidebarEdge}
               rows={scenarioRowsNow}
               finished={finished}
               quotas={quotas}

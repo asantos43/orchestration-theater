@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 import { afterEach, describe, expect, it } from 'vitest';
-import type { LayoutPreferences } from '@otheater/protocol';
+import { LAYOUT_VERSION, type LayoutPreferences } from '@otheater/protocol';
 import { cleanupApps, renderApp, waitFor, type RenderedApp } from './ink.test-support.js';
 import {
   fakeOnline,
@@ -41,7 +41,7 @@ const KITTY = {
 
 function prefs(change: Partial<LayoutPreferences>): string {
   const base: LayoutPreferences = {
-    version: 1,
+    version: LAYOUT_VERSION,
     sidebarCollapsed: false,
     chatWidth: 56,
     openTabs: ['overview'],

@@ -1517,12 +1517,13 @@ O patch fica, com a versão do Ink travada em 8.0.0: se a versão mudar, o patch
 | `ui.setup.readTimeoutMs` **[proposta]** | 5000 | inteiro de 100 a 60000: quanto a TUI espera o daemon dizer se precisa de primeira execução; passado o prazo, segue sem o assistente e avisa |
 | `ui.runtime.exitGraceMs` **[proposta]** | 2000 | inteiro de 0 a 60000: a folga que o processo da TUI espera pelo próprio fim, para o `layoutStore.flush()` do desmonte terminar, antes de forçar o `process.exit`; `0` sai na hora (PR #226 [S]) |
 | `ui.layout.store` | `daemon` | `daemon` (grava pela rota REST), `local` (arquivo `layout.tui.json` na pasta de configuração do cliente) |
-| `ui.tuiLayout.sidebarWidth` **[proposta]** | 30 | inteiro de 16 a 80 |
+| `ui.tuiLayout.sidebarWidth` **[proposta]** | 30 | inteiro de 16 a 80; a largura inicial da barra lateral: depois do primeiro ajuste vale a largura salva em `LayoutPreferences.sidebarWidth` (N277, 2026-11-22) |
 | `ui.tuiLayout.railWidth` **[proposta]** | 5 | inteiro de 3 a 16 |
 | `ui.tuiLayout.minChatWidth` e `minPanelWidth` **[proposta]** | 30 | inteiro de 20 a 200 |
 | `ui.tuiLayout.chatStep` **[proposta]** | 2 | inteiro de 1 a 20 |
 | `ui.tuiLayout.scrollStep` **[proposta]** | `half` | `page`, `half`, `line` |
 | `ui.tuiLayout.density` | `comfortable` | `comfortable` (margens e alinhamento do mockup: 1 coluna de margem dentro de cada moldura, seções do painel com linha em branco e recuo, abas e dicas nos lugares do mockup), `compact` (a tela sem margens, como era antes); lida na partida (N258, 2026-11-22) |
+| `ui.tuiLayout.sidebarEdge` | `tab` | como se ajusta a largura da barra lateral pela borda entre ela e o chat: `tab` (a borda é uma parada do Tab, ←/→ ajustam pelo passo `chatStep`, e o mouse arrasta), `mouse` (só o arrasto, sem parada no Tab) e `off` (largura fixa: sem arrasto e sem teclas); limites de 16 a 80 colunas sem tirar o mínimo do chat nem o do painel aberto; sem borda quando a barra é um trilho; a largura escolhida vai em `LayoutPreferences.sidebarWidth` (versão 2 do registro, migração só muda a versão); lida na partida (N277, 2026-11-22) |
 | `ui.input.paste.mode` **[proposta]** | `marker` | `marker`, `inline` |
 | `ui.input.paste.lines` e `paste.chars` **[proposta]** | 10 e 2.000 | inteiros |
 | `ui.input.dropPaths` **[proposta]** | `attach` | `attach`, `text` |
