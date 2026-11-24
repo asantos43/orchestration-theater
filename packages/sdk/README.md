@@ -1,6 +1,6 @@
 # @otheater/sdk
 
-SDK interno do OTheater. Tem duas partes: as **suítes de conformidade dos adaptadores** (ponto de entrada `@otheater/sdk`, usadas pelos pacotes do monorepo) e o **kit para escrever plugins** (subpath `@otheater/sdk/plugin`, Fase 9, P9, decisão N240). Este README trata do kit de plugins. O código e os comentários estão em inglês; o texto é pt-BR.
+SDK interno do OTheater. Tem duas partes: as **suítes de conformidade dos adaptadores** (ponto de entrada `@otheater/sdk`, usadas pelos pacotes do monorepo) e o **kit para escrever plugins** (subpath `@otheater/sdk/plugin`, Fase 9, P9, decisão N240). Este README trata do kit de plugins; o guia de quem escreve um adaptador ou um plugin, passo a passo, é o [docs/25](../../docs/25-GUIA-DE-ADAPTADORES-E-PLUGINS.md). O código e os comentários estão em inglês; o texto é pt-BR.
 
 Legenda: **[V]** verificado localmente; **[proposta]** escolha do passo P9, ainda sem ok do dono.
 

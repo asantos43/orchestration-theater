@@ -23,6 +23,7 @@
     { "path": "packages/adapters/client-codex" },
     { "path": "packages/adapters/client-claude-code" },
     { "path": "examples/plugin-notes" },
+    { "path": "examples/adapter-clock" },
     { "path": "tools/verify" },
     { "path": "tools/eslint-rules" },
     { "path": "tools/bench" },
