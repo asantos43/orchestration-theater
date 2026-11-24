@@ -13,6 +13,7 @@ import {
   writeFile,
 } from 'node:fs/promises';
 import path from 'node:path';
+import { crashPoint } from '../chaos/crash-points.js';
 import {
   adapterLockEntryPath,
   type AdapterLock,
@@ -95,6 +96,11 @@ export interface InstallOptions {
   /** How long to wait for the lock another installer holds. Default 5 min. */
   readonly lockWaitMs?: number;
   /**
+   * When a lock file is taken over: `dead_owner` (default) also when the process that wrote it no
+   * longer exists, `stale_only` only after `lockStaleMs`.
+   */
+  readonly lockTakeover?: LockTakeover;
+  /**
    * Host names a download may be redirected to besides the registry's own (`clients.adapters.redirect_hosts`).
    * Default none.
    */
@@ -119,6 +125,29 @@ export interface InstallResult {
 
 const MARKER = '.otheater-adapter.json';
 const LOCK_FILE = '.install.lock';
+
+/**
+ * The named points of the installation where the chaos tests kill the process (Phase 11, P6;
+ * docs/23). Each is one `crashPoint` call, free while no plan is armed. The kill during a download
+ * needs no point: the test cuts the process while the fake registry holds the body.
+ */
+export const INSTALL_CRASH_POINTS = {
+  /** The lock file is taken and nothing else was done. */
+  afterLock: 'adapter.after_lock',
+  /** One file of a tarball was written into the staging folder. `detail`: its path inside the package. */
+  afterFile: 'adapter.after_file',
+  /** Every package is extracted and the marker is not written. */
+  beforeMarker: 'adapter.before_marker',
+  /** The marker is written; the folder is still beside the target. */
+  afterMarker: 'adapter.after_marker',
+  /** The folder that was at the target (if any) is moved aside and the new one is not in place. */
+  beforeSwap: 'adapter.before_swap',
+  /** The new folder is the target; the old one is still aside. */
+  afterSwap: 'adapter.after_swap',
+} as const;
+
+/** `clients.adapters.lock_takeover` [proposta, not in the configuration yet]: who may take over a lock file left by a dead installer. */
+export type LockTakeover = 'dead_owner' | 'stale_only';
 
 /** `<adapters>/<id>/<version>`. */
 export function adapterDir(adaptersDir: string, lock: AdapterLock): string {
@@ -355,6 +384,7 @@ async function extract(
     }
     await mkdir(path.dirname(target), { recursive: true });
     await writeFile(target, file.data, { mode: file.executable ? 0o755 : 0o644 });
+    await crashPoint(INSTALL_CRASH_POINTS.afterFile, file.path);
   }
 }
 
@@ -381,6 +411,24 @@ async function pool<T>(
   if (failure !== undefined) throw failure;
 }
 
+/**
+ * True when the lock file names a process that no longer exists: an installer that was killed leaves
+ * its lock behind, and nobody would otherwise take it over before `lockStaleMs`. A file that does not
+ * name a pid yet (the owner is writing it) and a process of another user (`EPERM`) count as alive. A
+ * pid that the system gave to another program since counts as alive too: the lock is then taken over
+ * by age, as before.
+ */
+async function ownerIsGone(lockPath: string): Promise<boolean> {
+  const pid = Number.parseInt((await readFile(lockPath, 'utf8')).split(' ')[0] ?? '', 10);
+  if (!Number.isInteger(pid) || pid < 1) return false;
+  try {
+    process.kill(pid, 0);
+    return false;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === 'ESRCH';
+  }
+}
+
 /** Takes `<id>/.install.lock` (created exclusively); another installer's lock is waited for, a stale one taken over. */
 async function withLock<T>(
   lockPath: string,
@@ -398,6 +446,7 @@ async function withLock<T>(
       );
       await handle.writeFile(`${String(process.pid)} ${new Date().toISOString()}\n`);
       await handle.close();
+      await crashPoint(INSTALL_CRASH_POINTS.afterLock);
       break;
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'EEXIST') {
@@ -409,6 +458,13 @@ async function withLock<T>(
     }
     try {
       if (Date.now() - (await stat(lockPath)).mtimeMs > stale) {
+        await unlink(lockPath);
+        continue;
+      }
+      if (
+        (options.lockTakeover ?? 'dead_owner') === 'dead_owner' &&
+        (await ownerIsGone(lockPath))
+      ) {
         await unlink(lockPath);
         continue;
       }
@@ -460,16 +516,19 @@ async function build(options: InstallOptions, registry: string, dir: string): Pr
     ) {
       throw new AdapterInstallError('entry_missing', `${lock.package} has no ${lock.entry}`);
     }
+    await crashPoint(INSTALL_CRASH_POINTS.beforeMarker);
     await writeFile(
       path.join(staging, MARKER),
       `${JSON.stringify({ schema: 1, id: lock.id, version: lock.version, digest: lockDigest(lock), installedAt: new Date().toISOString() }, null, 2)}\n`,
     );
+    await crashPoint(INSTALL_CRASH_POINTS.afterMarker);
     // An incomplete folder (no marker) is moved aside, then the new one takes its place in one rename.
     const aside = `${dir}.old-${String(process.pid)}`;
     const existed = await rename(dir, aside).then(
       () => true,
       () => false,
     );
+    await crashPoint(INSTALL_CRASH_POINTS.beforeSwap);
     try {
       await rename(staging, dir);
     } catch (error) {
@@ -479,6 +538,7 @@ async function build(options: InstallOptions, registry: string, dir: string): Pr
         `cannot move the installation into place: ${(error as Error).message}`,
       );
     }
+    await crashPoint(INSTALL_CRASH_POINTS.afterSwap);
     if (existed) await rm(aside, { recursive: true, force: true });
   } finally {
     await rm(staging, { recursive: true, force: true });

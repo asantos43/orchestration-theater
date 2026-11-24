@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 import type { Clock } from '@otheater/core';
 import type { UpdateReason } from '@otheater/protocol';
+import { crashPoint } from '../../chaos/crash-points.js';
 import type { Logger } from '../../logger.js';
 import type { HealthProbe, HealthReading } from './health.js';
 import { FINAL_STEPS, readJournal, writeJournal, type UpdateJournal } from './journal.js';
@@ -58,6 +59,22 @@ export type ApplyOutcome =
   | { readonly kind: 'rolled_back'; readonly reason: UpdateReason }
   | { readonly kind: 'failed'; readonly reason: UpdateReason };
 
+/**
+ * The named points of the applier where the chaos tests kill it (Phase 11, P6; docs/23). Each is one
+ * `crashPoint` call, free while no plan is armed; `detail` is the step of the journal. The points of
+ * the file moves are in `swap.ts` ({@link SWAP_CRASH_POINTS}).
+ */
+export const APPLY_CRASH_POINTS = {
+  /** The step is decided, the journal still says the one before. `detail`: the step about to be written. */
+  beforeJournal: 'apply.before_journal',
+  /** The journal says the step and nothing of it has run yet. `detail`: the step. */
+  afterJournal: 'apply.after_journal',
+  /** The daemon was started and the journal still says `starting`. */
+  afterStartDaemon: 'apply.after_start_daemon',
+  /** The new daemon held and the journal still says `checking`; the version is not committed yet. */
+  beforeCommit: 'apply.before_commit',
+} as const;
+
 const OLD_EXIT_TIMEOUT_MS = 60_000;
 const POLL_MS = 500;
 
@@ -68,7 +85,9 @@ async function save(
   patch: Partial<UpdateJournal>,
 ): Promise<UpdateJournal> {
   const next = { ...journal, ...patch, updatedAt: ports.clock.now() };
+  await crashPoint(APPLY_CRASH_POINTS.beforeJournal, next.step);
   await writeJournal(layout.journal, next);
+  await crashPoint(APPLY_CRASH_POINTS.afterJournal, next.step);
   return next;
 }
 
@@ -236,6 +255,7 @@ async function startAndWatch(
     ports.logger.error({ detail: started.detail }, 'update: the new daemon could not be started');
     return await fail(layout, ports, journal, 'not_started', restart);
   }
+  await crashPoint(APPLY_CRASH_POINTS.afterStartDaemon);
   journal = await save(layout, ports, journal, { step: 'checking' });
   const seen = await watch(ports, journal);
   if (!seen.ok) return await fail(layout, ports, journal, seen.reason, restart);
@@ -247,6 +267,7 @@ async function commit(
   ports: ApplyPorts,
   journal: UpdateJournal,
 ): Promise<ApplyOutcome> {
+  await crashPoint(APPLY_CRASH_POINTS.beforeCommit);
   // The journal first: while it still asks for something, the proof it rests on is beside it (P8a).
   await save(layout, ports, journal, { step: 'committed', reason: null, reported: false });
   await clearStaging(layout);
