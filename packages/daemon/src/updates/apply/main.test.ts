@@ -3,9 +3,10 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { retryFs, type FsRetryPolicy } from './fs-retry.js';
 import { makeKeys } from '../release-fixture.js';
 import { parsePublicKey } from '../verify.js';
-import { writeJournal, type UpdateJournal } from './journal.js';
+import { JournalSchema, readJournal, writeJournal, type UpdateJournal } from './journal.js';
 import { layoutOf } from './layout.js';
 import { APPLY_EXIT_USAGE, runApplyUpdate } from './main.js';
 import { realApplyPorts } from './real-ports.js';
@@ -111,6 +112,106 @@ describe('the backup the journal names', () => {
     // Inside, the confinement lets it through (and the restore itself finds no backup there).
     await expect(ports.restoreBackup(join(dataDir, 'backups', 'otheater-x'))).rejects.not.toThrow(
       /not inside the backup folder/,
+    );
+  });
+});
+
+describe('the file-call repetition the journal asks for (N305)', () => {
+  const logger = { info: () => undefined, warn: () => undefined, error: () => undefined };
+  const refusal = (): NodeJS.ErrnoException =>
+    Object.assign(new Error('EPERM: operation not permitted'), { code: 'EPERM' });
+
+  /** Runs a call that is always refused, on a clock that only moves when the policy sleeps. */
+  async function refusedCalls(
+    policy: FsRetryPolicy | undefined,
+    platform: NodeJS.Platform,
+  ): Promise<{ calls: number; waitedMs: number }> {
+    let at = 0;
+    let calls = 0;
+    await retryFs(
+      'rename',
+      () => {
+        calls += 1;
+        return Promise.reject(refusal());
+      },
+      {
+        ...policy,
+        platform,
+        now: () => at,
+        sleep: (ms) => {
+          at += ms;
+          return Promise.resolve();
+        },
+      },
+    ).catch(() => undefined);
+    return { calls, waitedMs: at };
+  }
+
+  async function portsFor(over: Partial<UpdateJournal>) {
+    const { dir, layout } = await install();
+    return realApplyPorts({
+      layout,
+      journal: journalOf(layout.exe, join(dir, 'data'), over),
+      logger,
+    });
+  }
+
+  it('off does not repeat, not even on Windows', async () => {
+    const ports = await portsFor({ fsRetry: 'off' });
+    expect(await refusedCalls(ports.fsRetry, 'win32')).toEqual({ calls: 1, waitedMs: 0 });
+  });
+
+  it('always repeats on a system that is not Windows, until the limit of the journal', async () => {
+    const ports = await portsFor({ fsRetry: 'always', fsRetryTimeoutMs: 2000 });
+    const { calls, waitedMs } = await refusedCalls(ports.fsRetry, 'linux');
+    expect(calls).toBeGreaterThan(3);
+    expect(waitedMs).toBeGreaterThanOrEqual(2000);
+    expect(waitedMs).toBeLessThan(2000 + 500 + 1);
+  });
+
+  it('auto decides by the system', async () => {
+    const ports = await portsFor({ fsRetry: 'auto', fsRetryTimeoutMs: 1000 });
+    expect((await refusedCalls(ports.fsRetry, 'linux')).calls).toBe(1);
+    expect((await refusedCalls(ports.fsRetry, 'darwin')).calls).toBe(1);
+    expect((await refusedCalls(ports.fsRetry, 'win32')).calls).toBeGreaterThan(3);
+  });
+
+  it('the time of the journal is the limit the applier waits', async () => {
+    const short = await portsFor({ fsRetry: 'always', fsRetryTimeoutMs: 1000 });
+    const long = await portsFor({ fsRetry: 'always', fsRetryTimeoutMs: 30_000 });
+    const a = await refusedCalls(short.fsRetry, 'linux');
+    const b = await refusedCalls(long.fsRetry, 'linux');
+    expect(a.waitedMs).toBeGreaterThanOrEqual(1000);
+    expect(a.waitedMs).toBeLessThan(1501);
+    expect(b.waitedMs).toBeGreaterThanOrEqual(30_000);
+    expect(b.waitedMs).toBeLessThan(30_501);
+  });
+
+  it('a journal from before the keys (neither field) uses auto and 15 s', async () => {
+    const { dir, layout } = await install();
+    const old: Record<string, unknown> = { ...journalOf(layout.exe, join(dir, 'data')) };
+    delete old.fsRetry;
+    delete old.fsRetryTimeoutMs;
+    await writeFile(layout.journal, JSON.stringify(old));
+    const reading = await readJournal(layout.journal);
+    if (reading.kind !== 'ok') throw new Error('the old journal was not read');
+    const { journal } = reading;
+    expect(journal.fsRetry).toBeUndefined();
+    expect(journal.fsRetryTimeoutMs).toBeUndefined();
+    const ports = realApplyPorts({ layout, journal, logger });
+    expect((await refusedCalls(ports.fsRetry, 'linux')).calls).toBe(1);
+    const onWindows = await refusedCalls(ports.fsRetry, 'win32');
+    expect(onWindows.calls).toBeGreaterThan(3);
+    expect(onWindows.waitedMs).toBeGreaterThanOrEqual(15_000);
+    expect(onWindows.waitedMs).toBeLessThan(15_501);
+  });
+
+  it('the journal refuses a mode that does not exist and a time of zero', () => {
+    const base = journalOf('/x/ot', '/x/data');
+    expect(JournalSchema.safeParse({ ...base, fsRetry: 'sometimes' }).success).toBe(false);
+    expect(JournalSchema.safeParse({ ...base, fsRetryTimeoutMs: 0 }).success).toBe(false);
+    expect(JournalSchema.safeParse({ ...base, fsRetry: 'off', fsRetryTimeoutMs: 1 }).success).toBe(
+      true,
     );
   });
 });
