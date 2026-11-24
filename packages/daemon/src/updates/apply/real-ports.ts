@@ -4,7 +4,7 @@ import { isAbsolute, relative, resolve } from 'node:path';
 import { composeClock, composeStoreFileTools, telemetryPath } from '../../compose.js';
 import { readDiscovery } from '../../api/files.js';
 import { loadConfig } from '../../config.js';
-import { InstanceLock } from '../../instance-lock.js';
+import { InstanceLock, readLockInfo } from '../../instance-lock.js';
 import { type Logger } from '../../logger.js';
 import { dataPaths } from '../../paths.js';
 import { restoreBackup } from '../../recovery/restore.js';
@@ -40,7 +40,16 @@ export interface RealPortsInput {
   /** The service of this platform; the default is the real one. */
   readonly service?: ServiceManager | undefined;
   readonly env?: NodeJS.ProcessEnv | undefined;
+  /**
+   * How long the rollback looks for a daemon that holds the instance lock without having published
+   * `api.json` (a migration that outlasts the health timeout). Default {@link LOCK_HOLDER_WAIT_MS}.
+   * [proposta] key `updates.apply.lock_holder_wait_ms`.
+   */
+  readonly lockHolderWaitMs?: number | undefined;
 }
+
+/** The default of `lockHolderWaitMs`. */
+export const LOCK_HOLDER_WAIT_MS = 10_000;
 
 /**
  * The effects of the applier as they are on a real machine (Phase 10, P8): the clock, the daemon
@@ -76,6 +85,53 @@ export function realApplyPorts(input: RealPortsInput): ApplyPorts {
     return true;
   };
 
+  const endProcess = async (pid: number): Promise<void> => {
+    try {
+      process.kill(pid, 'SIGTERM');
+    } catch {
+      return;
+    }
+    if (await waitGone(pid, 15_000)) return;
+    try {
+      process.kill(pid, 'SIGKILL');
+    } catch {
+      // It ended in between.
+    }
+    await waitGone(pid, 5000);
+  };
+  const endLockHolder = async (): Promise<void> => {
+    const deadline = Date.now() + (input.lockHolderWaitMs ?? LOCK_HOLDER_WAIT_MS);
+    let ended = 0;
+    for (;;) {
+      try {
+        const lock = await InstanceLock.acquire(paths.lock, paths.lockInfo);
+        await lock.release();
+        return;
+      } catch {
+        // Held: by whom?
+      }
+      const holder = await readLockInfo(paths.lockInfo);
+      if (
+        ended < 3 &&
+        holder !== undefined &&
+        holder.pid !== process.pid &&
+        processAlive(holder.pid)
+      ) {
+        ended += 1;
+        await endProcess(holder.pid);
+        continue;
+      }
+      if (Date.now() >= deadline) {
+        input.logger.warn(
+          { lock: paths.lock },
+          'update: the instance lock is still held; the backup may not be restored',
+        );
+        return;
+      }
+      await REAL_SLEEP(200);
+    }
+  };
+
   return {
     clock: { now: () => Date.now(), sleep: (ms) => REAL_SLEEP(ms) },
     isAlive: processAlive,
@@ -101,19 +157,10 @@ export function realApplyPorts(input: RealPortsInput): ApplyPorts {
         // Not installed, or not running through it: the pid below is the fallback.
       }
       const pid = await livePid();
-      if (pid === undefined) return;
-      try {
-        process.kill(pid, 'SIGTERM');
-      } catch {
-        return;
-      }
-      if (await waitGone(pid, 15_000)) return;
-      try {
-        process.kill(pid, 'SIGKILL');
-      } catch {
-        // It ended in between.
-      }
-      await waitGone(pid, 5000);
+      if (pid !== undefined) await endProcess(pid);
+      // A daemon that took the lock and has not published `api.json` yet is not found by the
+      // discovery file, and the restore of the backup needs the lock (Phase 11, P6).
+      await endLockHolder();
     },
     probe: createHealthProbe({ dataDir: journal.dataDir }),
     restoreBackup: async (backupDir) => {
