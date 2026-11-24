@@ -24,7 +24,7 @@ import {
   QUOTA_SIGNAL_METHOD,
   type QuotaExhaustedData,
   type QuotaSignalParams,
-} from '@otheater/protocol';
+} from '@otheater/protocol/quota';
 import { z } from 'zod';
 import { playEscape } from './escape-scripts.js';
 import {
