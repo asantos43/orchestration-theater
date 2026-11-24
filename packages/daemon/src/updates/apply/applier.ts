@@ -87,6 +87,7 @@ async function save(
   const next = { ...journal, ...patch, updatedAt: ports.clock.now() };
   await crashPoint(APPLY_CRASH_POINTS.beforeJournal, next.step);
   await writeJournal(layout.journal, next);
+  ports.logger.info({ step: next.step, reason: next.reason }, 'update: journal');
   await crashPoint(APPLY_CRASH_POINTS.afterJournal, next.step);
   return next;
 }

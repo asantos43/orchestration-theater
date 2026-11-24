@@ -675,6 +675,9 @@ async function rollbackCase(r: Run): Promise<string> {
     },
     1000,
   );
+  // The daemon starts but answers another version than the manifest's: the health reads `down`, so the reason is `not_started` on every system (anything else is a swap that failed).
+  if (rolled.reason !== 'not_started')
+    throw new Error(`the rollback says the reason ${String(rolled.reason)}, not not_started`);
   if (rolled.backup === null)
     throw new Error('no backup was taken before the swap (manifest schemas above the daemon)');
   const status = await until(
