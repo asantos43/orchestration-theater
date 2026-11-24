@@ -123,6 +123,7 @@ describe('parseConfig', () => {
       chatStep: 2,
       scrollStep: 'half',
       density: 'comfortable',
+      sidebarEdge: 'tab',
     });
   });
 
