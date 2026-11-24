@@ -1982,6 +1982,50 @@ describe('updates, the application (Phase 10, P8) [proposta]', () => {
   });
 });
 
+describe('updates.apply, the repetition of a refused file call (N305) [proposta]', () => {
+  it('takes each mode of fs_retry and a timeout between 1s and 5m', () => {
+    for (const mode of ['auto', 'always', 'off']) {
+      const text = `updates:\n  apply:\n    fs_retry: ${mode}\n`;
+      expect(parseConfig(text).updates.apply).toEqual({
+        fs_retry: mode,
+        fs_retry_timeout: 15_000,
+      });
+    }
+    for (const [text, ms] of [
+      ['1s', 1000],
+      ['45s', 45_000],
+      ['2m', 120_000],
+      ['5m', 300_000],
+    ] as const) {
+      const config = parseConfig(`updates:\n  apply:\n    fs_retry_timeout: ${text}\n`);
+      expect(config.updates.apply).toEqual({ fs_retry: 'auto', fs_retry_timeout: ms });
+    }
+  });
+
+  it('leaves the flat keys of updates as they are', () => {
+    const config = parseConfig('updates:\n  rollback: off\n  apply:\n    fs_retry: off\n');
+    expect(config.updates).toMatchObject({ rollback: 'off', apply: { fs_retry: 'off' } });
+    expect(parseConfig('updates:\n  apply: {}\n').updates.apply.fs_retry_timeout).toBe(15_000);
+  });
+
+  it('refuses what is not a mode, a timeout outside 1s to 5m and an unknown key', () => {
+    for (const bad of [
+      'updates:\n  apply:\n    fs_retry: sometimes\n',
+      'updates:\n  apply:\n    fs_retry: true\n',
+      'updates:\n  apply:\n    fs_retry_timeout: 999ms\n',
+      'updates:\n  apply:\n    fs_retry_timeout: 0s\n',
+      'updates:\n  apply:\n    fs_retry_timeout: 301s\n',
+      'updates:\n  apply:\n    fs_retry_timeout: 1h\n',
+      'updates:\n  apply:\n    fs_retry_timeout: off\n',
+      'updates:\n  apply:\n    fs_retry_timeout: forever\n',
+      'updates:\n  apply:\n    retries: 3\n',
+      'updates:\n  apply: auto\n',
+    ]) {
+      expect(() => parseConfig(bad), bad).toThrow(InvalidInput);
+    }
+  });
+});
+
 describe('updates (Phase 10, P7) [proposta]', () => {
   it('has the defaults: auto, stable, GitHub, every 6 hours', () => {
     expect(parseConfig('').updates).toEqual({
@@ -1995,6 +2039,7 @@ describe('updates (Phase 10, P7) [proposta]', () => {
       backup_before_migration: true,
       manifest_expiry: 'enforce',
       health_timeout: 60_000,
+      apply: { fs_retry: 'auto', fs_retry_timeout: 15_000 },
     });
   });
 
