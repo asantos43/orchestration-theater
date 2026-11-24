@@ -271,7 +271,7 @@ backup:
   when: manual
 security:
   unenforced: warn
-${real === undefined ? 'limits:\n  submit_retries: 1\n' : ''}project:
+${real === undefined ? 'limits:\n  submit_retries: 1\n  attempts_per_demand: 1\n' : ''}project:
   conventions: detect
 orchestration:
   executor:

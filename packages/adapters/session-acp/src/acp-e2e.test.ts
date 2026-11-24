@@ -1,223 +1,38 @@
 // SPDX-License-Identifier: MPL-2.0
 import { existsSync } from 'node:fs';
-import { mkdtemp, readFile, stat } from 'node:fs/promises';
+import { mkdtemp, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import {
   isOTheaterError,
   QuotaExhausted,
   Transient,
   type AgentSession,
-  type ContentBlock,
   type NormalizedUpdate,
-  type Profile,
-  type ProcessModel,
-  type RolePolicy,
   type SharedCancelMode,
 } from '@otheater/core';
 import { FakeClientAdapter } from '@otheater/core/testing';
-import {
-  describeAgentSessionConformance,
-  describeClientAdapterConformance,
-  type AgentSessionHarness,
-  type ClientAdapterHarness,
-} from '@otheater/sdk';
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { AcpTransport } from './acp-transport.js';
+import {
+  allLaunchers,
+  checkNothingOutlives,
+  FAKE_AGENT_CLI,
+  policy,
+  profile,
+  prompts,
+  rig,
+  script,
+  tempDirs,
+  text,
+  type Rig,
+} from './testing/acp-e2e-rig.test-support.js';
 import { NodeProcessLauncher } from './testing/node-process-launcher.js';
 import { removeDir } from './testing/remove-dir.js';
 
-// End to end: FakeClientAdapter + AcpTransport + the real fake agent (`@otheater/fake-agent`) as a
-// child process, over ACP on its stdio. The client is the compiled `dist/cli.js`, so `pnpm build`
-// has to run first (the root `pnpm check` does).
+// End to end over ACP with the real fake agent: see `testing/acp-e2e-rig.test-support.ts`.
 
-const FAKE_AGENT_CLI = fileURLToPath(new URL('../../../fake-agent/dist/cli.js', import.meta.url));
-
-const profile: Profile = { client: 'fake', profile: 'e2e', id: 'fake/e2e', dir: '/profiles/e2e' };
-const policy: RolePolicy = {
-  nativeTools: ['read'],
-  nativeShell: 'none',
-  mcpServers: [],
-  mcpTools: {},
-  onAsk: 'reject',
-  bypass: 'forbidden',
-  writeScope: 'worktree',
-  network: { allow: [] },
-};
-
-const script = (name: string, options = '', text = ''): readonly ContentBlock[] => [
-  { type: 'text', text: `#script:${name}${options === '' ? '' : ` ${options}`}\n${text}` },
-];
-
-const prompts = {
-  echo: (text: string) => script('echo', '', text),
-  hang: script('hang'),
-  deaf: script('deaf'),
-  fail: script('fail'),
-  quota: script('quota-signal'),
-};
-
-const tempDirs: string[] = [];
-const allLaunchers: NodeProcessLauncher[] = [];
-
-interface Rig {
-  readonly launcher: NodeProcessLauncher;
-  readonly adapter: FakeClientAdapter;
-  readonly via: AcpTransport;
-  readonly cwd: string;
-  readonly alive: () => number;
-  readonly dispose: () => Promise<void>;
-}
-
-async function rig(
-  processModel: ProcessModel = 'process-per-session',
-  sharedCancel?: SharedCancelMode,
-  baseEnv: Record<string, string> = {},
-): Promise<Rig> {
-  const cwd = await mkdtemp(join(tmpdir(), 'otheater-acp-e2e-'));
-  tempDirs.push(cwd);
-  const launcher = new NodeProcessLauncher();
-  allLaunchers.push(launcher);
-  const adapter = new FakeClientAdapter({
-    launcher,
-    baseEnv,
-    adapterVersion: '1.0.0',
-    command: { cmd: process.execPath, args: [FAKE_AGENT_CLI] },
-    processModel,
-    ...(sharedCancel === undefined ? {} : { sharedCancel }),
-  });
-  const via = new AcpTransport({ cancelGraceMs: 300, killGraceMs: 1000, startTimeoutMs: 10_000 });
-  return {
-    launcher,
-    adapter,
-    via,
-    cwd,
-    alive: () => launcher.aliveGroups(),
-    dispose: async () => {
-      // Whatever a test left running is ended by pid: the processes of this rig only.
-      await launcher.killAll();
-      await removeDir(cwd);
-    },
-  };
-}
-
-const text = (update: NormalizedUpdate): string =>
-  update.kind === 'agent_message_chunk' && update.content.type === 'text'
-    ? update.content.text
-    : '';
-
-beforeAll(() => {
-  if (!existsSync(FAKE_AGENT_CLI)) {
-    throw new Error(`${FAKE_AGENT_CLI} does not exist: run "pnpm build" before the tests`);
-  }
-});
-
-afterAll(async () => {
-  // Nothing may outlive the tests: no process of any launcher, no temp folder.
-  expect(allLaunchers.map((launcher) => launcher.aliveGroups())).toEqual(allLaunchers.map(() => 0));
-  for (const dir of tempDirs) {
-    await expect(stat(dir)).rejects.toMatchObject({ code: 'ENOENT' });
-  }
-});
-
-describeAgentSessionConformance('AcpTransport + fake-agent', async () => {
-  const r = await rig();
-  let current: AgentSession = await r.adapter.openSession(profile, policy, r.cwd, r.via);
-  const harness: AgentSessionHarness = {
-    get session() {
-      return current;
-    },
-    prompts,
-    processesAlive: r.alive,
-    config: {
-      valid: { id: 'model', value: 'fake-model-2' },
-      invalidValue: { id: 'model', value: 'no-such-model' },
-      unknownId: 'no-such-option',
-    },
-    reload: async () => {
-      current = await r.adapter.loadSession(profile, policy, r.cwd, current.sessionId, r.via);
-      return current;
-    },
-    crash: () => r.launcher.killAll(),
-    dispose: r.dispose,
-  };
-  return harness;
-});
-
-describeClientAdapterConformance('FakeClientAdapter + AcpTransport + fake-agent', async () => {
-  const r = await rig();
-  const edited = join(r.cwd, 'out.txt');
-  const harness: ClientAdapterHarness = {
-    adapter: r.adapter,
-    via: r.via,
-    profile,
-    policy,
-    cwd: r.cwd,
-    prompts,
-    permission: {
-      prompt: script('edit-file', '{"path":"out.txt"}'),
-      granted: () => existsSync(edited),
-    },
-    processesAlive: r.alive,
-    dispose: r.dispose,
-  };
-  return harness;
-});
-
-describeAgentSessionConformance('AcpTransport + fake-agent, multi-session', async () => {
-  const r = await rig('multi-session');
-  let current: AgentSession = await r.adapter.openSession(profile, policy, r.cwd, r.via);
-  const harness: AgentSessionHarness = {
-    get session() {
-      return current;
-    },
-    prompts,
-    processesAlive: r.alive,
-    rootProcessesAlive: r.alive,
-    config: {
-      valid: { id: 'model', value: 'fake-model-2' },
-      invalidValue: { id: 'model', value: 'no-such-model' },
-      unknownId: 'no-such-option',
-    },
-    reload: async () => {
-      current = await r.adapter.loadSession(profile, policy, r.cwd, current.sessionId, r.via);
-      return current;
-    },
-    sibling: () => r.adapter.openSession(profile, policy, r.cwd, r.via),
-    crash: () => r.launcher.killAll(),
-    dispose: r.dispose,
-  };
-  return harness;
-});
-
-for (const mode of ['escalate', 'always_kill', 'release'] as const) {
-  describeClientAdapterConformance(
-    `FakeClientAdapter + AcpTransport + fake-agent, multi-session, shared_cancel ${mode}`,
-    async () => {
-      const r = await rig('multi-session', mode);
-      const edited = join(r.cwd, 'out.txt');
-      const harness: ClientAdapterHarness = {
-        adapter: r.adapter,
-        via: r.via,
-        profile,
-        policy,
-        cwd: r.cwd,
-        prompts,
-        sharedCancel: mode,
-        permission: {
-          prompt: script('edit-file', '{"path":"out.txt"}'),
-          granted: () => existsSync(edited),
-        },
-        processesAlive: r.alive,
-        rootProcessesAlive: r.alive,
-        crash: () => r.launcher.killAll(),
-        dispose: r.dispose,
-      };
-      return harness;
-    },
-  );
-}
+checkNothingOutlives();
 
 describe('several sessions on one fake agent process, end to end', () => {
   const cleanup: Rig[] = [];

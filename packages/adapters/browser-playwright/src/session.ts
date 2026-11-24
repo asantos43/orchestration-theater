@@ -48,6 +48,8 @@ export const DEFAULT_MIN_FREE_MEMORY_BYTES = 1024 * 1024 * 1024;
 export const DEFAULT_MAX_INSTANCES = 2;
 export const DEFAULT_TIMEOUT_MS = 30_000;
 export const DEFAULT_LAUNCH_TIMEOUT_MS = 30_000;
+/** The longest one part of a read (the text of the page, a frame of its snapshot) waits. */
+const READ_WAIT_MS = 5000;
 /** Popups of one scenario that may be open at once; one more is closed at once. */
 const MAX_PAGES_PER_SCENARIO = 8;
 /** After a navigation was refused the next one may race the error page (measured: ~300 ms). */
@@ -190,12 +192,15 @@ export class PlaywrightBrowserSession implements BrowserSession {
         target === undefined
           ? await page
               .locator('body')
-              .innerText({ timeout: Math.min(5000, timeout) })
+              .innerText({ timeout: Math.min(READ_WAIT_MS, timeout) })
               .catch(() => '')
           : await target.innerText({ timeout });
+      // The snapshot of the page waits for each frame until its timeout and then leaves the frame
+      // out: a frame that never loads (a `file:` the route aborted, a slow third party) would hold
+      // the read for the whole `timeout_ms`. The page itself is there already (`open` waited for it).
       const rawTree =
         target === undefined
-          ? await page.ariaSnapshot({ mode: 'ai', timeout })
+          ? await page.ariaSnapshot({ mode: 'ai', timeout: Math.min(READ_WAIT_MS, timeout) })
           : await target.ariaSnapshot({ mode: 'ai', timeout });
       const { tree } = await redactPasswordValues(rawTree, (ref) =>
         isPasswordField(page, ref, Math.min(2000, timeout)),
