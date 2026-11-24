@@ -18,6 +18,8 @@ describe('release.config.json', () => {
     expect(config.versionOverride).toBeNull();
     expect(config.notices).toBe('per_platform');
     expect(config.manifestValidityDays).toBe(365);
+    // Code signing is off in the repository: no account and no certificate exist (N247).
+    expect(config.signing).toEqual({ windows: 'off', macos: 'off' });
   });
 
   it('an empty object takes the defaults', () => {
@@ -34,7 +36,37 @@ describe('release.config.json', () => {
       versionOverride: '1.2.3-rc.1',
       notices: 'per_platform',
       manifestValidityDays: 365,
+      signing: { windows: 'off', macos: 'off' },
     });
+  });
+
+  it('takes the signing modes, each on its own, and a missing key is off', () => {
+    expect(parseReleaseConfig({ signing: {} }).signing).toEqual({ windows: 'off', macos: 'off' });
+    expect(parseReleaseConfig({ signing: { windows: 'signtool' } }).signing).toEqual({
+      windows: 'signtool',
+      macos: 'off',
+    });
+    expect(parseReleaseConfig({ signing: { macos: 'codesign' } }).signing).toEqual({
+      windows: 'off',
+      macos: 'codesign',
+    });
+  });
+
+  it('keeps the signing modes when the config is parsed again (the CLI spreads it)', () => {
+    const config = parseReleaseConfig({ signing: { windows: 'signtool', macos: 'codesign' } });
+    expect(parseReleaseConfig({ ...config, versionOverride: '1.2.3' }).signing).toEqual(
+      config.signing,
+    );
+  });
+
+  it.each([
+    ['a mode that does not exist for windows', { signing: { windows: 'codesign' } }],
+    ['a mode that does not exist for macos', { signing: { macos: 'signtool' } }],
+    ['a mode that is not text', { signing: { windows: true } }],
+    ['a signing key that is not a platform', { signing: { linux: 'off' } }],
+    ['a signing block that is not an object', { signing: 'off' }],
+  ])('rejects %s', (_name, raw) => {
+    expect(() => parseReleaseConfig(raw)).toThrow(ReleaseConfigError);
   });
 
   it('takes the manifest validity: days, or null for a manifest that never expires', () => {

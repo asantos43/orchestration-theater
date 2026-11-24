@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Hardened runtime entitlements for the macOS executable, used only by sign-macos in
+  .github/workflows/release.yml when `signing.macos` is `codesign` (P11, N247). [proposta] [N]: Node
+  runs JavaScript with a JIT, so the hardened runtime needs these three; they were NOT tested with a
+  real Developer ID certificate (none exists). Apple documents them in "Hardened Runtime" entitlements;
+  trim whatever a first real notarization shows is not needed.
+-->
+<plist version="1.0">
+  <dict>
+    <key>com.apple.security.cs.allow-jit</key>
+    <true />
+    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+    <true />
+    <key>com.apple.security.cs.disable-library-validation</key>
+    <true />
+  </dict>
+</plist>
