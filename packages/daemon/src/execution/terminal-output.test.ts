@@ -11,7 +11,7 @@ import { parseConfig } from '../config.js';
 import { startDaemon } from '../daemon.js';
 import { itWithLauncher } from '../launcher-fixture.js';
 import { createSilentLogger } from '../logger.js';
-import { makeTempDataDir, TEST_PROFILE } from '../test-helpers.js';
+import { makeTempDataDir, NO_CLIENTS, TEST_PROFILE } from '../test-helpers.js';
 import { makeRepo } from './attempt-fixture.js';
 
 /**
@@ -61,7 +61,7 @@ ${eventsYaml}
     config,
     overrides: { clock: new FakeClock(), vault: new InMemorySecretVault(), launcher: real },
     clients: (parts) => [
-      ...productionClients(config)(parts),
+      ...productionClients(config, NO_CLIENTS)(parts),
       new FakeClientAdapter({
         launcher: parts.launcher,
         baseEnv: {},
