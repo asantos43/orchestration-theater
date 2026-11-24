@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-import { Conflict, InvalidInput, NotFound, type StoreTransaction } from '@otheater/core';
+import { Conflict, DiskFull, InvalidInput, NotFound, type StoreTransaction } from '@otheater/core';
 import { FakeClock, InMemoryStore } from '@otheater/core/testing';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { PLAY_FLOW_ID, PLAY_FLOW_VERSION } from './definitions.js';
@@ -35,13 +35,14 @@ class FakeEffects implements PlayEffects {
 /** A store whose next transaction can be made to fail after its work, to prove the rollback. */
 class FlakyStore extends InMemoryStore {
   failNextCommit = false;
+  failWith: Error | undefined;
 
   override transaction<T>(fn: (tx: StoreTransaction) => Promise<T>): Promise<T> {
     return super.transaction(async (tx) => {
       const result = await fn(tx);
       if (this.failNextCommit) {
         this.failNextCommit = false;
-        throw new Error('disk full');
+        throw this.failWith ?? new Error('disk full');
       }
       return result;
     });
@@ -675,6 +676,34 @@ describe('PlayRunner', () => {
           detail: `${effects.types()[0] ?? '?'}: no session`,
         },
       });
+    });
+
+    it('onDiskFull: a transaction that fails for a full disk and an effect that does are told to the disk guard', async () => {
+      const hit: string[] = [];
+      runner = new PlayRunner({
+        store,
+        clock,
+        effects,
+        logger: quiet,
+        onDiskFull: (playId) => hit.push(playId),
+      });
+      await create();
+      // The write of an event fails: the state is not changed, and the guard hears of the play.
+      store.failNextCommit = true;
+      store.failWith = new DiskFull('SQLite: database or disk is full');
+      await expect(runner.send('p1', { type: 'START' })).rejects.toBeInstanceOf(DiskFull);
+      expect(hit).toEqual(['p1']);
+      expect(await stateOf()).toBe('NEED');
+      // A failure that is not a full disk is not told.
+      store.failNextCommit = true;
+      store.failWith = new Error('disk full');
+      await expect(runner.send('p1', { type: 'START' })).rejects.toThrow('disk full');
+      expect(hit).toEqual(['p1']);
+      // An effect that cannot start for a full disk is told too.
+      effects.failWith = new DiskFull('SQLite: database or disk is full');
+      await runner.send('p1', { type: 'START' });
+      await runner.idle();
+      expect(hit).toEqual(['p1', 'p1']);
     });
 
     it('finish_not_handled: an onFinish that throws is an event, and the play still ends', async () => {

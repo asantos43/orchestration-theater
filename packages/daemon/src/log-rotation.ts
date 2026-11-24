@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 import { closeSync, fstatSync, openSync, renameSync, unlinkSync, writeSync } from 'node:fs';
+import { failPoint } from './chaos/crash-points.js';
 
 /**
  * The rotation of `daemon.log` by size (Phase 8, P8; `log.rotate.*`). [proposta]
@@ -25,6 +26,11 @@ export interface RotatingFileOptions extends LogRotation {
   readonly mode: number;
   /** Told once for each rotation that failed; never throws into the logger. */
   readonly onError?: ((error: unknown) => void) | undefined;
+  /**
+   * Told for each line that could not be written (a full disk, Phase 11, P5); the line is lost.
+   * Never throws into the logger, and the hook must not log: it would write to this file again.
+   */
+  readonly onWriteError?: ((error: unknown) => void) | undefined;
 }
 
 /**
@@ -52,13 +58,20 @@ export class RotatingFile {
     if (this.#fd === undefined) this.#open();
     if (this.#fd === undefined) return;
     try {
+      failPoint('fs.write', 'log');
       let written = 0;
       while (written < data.length) {
         written += writeSync(this.#fd, data, written, data.length - written);
       }
       this.#size += data.length;
-    } catch {
-      // A log that cannot be written (disk full) must not stop the daemon: the line is lost.
+    } catch (error) {
+      // A log that cannot be written (disk full) must not stop the daemon: the line is lost, and the
+      // disk guard is told so it can decide what the daemon does (`disk.on_full`).
+      try {
+        this.#o.onWriteError?.(error);
+      } catch {
+        // The report may not break the log.
+      }
     }
   }
 

@@ -2,6 +2,7 @@
 import {
   AdapterUnavailable,
   Conflict,
+  DiskFull,
   isOTheaterError,
   OTheaterError,
   Transient,
@@ -46,18 +47,29 @@ function primaryCode(error: unknown): number | undefined {
   return undefined;
 }
 
+/** True for the `ENOSPC` of the file system (a write the disk had no room for), on any layer. */
+function isEnospc(error: Error): boolean {
+  const { code, errno } = error as { code?: unknown; errno?: unknown };
+  return code === 'ENOSPC' || errno === -28;
+}
+
 /**
  * Translates a SQLite error into the typed errors of the port contract (architecture 5.18, rule
  * 4); anything else, including errors that are already OTheater errors, is returned untouched.
  *
  * - BUSY / LOCKED: `Transient` (retry with backoff);
  * - CONSTRAINT: `Conflict` (duplicate, broken foreign key...);
- * - PERM / READONLY / IOERR / CORRUPT / FULL / CANTOPEN / NOTADB / NOMEM: `AdapterUnavailable`;
+ * - FULL (`SQLITE_FULL`: the disk is full, or `max_page_count` was reached), and an `ENOSPC` of the
+ *   file system: `DiskFull` (N279, Phase 11 P5), so the daemon waits for space instead of failing;
+ * - PERM / READONLY / IOERR / CORRUPT / CANTOPEN / NOTADB / NOMEM: `AdapterUnavailable`;
  * - other SQLite errors (a bug in a query, say) pass through unchanged.
  */
 export function toStoreError(error: unknown): unknown {
   if (isOTheaterError(error)) return error;
   const code = primaryCode(error);
+  if (error instanceof Error && (code === PRIMARY_CODES.FULL || isEnospc(error))) {
+    return new DiskFull(`SQLite: ${error.message}`, { cause: error });
+  }
   if (code === undefined || !(error instanceof Error)) return error;
   const options = { cause: error };
   const message = `SQLite: ${error.message}`;
@@ -71,7 +83,6 @@ export function toStoreError(error: unknown): unknown {
     case PRIMARY_CODES.READONLY:
     case PRIMARY_CODES.IOERR:
     case PRIMARY_CODES.CORRUPT:
-    case PRIMARY_CODES.FULL:
     case PRIMARY_CODES.CANTOPEN:
     case PRIMARY_CODES.NOTADB:
     case PRIMARY_CODES.NOMEM:

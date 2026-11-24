@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 import { randomUUID } from 'node:crypto';
-import type { Store } from '@otheater/core';
+import { hasErrorCode, type Store } from '@otheater/core';
 import type { DaemonConfig, PlayLimits } from '../config.js';
 import { selectFlow } from '../pipeline/flow-selection.js';
 import type { PlayRunner } from '../pipeline/index.js';
@@ -30,13 +30,18 @@ export interface PlayOpening {
   /** `undefined` while the daemon has no code host. */
   readonly workspace: Pick<Workspace, 'createPlayBase'> | undefined;
   readonly config: DaemonConfig;
+  /**
+   * The gate of the full disk (Phase 11, P5; `disk.on_full`): while it is closed no play opens,
+   * and the refusal is `disk_full`. Absent: always open.
+   */
+  readonly disk?: { paused(): boolean } | undefined;
 }
 
 export type OpenedPlay =
   | { readonly ok: true; readonly playId: string }
   | {
       readonly ok: false;
-      readonly code: 'no_code_host' | 'no_repository' | 'invalid_flow';
+      readonly code: 'no_code_host' | 'no_repository' | 'invalid_flow' | 'disk_full';
       readonly message: string;
     };
 
@@ -50,6 +55,7 @@ export async function openPlayFromNeed(
   scenarioId: string,
   need: string,
 ): Promise<OpenedPlay> {
+  if (opening.disk?.paused() === true) return diskFullRefusal();
   if (opening.workspace === undefined) {
     return {
       ok: false,
@@ -75,15 +81,21 @@ export async function openPlayFromNeed(
   if (!selection.ok) return { ok: false, code: 'invalid_flow', message: selection.message };
   // [proposta] ids of plays: a short random suffix (a valid branch name, unique enough).
   const playId = `play-${randomUUID().slice(0, 8)}`;
-  await opening.runner.create({
-    playId,
-    scenarioId,
-    need,
-    limits: selection.limits,
-    flow: selection.flow,
-  });
-  await opening.workspace.createPlayBase({ repo: repo.path, playId, base: repo.mainBranch });
-  await opening.runner.send(playId, { type: 'START' });
+  try {
+    await opening.runner.create({
+      playId,
+      scenarioId,
+      need,
+      limits: selection.limits,
+      flow: selection.flow,
+    });
+    await opening.workspace.createPlayBase({ repo: repo.path, playId, base: repo.mainBranch });
+    await opening.runner.send(playId, { type: 'START' });
+  } catch (error) {
+    // The write that found no room left nothing of itself; the disk guard has heard of it too.
+    if (hasErrorCode(error, 'DISK_FULL')) return diskFullRefusal();
+    throw error;
+  }
   return { ok: true, playId };
 }
 
@@ -119,4 +131,13 @@ export async function startStalledPlays(
     }
   }
   return started;
+}
+
+function diskFullRefusal(): OpenedPlay {
+  return {
+    ok: false,
+    code: 'disk_full',
+    message:
+      'The disk is full (disk.on_full), so no play opens now: try again when the space is back.',
+  };
 }
