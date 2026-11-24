@@ -19,7 +19,7 @@ import { defaultLauncher, probeSandbox, productionClients } from '../compose.js'
 import { parseConfig } from '../config.js';
 import { startDaemon, type DaemonHandle } from '../daemon.js';
 import { createSilentLogger } from '../logger.js';
-import { makeTempDataDir } from '../test-helpers.js';
+import { makeTempDataDir, NO_CLIENTS } from '../test-helpers.js';
 import { makeRepo } from './attempt-fixture.js';
 import type { AttemptSpec } from './attempt-runner.js';
 import { describeWithLauncher } from '../launcher-fixture.js';
@@ -152,7 +152,7 @@ ${extraConfig}`);
     config,
     overrides: { clock: new FakeClock(), vault: new InMemorySecretVault(), launcher: real },
     clients: (parts) => [
-      ...productionClients(config)(parts),
+      ...productionClients(config, NO_CLIENTS)(parts),
       new FakeClientAdapter({
         launcher: parts.launcher,
         baseEnv: {},

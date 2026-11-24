@@ -10,7 +10,7 @@ import { parseConfig } from '../config.js';
 import { startDaemon, type DaemonHandle } from '../daemon.js';
 import { makeRepo } from '../execution/attempt-fixture.js';
 import { createSilentLogger } from '../logger.js';
-import { makeTempDataDir, TEST_PROFILE } from '../test-helpers.js';
+import { makeTempDataDir, NO_CLIENTS, TEST_PROFILE } from '../test-helpers.js';
 import { attemptTestSession, type TestSession } from './test-session.js';
 import { describeWithLauncher } from '../launcher-fixture.js';
 
@@ -59,7 +59,7 @@ async function withSession(
     config: CONFIG,
     overrides: { clock: new FakeClock(), vault: new InMemorySecretVault(), launcher: real },
     clients: (parts) => [
-      ...productionClients(CONFIG)(parts),
+      ...productionClients(CONFIG, NO_CLIENTS)(parts),
       new FakeClientAdapter({
         launcher: parts.launcher,
         baseEnv: {},
