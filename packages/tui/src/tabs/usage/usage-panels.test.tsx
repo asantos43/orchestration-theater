@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 import { ApiRequestError } from '@otheater/client';
-import { API_ROUTES, type LayoutPreferences } from '@otheater/protocol';
+import { API_ROUTES, LAYOUT_VERSION, type LayoutPreferences } from '@otheater/protocol';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanupApps, renderApp, waitFor, type RenderedApp } from '../../ink.test-support.js';
 import {
@@ -41,7 +41,7 @@ const SIZE = { columns: 230, rows: 60 };
 
 function prefs(): string {
   const base: LayoutPreferences = {
-    version: 1,
+    version: LAYOUT_VERSION,
     sidebarCollapsed: false,
     chatWidth: 56,
     openTabs: ['usage'],
