@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: MPL-2.0
+import { spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join, sep } from 'node:path';
+import { basename, join, sep } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { dataPaths } from '../../paths.js';
 import { recoverInterrupted, type ApplyPorts } from './applier.js';
@@ -96,6 +97,24 @@ describe('journal', () => {
     expect(await readJournal(file)).toEqual({ kind: 'corrupt' });
     await writeFile(file, JSON.stringify({ ...JOURNAL, step: 'bogus' }));
     expect(await readJournal(file)).toEqual({ kind: 'corrupt' });
+  });
+
+  it('a write sweeps the temporary journals of dead writers and only those', async () => {
+    const dir = await temp();
+    const file = join(dir, 'update-state.json');
+    const dead = spawnSync(process.execPath, ['-e', '0']);
+    expect(dead.status).toBe(0);
+    const deadPid = dead.pid;
+    const leftover = `${file}.${String(deadPid)}.tmp`;
+    const alive = `${file}.${String(process.ppid)}.tmp`;
+    const stranger = join(dir, 'update-state.json.notes.tmp');
+    const other = join(dir, `other.json.${String(deadPid)}.tmp`);
+    for (const name of [leftover, alive, stranger, other]) await writeFile(name, 'x');
+    await writeJournal(file, JOURNAL);
+    const left = (await readdir(dir)).sort();
+    expect(left).toEqual(
+      [basename(file), basename(alive), basename(stranger), basename(other)].sort(),
+    );
   });
 });
 
