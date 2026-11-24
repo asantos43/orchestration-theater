@@ -5,7 +5,7 @@ import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { FakeClock, InMemorySecretVault } from '@otheater/core/testing';
 import { ApiUpdateStatusSchema } from '@otheater/protocol';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { parseConfig } from './config.js';
 import { startDaemon, type DaemonHandle, type UpdatesOptions } from './daemon.js';
 import { createSilentLogger } from './logger.js';
@@ -182,14 +182,21 @@ describe('updates in a running daemon', () => {
 
   it('no network: the daemon starts, answers, and says failed', async () => {
     const keys = makeKeys();
-    // A port nobody listens on.
+    // A server that drops every connection before it answers. Not a port that was freed: with the
+    // tests in parallel another server could take it, and the answer was then bad_response.
     const dead = createServer();
+    dead.on('connection', (socket) => {
+      socket.destroy();
+    });
     await new Promise<void>((resolve) => dead.listen(0, '127.0.0.1', resolve));
     const port = (dead.address() as AddressInfo).port;
-    await new Promise<void>((resolve) =>
-      dead.close(() => {
-        resolve();
-      }),
+    onTestFinished(
+      () =>
+        new Promise<void>((resolve) => {
+          dead.close(() => {
+            resolve();
+          });
+        }),
     );
     await withDaemon(
       urlConfig(`http://127.0.0.1:${String(port)}/rel/`, 'notify'),

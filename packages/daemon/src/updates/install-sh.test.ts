@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0
 import { spawnSync } from 'node:child_process';
+import { constants as fsConstants } from 'node:fs';
 import {
+  access,
   lstat,
   symlink,
   mkdir,
@@ -710,7 +712,12 @@ describe.skipIf(PLATFORM === undefined)('install.sh', () => {
       ];
       for (const name of names) {
         for (const dir of (process.env.PATH ?? '').split(delimiter)) {
-          const found = spawnSync('test', ['-x', join(dir, name)]).status === 0;
+          // access(X_OK) instead of spawning `test -x` once per PATH entry: on a slow
+          // macOS runner with a long PATH the spawns alone passed the 10 s hook timeout.
+          const found = await access(join(dir, name), fsConstants.X_OK).then(
+            () => true,
+            () => false,
+          );
           if (found) {
             await symlink(join(dir, name), join(toolDir, name));
             break;
