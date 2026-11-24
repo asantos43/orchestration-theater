@@ -22,7 +22,7 @@ describe('the guide quotes the example', () => {
     ]);
   });
 
-  it.each(quotes.map((match) => [match[1], match[2]] as const))(
+  it.each(quotes.map((match) => [match[1] ?? '', match[2] ?? ''] as const))(
     '%s is the file, unchanged',
     (file, quoted) => {
       expect(readFileSync(resolve(PACKAGE, file), 'utf8').trimEnd()).toBe(quoted);
