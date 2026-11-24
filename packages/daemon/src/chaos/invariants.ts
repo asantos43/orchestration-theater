@@ -265,13 +265,20 @@ export interface RunReportView {
   readonly systemMessages: readonly {
     readonly scenarioId: string | null;
     readonly payload: unknown;
+    /**
+     * Which start wrote it: the number of `daemon.recovered` events before it in the log (each
+     * start writes its `daemon.recovered` before its messages). Two starts that resume the same
+     * play write the same payload, and each tells the truth; only a repeat within one start is a
+     * fault. Absent: the message is compared with every other one.
+     */
+    readonly boot?: number | undefined;
   }[];
 }
 
 /**
  * I6: the play ends (or is in a state the test says is explained), and the account of the
  * reconciliation came out once per start: `daemon.recovered` once for each of the `boots`, and no
- * two equal messages in one scenario.
+ * two equal messages in one scenario within one start (`boot`).
  */
 export function checkI6(
   report: RunReportView,
@@ -292,9 +299,11 @@ export function checkI6(
   }
   const seen = new Set<string>();
   for (const message of report.systemMessages) {
-    const key = `${message.scenarioId ?? ''} ${JSON.stringify(message.payload)}`;
+    const key = `${String(message.boot ?? '')} ${message.scenarioId ?? ''} ${JSON.stringify(message.payload)}`;
     if (seen.has(key))
-      problems.push(`the scenario ${message.scenarioId ?? '?'} got the same message twice`);
+      problems.push(
+        `the scenario ${message.scenarioId ?? '?'} got the same message twice in one start`,
+      );
     seen.add(key);
   }
   return result('I6', problems);
@@ -339,7 +348,9 @@ export const ONCE_EVENT_TYPES: readonly string[] = [
 /**
  * I8: the event log lost no event the harness saw confirmed (same id, same type), and the
  * reconciliation did not write the same event twice (`onceTypes`: same type, scenario, play and
- * payload).
+ * payload, within one start). A start is told by its `daemon.recovered`, written before the
+ * messages of that start: two crashes in a row resume the same play twice, and each start writes
+ * its own (equal) message, which is right.
  */
 export function checkI8(input: {
   readonly storePath: string;
@@ -361,9 +372,11 @@ export function checkI8(input: {
       payload: string;
     }[];
     const first = new Map<string, number>();
+    let boot = 0;
     for (const row of rows) {
+      if (row.type === 'daemon.recovered') boot += 1;
       if (!once.includes(row.type)) continue;
-      const key = `${row.type}|${row.scenario_id ?? ''}|${row.play_id ?? ''}|${row.payload}`;
+      const key = `${String(boot)}|${row.type}|${row.scenario_id ?? ''}|${row.play_id ?? ''}|${row.payload}`;
       const earlier = first.get(key);
       if (earlier === undefined) first.set(key, row.id);
       else problems.push(`event ${String(row.id)} (${row.type}) repeats event ${String(earlier)}`);

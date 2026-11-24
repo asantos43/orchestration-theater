@@ -342,12 +342,20 @@ for (;;) {
   await sleep(50);
 }
 const events = await daemon.store.events.readFrom(0, 100000);
+/** Each event with its start: the number of daemon.recovered up to it (see checkI6). */
+function withBoots(list) {
+  let boot = 0;
+  return list.map((event) => {
+    if (event.type === 'daemon.recovered') boot += 1;
+    return { event, boot };
+  });
+}
 const report = {
   timedOut,
   plays: (await daemon.store.plays.list({})).map((play) => ({ id: play.id, state: play.state })),
-  systemMessages: events
-    .filter((event) => event.type === 'scenario.system_message')
-    .map((event) => ({ scenarioId: event.scenarioId ?? null, payload: event.payload })),
+  systemMessages: withBoots(events)
+    .filter(({ event }) => event.type === 'scenario.system_message')
+    .map(({ event, boot }) => ({ scenarioId: event.scenarioId ?? null, payload: event.payload, boot })),
   recovered: events.filter((event) => event.type === 'daemon.recovered').map((event) => event.payload),
   events: events.map((event) => ({ type: event.type, playId: event.playId ?? null })),
   sideEffects: (await daemon.store.sideEffects.list({})).map((row) => ({
