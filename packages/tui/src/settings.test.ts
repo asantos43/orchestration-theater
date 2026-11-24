@@ -28,6 +28,7 @@ describe('parseUiSettings', () => {
         chatStep: 2,
         scrollStep: 'half',
         density: 'comfortable',
+        sidebarEdge: 'tab',
       },
       trajectories: { open: 'last', keep: 5000, diffLines: 200, follow: 'latest' },
       chat: {
@@ -134,6 +135,19 @@ describe('parseUiSettings', () => {
       'comfortable',
     );
     expect(parseUiSettings({ tuiLayout: { density: 4 } }).tuiLayout.density).toBe('comfortable');
+  });
+
+  it('reads ui.tuiLayout.sidebarEdge and falls back to tab', () => {
+    expect(parseUiSettings({}).tuiLayout.sidebarEdge).toBe('tab');
+    for (const mode of ['tab', 'mouse', 'off'] as const) {
+      expect(parseUiSettings({ tuiLayout: { sidebarEdge: mode } }).tuiLayout.sidebarEdge).toBe(
+        mode,
+      );
+    }
+    expect(parseUiSettings({ tuiLayout: { sidebarEdge: 'drag' } }).tuiLayout.sidebarEdge).toBe(
+      'tab',
+    );
+    expect(parseUiSettings({ tuiLayout: { sidebarEdge: 1 } }).tuiLayout.sidebarEdge).toBe('tab');
   });
 
   it('reads valid values', () => {

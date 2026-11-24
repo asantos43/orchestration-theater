@@ -14,6 +14,7 @@ import {
   UiSetupConfigSchema,
   UiThemeModeSchema,
   UiTuiLayoutConfigSchema,
+  UI_SIDEBAR_EDGE_MODES,
   UI_USAGE_SECTIONS,
   UiUsageConfigSchema,
   UiTuiMouseConfigSchema,
@@ -44,6 +45,7 @@ describe('ui.* schemas of the terminal', () => {
       chatStep: 2,
       scrollStep: 'half',
       density: 'comfortable',
+      sidebarEdge: 'tab',
     });
   });
 
@@ -53,6 +55,10 @@ describe('ui.* schemas of the terminal', () => {
     expect(UiTuiLayoutConfigSchema.safeParse({ chatStep: 0 }).success).toBe(false);
     expect(UiTuiLayoutConfigSchema.safeParse({ density: 'tight' }).success).toBe(false);
     expect(UiTuiLayoutConfigSchema.parse({ density: 'compact' }).density).toBe('compact');
+    expect(UiTuiLayoutConfigSchema.safeParse({ sidebarEdge: 'drag' }).success).toBe(false);
+    for (const mode of UI_SIDEBAR_EDGE_MODES) {
+      expect(UiTuiLayoutConfigSchema.parse({ sidebarEdge: mode }).sidebarEdge).toBe(mode);
+    }
     expect(UiTuiLayoutConfigSchema.safeParse({ color: 'red' }).success).toBe(false);
     expect(UiTuiLayoutConfigSchema.parse({ scrollStep: 'line' }).scrollStep).toBe('line');
   });

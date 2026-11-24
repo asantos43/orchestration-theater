@@ -252,7 +252,8 @@ describe.skipIf(NO_LAUNCHER).each(LOCALES)(
           await eventsOf(chat, 'config.edited');
           await eventsOf(chat, 'config.changed');
 
-          // 4. Back to the chat (Tab goes through the side bar to it) and the need.
+          // 4. Back to the chat (Tab goes through the side bar and its edge to it, N277) and the need.
+          await press(app, TAB);
           await press(app, TAB);
           await press(app, TAB);
           await seen(app, T('bar.chat.scroll'));
