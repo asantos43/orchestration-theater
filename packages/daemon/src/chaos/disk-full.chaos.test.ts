@@ -214,13 +214,16 @@ describe.skipIf(process.platform !== 'linux')('the full disk', { timeout: 300_00
         OT_CHILD_DISK_MIN_FREE: 'off',
       });
       await rig.control('fault', FULL_LOG_FAULT);
-      // The next line of the log finds no room (the daemon logs as it works).
-      await rig.release();
+      // The next line of the log finds no room. The test asks for the line itself: what the daemon
+      // logs by its own (an adapter that installs in the background, say) depends on the machine and
+      // on the network, so it cannot be the trigger.
+      await rig.control('log');
       const full = await until(run, (answer) => answer.disk.state === 'full', 'the disk is full');
       expect(full.paused).toBe(true);
       expect(full.disk.areas).toContain('log');
       await rig.control('fault-off');
       await until(run, (answer) => answer.disk.state === 'ok', 'the disk is back');
+      await rig.release();
       const report = await finish(run);
       expectWhole(rig, report);
       expect(noticeKinds(rig.storePath)).toEqual(['disk_full', 'disk_recovered']);
@@ -247,6 +250,9 @@ describe.skipIf(process.platform !== 'linux')('the full disk', { timeout: 300_00
       await child.line('STARTED', 60_000);
       await rig.waitHeld();
       await rig.control('fault', FULL_LOG_FAULT);
+      // The daemon stops itself on this line, so the child may end before it answers the command.
+      void rig.control('log', '', 10_000).catch(() => undefined);
+      // The stop waits for the client launch that is held, so the gate opens as well.
       await rig.release();
       await child.line('STOPPED', 60_000);
       const exit = await child.exited;

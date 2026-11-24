@@ -29,7 +29,8 @@
  *   the answer as JSON. Commands: `cap <pages>|off` (the store may grow by that many pages: the
  *   `max_page_count` mechanism), `fault <point[:detail]=CODE[#n[xTimes]]>` and `fault-off` (the fail
  *   points), `fill <dir>` and `free <dir>` (a ballast file that takes the free space of a small
- *   file system the test mounted, and gives it back), `open-play` (asks to open a play: the gate of
+ *   file system the test mounted, and gives it back), `log` (one line of the daemon log: with an
+ *   armed `fs.write:log` fault, the write that fails), `open-play` (asks to open a play: the gate of
  *   the full disk answers `disk_full`), `status` (the state of the disk guard);
  * - `OT_TEST_CRASH_AT=<point>[:<detail>][#n]`: with `faults.inject: env` in its config (the one key
  *   this program sets for it), the daemon kills itself at that named point (`chaos/crash-points.ts`)
@@ -278,6 +279,9 @@ async function control(command, argument) {
     } finally {
       closeSync(fd);
     }
+  } else if (command === 'log') {
+    // One line of the daemon log, on demand: with an armed fs.write:log fault it is the write that fails.
+    daemon.logger.warn('chaos: a line of the log');
   } else if (command === 'free') {
     unlinkSync(argument + '/ballast');
   } else if (command === 'open-play') {

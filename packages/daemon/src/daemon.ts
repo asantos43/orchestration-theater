@@ -256,6 +256,11 @@ export interface DaemonHandle {
    */
   readonly limitStoreGrowth: ((pages: number | undefined) => Promise<number>) | undefined;
   /**
+   * Phase 11, P5 (test only): the technical log of the daemon, so a chaos test can write a line at a
+   * moment of its choosing (a signal, not a wait for the daemon to log something by itself).
+   */
+  readonly logger: Logger;
+  /**
    * P3 (Phase 6): the HTTP API of the daemon, listening on `127.0.0.1` since the start. `api.handlers`
    * is where P4 to P7 register the handler of each route of `API_ROUTES` (`api.handlers.register(id,
    * handler, { command })`); `api.url` is the base URL (no token); `api.onTokenRotated(listener)` is
@@ -1573,6 +1578,7 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     eventHub: composition.eventHub,
     disk: composition.disk,
     limitStoreGrowth: composition.limitStoreGrowth,
+    logger: composition.logger,
     api,
     daemonId,
     vault,
