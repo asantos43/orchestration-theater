@@ -30,6 +30,9 @@ import { layoutOf, type InstallLayout } from './layout.js';
 import { checkJournalTrust } from './trust.js';
 import { writeProof } from './trust-fixture.js';
 
+/** The deadline of the waits: long, for the slow Windows runner of the CI; a met wait returns at once. */
+const WAIT = { timeout: 15_000 };
+
 /**
  * Deciding when to apply (P8): the three moments of `apply_when`, the wait of `idle` and its
  * question after `max_wait`, the backup before a migration, and how a swap that ended is told.
@@ -224,7 +227,7 @@ describe('park: applies at once', () => {
     await r.checker.checkNow();
     await vi.waitFor(() => {
       expect(r.shutdowns).toEqual(['shutdown']);
-    });
+    }, WAIT);
     expect(r.launched).toHaveLength(1);
     // The applier runs from the stored copy, never from the file that the swap renames.
     const staged = await r.staging.ready();
@@ -267,7 +270,7 @@ describe('park: applies at once', () => {
     await r.checker.checkNow();
     await vi.waitFor(() => {
       expect(r.shutdowns).toHaveLength(1);
-    });
+    }, WAIT);
     expect(() => r.coordinator.request('park')).toThrow(ApplyRefusal);
     expect(() => r.coordinator.request('default')).toThrow(/already being applied/);
   });
@@ -279,7 +282,7 @@ describe('idle: waits for a quiet moment', () => {
     await r.checker.checkNow();
     await vi.waitFor(() => {
       expect(r.state()).toBe('waiting');
-    });
+    }, WAIT);
     expect(r.work.held).toBe(true);
     expect(r.launched).toEqual([]);
     expect(r.coordinator.status().askAt).not.toBeNull();
@@ -290,7 +293,7 @@ describe('idle: waits for a quiet moment', () => {
     await r.clock.advance(5000);
     await vi.waitFor(() => {
       expect(r.shutdowns).toHaveLength(1);
-    });
+    }, WAIT);
     expect(r.state()).toBe('applying');
     expect(phases(r)).toContain('applying');
   });
@@ -300,7 +303,7 @@ describe('idle: waits for a quiet moment', () => {
     await r.checker.checkNow();
     await vi.waitFor(() => {
       expect(r.shutdowns).toHaveLength(1);
-    });
+    }, WAIT);
   });
 
   it('after max_wait releases the work and asks the Producer: park or wait', async () => {
@@ -308,11 +311,11 @@ describe('idle: waits for a quiet moment', () => {
     await r.checker.checkNow();
     await vi.waitFor(() => {
       expect(r.state()).toBe('waiting');
-    });
+    }, WAIT);
     await r.clock.advance(HOUR);
     await vi.waitFor(() => {
       expect(r.state()).toBe('asked');
-    });
+    }, WAIT);
     expect(r.work.held).toBe(false);
     expect(r.notices()).toEqual([{ kind: 'update_ask', subject: NEWER, detail: 'park|wait' }]);
     expect(r.launched).toEqual([]);
@@ -324,11 +327,11 @@ describe('idle: waits for a quiet moment', () => {
     await r.checker.checkNow();
     await vi.waitFor(() => {
       expect(r.state()).toBe('waiting');
-    });
+    }, WAIT);
     await r.clock.advance(HOUR);
     await vi.waitFor(() => {
       expect(r.state()).toBe('asked');
-    });
+    }, WAIT);
     r.coordinator.request('wait');
     expect(r.state()).toBe('waiting');
     expect(r.work.held).toBe(true);
@@ -336,7 +339,7 @@ describe('idle: waits for a quiet moment', () => {
     await r.clock.advance(5000);
     await vi.waitFor(() => {
       expect(r.shutdowns).toHaveLength(1);
-    });
+    }, WAIT);
   });
 
   it('"park" after the question applies with the work still running', async () => {
@@ -344,16 +347,16 @@ describe('idle: waits for a quiet moment', () => {
     await r.checker.checkNow();
     await vi.waitFor(() => {
       expect(r.state()).toBe('waiting');
-    });
+    }, WAIT);
     await r.clock.advance(HOUR);
     await vi.waitFor(() => {
       expect(r.state()).toBe('asked');
-    });
+    }, WAIT);
     const status = r.coordinator.request('park');
     expect(status.state).toBe('applying');
     await vi.waitFor(() => {
       expect(r.shutdowns).toHaveLength(1);
-    });
+    }, WAIT);
   });
 
   it('releases the work when the wait is stopped', async () => {
@@ -361,7 +364,7 @@ describe('idle: waits for a quiet moment', () => {
     await r.checker.checkNow();
     await vi.waitFor(() => {
       expect(r.work.held).toBe(true);
-    });
+    }, WAIT);
     await r.coordinator.stop();
     expect(r.work.held).toBe(false);
   });
@@ -373,7 +376,7 @@ describe('next_start: leaves it ready', () => {
     await r.checker.checkNow();
     await vi.waitFor(() => {
       expect(r.state()).toBe('scheduled');
-    });
+    }, WAIT);
     expect(r.launched).toEqual([]);
     expect(r.work.holds).toBe(0);
     expect(r.checker.status().ready).toBe(NEWER);
@@ -386,7 +389,7 @@ describe('next_start: leaves it ready', () => {
     next.ready(NEWER, true);
     await vi.waitFor(() => {
       expect(first.launched).toHaveLength(1);
-    });
+    }, WAIT);
     expect(first.shutdowns).toEqual(['shutdown']);
   });
 });
@@ -401,7 +404,7 @@ describe('the modes', () => {
     r.coordinator.request('default');
     await vi.waitFor(() => {
       expect(r.shutdowns).toHaveLength(1);
-    });
+    }, WAIT);
   });
 
   it('notify with next_start: "default" is refused and "park" applies', async () => {
@@ -411,7 +414,7 @@ describe('the modes', () => {
     r.coordinator.request('park');
     await vi.waitFor(() => {
       expect(r.shutdowns).toHaveLength(1);
-    });
+    }, WAIT);
   });
 
   it('check and off are refused: nothing was downloaded', async () => {
@@ -451,12 +454,12 @@ describe('the backup before a migration', () => {
     await r.checker.checkNow();
     await vi.waitFor(() => {
       expect(r.state() === 'applying' || r.notices().length > 0).toBe(true);
-    });
+    }, WAIT);
     await vi.waitFor(async () => {
       expect((await readJournal(r.layout.journal)).kind === 'ok' || r.notices().length > 0).toBe(
         true,
       );
-    });
+    }, WAIT);
     const reading = await readJournal(r.layout.journal);
     return reading.kind === 'ok' ? reading.journal : undefined;
   }
@@ -528,7 +531,7 @@ describe('the backup before a migration', () => {
     await r.checker.checkNow();
     await vi.waitFor(() => {
       expect(phases(r)).toContain('failed');
-    });
+    }, WAIT);
     expect(r.launched).toEqual([]);
     expect(r.shutdowns).toEqual([]);
     expect(await exists(r.layout.journal)).toBe(false);
@@ -551,7 +554,7 @@ describe('the backup before a migration', () => {
     await r.checker.checkNow();
     await vi.waitFor(() => {
       expect(phases(r)).toContain('failed');
-    });
+    }, WAIT);
     expect(r.launched).toEqual([]);
   });
 });
@@ -565,7 +568,7 @@ describe('what stops an apply before anything moves', () => {
     r.coordinator.request('park');
     await vi.waitFor(() => {
       expect(phases(r)).toContain('rejected');
-    });
+    }, WAIT);
     expect(r.launched).toEqual([]);
     expect(await r.staging.ready()).toBeUndefined();
     expect(r.updates().at(-1)).toMatchObject({ phase: 'rejected', reason: 'sha256' });
@@ -578,7 +581,7 @@ describe('what stops an apply before anything moves', () => {
     await r.checker.checkNow();
     await vi.waitFor(() => {
       expect(phases(r)).toContain('rolled_back');
-    });
+    }, WAIT);
     expect(r.shutdowns).toEqual([]);
     expect(await exists(r.layout.journal)).toBe(false);
     expect(await exists(r.layout.stagingDir)).toBe(false);
@@ -600,7 +603,7 @@ describe('what stops an apply before anything moves', () => {
     r.coordinator.request('park');
     await vi.waitFor(() => {
       expect(r.updates().at(-1)).toMatchObject({ phase: 'rolled_back', reason: 'swap_failed' });
-    });
+    }, WAIT);
     expect(r.launched).toEqual([]);
   });
 
@@ -614,7 +617,7 @@ describe('what stops an apply before anything moves', () => {
     r.coordinator.request('park');
     await vi.waitFor(() => {
       expect(r.launched).toHaveLength(1);
-    });
+    }, WAIT);
   });
 
   it('a manifest that expired while it waited in the store is refused at the apply (P8a)', async () => {
@@ -628,7 +631,7 @@ describe('what stops an apply before anything moves', () => {
     r.coordinator.request('park');
     await vi.waitFor(() => {
       expect(r.updates().at(-1)).toMatchObject({ phase: 'rejected', reason: 'bad_manifest' });
-    });
+    }, WAIT);
     expect(r.launched).toEqual([]);
     expect(await exists(r.layout.journal)).toBe(false);
   });
@@ -641,7 +644,7 @@ describe('what stops an apply before anything moves', () => {
     r.coordinator.request('park');
     await vi.waitFor(() => {
       expect(r.updates().at(-1)).toMatchObject({ phase: 'rejected', reason: 'wrong_channel' });
-    });
+    }, WAIT);
     expect(r.launched).toEqual([]);
   });
 });
@@ -679,14 +682,14 @@ describe('how a swap that ended is told (by the daemon that comes back)', () => 
     back.start();
     await vi.waitFor(() => {
       expect(phases(r)).toContain('applied');
-    });
+    }, WAIT);
     expect(r.updates().at(-1)).toMatchObject({ phase: 'applied', version: NEWER, current: NEWER });
     expect(r.notices()).toEqual([{ kind: 'update_applied', subject: NEWER, detail: INSTALLED }]);
     expect(await r.staging.ready()).toBeUndefined();
     await vi.waitFor(async () => {
       const reading = await readJournal(r.layout.journal);
       expect(reading.kind === 'ok' && reading.journal.reported).toBe(true);
-    });
+    }, WAIT);
     expect(back.status().last).toMatchObject({ outcome: 'applied', version: NEWER, reason: null });
     await back.stop();
   });
@@ -697,7 +700,7 @@ describe('how a swap that ended is told (by the daemon that comes back)', () => 
     r.coordinator.start();
     await vi.waitFor(() => {
       expect(phases(r)).toEqual(['rolled_back']);
-    });
+    }, WAIT);
     expect(r.updates()[0]).toMatchObject({ reason: 'health', version: NEWER, current: INSTALLED });
     expect(r.notices()).toEqual([{ kind: 'update_rolled_back', subject: NEWER, detail: 'health' }]);
     expect(r.coordinator.status().last).toMatchObject({ outcome: 'rolled_back', reason: 'health' });
@@ -711,7 +714,7 @@ describe('how a swap that ended is told (by the daemon that comes back)', () => 
     back.start();
     await vi.waitFor(() => {
       expect(phases(r)).toEqual(['failed']);
-    });
+    }, WAIT);
     expect(r.notices()).toEqual([{ kind: 'update_failed', subject: NEWER, detail: 'not_started' }]);
     await back.stop();
   });
@@ -722,7 +725,7 @@ describe('how a swap that ended is told (by the daemon that comes back)', () => 
     r.coordinator.start();
     await vi.waitFor(() => {
       expect(r.notices().map((notice) => notice.kind)).toEqual(['update_untrusted_journal']);
-    });
+    }, WAIT);
     expect(r.notices()[0]).toMatchObject({ subject: NEWER });
     await r.coordinator.stop();
   });
@@ -736,7 +739,7 @@ describe('how a swap that ended is told (by the daemon that comes back)', () => 
     r.coordinator.start();
     await vi.waitFor(() => {
       expect(r.coordinator.status().last?.outcome).toBe('rolled_back');
-    });
+    }, WAIT);
     expect(r.updates()).toEqual([]);
     expect(r.notices()).toEqual([]);
     await r.coordinator.stop();
@@ -755,7 +758,7 @@ describe('how a swap that ended is told (by the daemon that comes back)', () => 
     r.coordinator.request('park');
     await vi.waitFor(() => {
       expect(r.shutdowns).toHaveLength(1);
-    });
+    }, WAIT);
   });
 });
 
@@ -765,7 +768,7 @@ describe('from the request to the report, with the swap in between', () => {
     await r.checker.checkNow();
     await vi.waitFor(() => {
       expect(r.shutdowns).toHaveLength(1);
-    });
+    }, WAIT);
     const reading = await readJournal(r.layout.journal);
     if (reading.kind !== 'ok') throw new Error('no journal');
     let now = 1000;
@@ -792,7 +795,7 @@ describe('from the request to the report, with the swap in between', () => {
     back.start();
     await vi.waitFor(() => {
       expect(phases(r)).toContain('applied');
-    });
+    }, WAIT);
     await back.stop();
   });
 });
