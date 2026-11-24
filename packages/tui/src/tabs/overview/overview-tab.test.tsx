@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: MPL-2.0
 import { ApiRequestError, type ActorActivity, type DaemonStores } from '@otheater/client';
-import type { ApiEventEnvelope, ApiPlay, LayoutPreferences } from '@otheater/protocol';
+import {
+  LAYOUT_VERSION,
+  type ApiEventEnvelope,
+  type ApiPlay,
+  type LayoutPreferences,
+} from '@otheater/protocol';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanupApps, renderApp, waitFor, type RenderedApp } from '../../ink.test-support.js';
 import {
@@ -30,7 +35,7 @@ const NOW = Date.now();
 
 function prefs(): string {
   const base: LayoutPreferences = {
-    version: 1,
+    version: LAYOUT_VERSION,
     sidebarCollapsed: false,
     chatWidth: 56,
     openTabs: ['overview'],
