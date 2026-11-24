@@ -183,9 +183,26 @@ export class DiskGuard {
     this.#enter(area, error instanceof Error ? error.message : 'no space left on the device');
   }
 
-  /** A play that a `DiskFull` hit: it is resumed when the space returns. */
+  /**
+   * A play that a `DiskFull` hit: it is resumed when the space returns. The write that failed told
+   * the guard at once (`report`), but the play learns of it only when its effect has unwound (a
+   * session to close, a process to kill), and the space may be back by then: the episode is over,
+   * so the play is resumed now and not left waiting for an episode that will not come.
+   */
   hit(playId: string): void {
+    if (this.#state === 'ok' && !this.#stopped) {
+      void this.#resumeNow(playId);
+      return;
+    }
     this.#hits.add(playId);
+  }
+
+  async #resumeNow(playId: string): Promise<void> {
+    try {
+      await this.#o.resume?.(playId);
+    } catch (error) {
+      this.#o.logger.warn({ playId, err: error }, 'a play the full disk hit was not resumed');
+    }
   }
 
   /** One pass of the check now (the loop calls it; a test calls it to not wait). */
@@ -291,13 +308,7 @@ export class DiskGuard {
       `the space is back after ${since === null ? '?' : `${String(Math.round((this.#o.clock.now() - since) / 1000))} s`}; ${String(hits.length)} play(s) resumed`,
       false,
     );
-    for (const playId of hits) {
-      try {
-        await this.#o.resume?.(playId);
-      } catch (error) {
-        this.#o.logger.warn({ playId, err: error }, 'a play the full disk hit was not resumed');
-      }
-    }
+    for (const playId of hits) await this.#resumeNow(playId);
   }
 
   /** `every_hour`: tells again once an hour has passed since the last time. */

@@ -120,6 +120,27 @@ describe('DiskGuard', () => {
     expect((r.written[0]?.payload as { detail: string }).detail).toContain('(at ');
   });
 
+  it('resumes at once a play that learns of the full disk after the space is back', async () => {
+    const r = rig();
+    r.guard.start();
+    try {
+      r.storeFull = true;
+      r.guard.report('store', new DiskFull('x'));
+      r.storeFull = false;
+      await r.guard.tick();
+      await r.guard.idle();
+      expect(r.guard.status().state).toBe('ok');
+      expect(r.resumed).toEqual([]);
+      // The effect of the play unwinds late (a session to close) and reports after the recovery.
+      r.guard.hit('late');
+      await Promise.resolve();
+      expect(r.resumed).toEqual(['late']);
+      expect(r.guard.status().hitPlays).toEqual([]);
+    } finally {
+      await r.guard.stop();
+    }
+  });
+
   it('counts the free space below min_free as a full disk, and needs it back above to recover', async () => {
     const r = rig();
     r.free = 500;
