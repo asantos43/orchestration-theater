@@ -202,9 +202,22 @@
 #            final da peça e o que veio depois (ACTOR_TIMED_OUT, SUBMIT_FAILED, transições,
 #            respostas do Diretor). Sem OT_TEST_TURN_TIMEOUT o nível roda como antes. Para uma
 #            medição curta, use também OT_TEST_PLAY_TIMEOUT_MS (mínimo 60000).
+#   phase10  [proposta] o aceite da Fase 10 (P12): a distribuição de ponta a ponta, SEM cliente real e
+#            sem cota. Gera uma chave só desta rodada (ephemeral-key), compila dois executáveis
+#            únicos (1.0.0 e 1.0.1, com a metade pública dela) e roda `otheater-release acceptance`
+#            (tools/release/src/acceptance.ts): instala com o install.sh a partir de um servidor de
+#            versões no loopback assinado pela chave da rodada, fecha e reabre a TUI com o daemon e o
+#            layout, recusa as quatro assinaturas ruins (outra chave, manifesto adulterado, SHA-256
+#            trocado, rebaixamento), faz o rollback, atualiza em idle e em park e desinstala (os
+#            dados ficam). Tudo num HOME e numa pasta de dados temporários, com o daemon como
+#            processo filho: não registra serviço, não toca o chaveiro nem o HOME de verdade, e a
+#            chave de produção nunca é lida. Precisa de um Node standalone para injetar o SEA
+#            (OT_SEA_NODE, como em tools/release; o do pacote da distribuição não serve) e do
+#            python3 (a TUI num pseudo-terminal). Não passa pelas checagens de clientes nem pelo
+#            monitor de memória dos outros níveis; o --timeout vale (padrão 40m).
 #
 # Uso:
-#   tools/acceptance/real-acceptance.sh [--level clients|prompts|k|play|phase6|phase7|phase8|phase9|escape|mcp|quota|profiles] [--dry-run] [--with-adapters]
+#   tools/acceptance/real-acceptance.sh [--level clients|prompts|k|play|phase6|phase7|phase8|phase9|phase10|escape|mcp|quota|profiles] [--dry-run] [--with-adapters]
 #       [--build auto|always|never] [--build-timeout DURAÇÃO]
 #       [--min-available-mb N] [--abort-below-mb N] [--min-tmp-mb N] [--timeout DURAÇÃO]
 #       [--log-dir DIR] [--bin-dir DIR]... [--yes]
@@ -223,7 +236,7 @@
 #
 # Cada opção também lê uma variável (a opção ganha):
 #   OT_ACCEPT_LEVEL (clients), OT_ACCEPT_MIN_AVAILABLE_MB (4096), OT_ACCEPT_ABORT_BELOW_MB (1024),
-#   OT_ACCEPT_MIN_TMP_MB (1024), OT_ACCEPT_TIMEOUT (20m; 40m nos níveis k, play, phase6, phase7, phase8, phase9, escape e profiles; 15m em quota), OT_ACCEPT_BUILD (auto),
+#   OT_ACCEPT_MIN_TMP_MB (1024), OT_ACCEPT_TIMEOUT (20m; 40m nos níveis k, play, phase6, phase7, phase8, phase9, phase10, escape e profiles; 15m em quota), OT_ACCEPT_BUILD (auto),
 #   OT_ACCEPT_BUILD_TIMEOUT (10m), OT_ACCEPT_LOG_DIR
 #   (${XDG_STATE_HOME:-~/.local/state}/otheater/acceptance), OT_ACCEPT_BIN_DIRS (pastas separadas
 #   por ':').
@@ -264,7 +277,7 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-case "$level" in clients|prompts|k|play|phase6|phase7|phase8|phase9|escape|mcp|quota|profiles) ;; *) echo "--level deve ser clients, prompts, k, play, phase6, phase7, phase8, phase9, escape, mcp, quota ou profiles" >&2; exit 2 ;; esac
+case "$level" in clients|prompts|k|play|phase6|phase7|phase8|phase9|phase10|escape|mcp|quota|profiles) ;; *) echo "--level deve ser clients, prompts, k, play, phase6, phase7, phase8, phase9, phase10, escape, mcp, quota ou profiles" >&2; exit 2 ;; esac
 # Os níveis play, phase6, phase7, phase8 e phase9 [proposta] rodam uma peça inteira com um só cliente: mesmas
 # exigências. O play e o phase7 são só o Claude Code; o phase6 usa o de OT_TEST_PHASE6_CLIENT
 # (claude-code, o padrão); o phase8 usa os de OT_TEST_PHASE8_CLIENTS (claude-code, o padrão; uma peça
@@ -308,7 +321,7 @@ fi
 # minutos (teto de 5m na tentativa). O do nível escape [proposta] também: até 8m por cliente, com
 # três clientes, mais o sandbox subindo e parando.
 if [ -z "$run_timeout" ]; then
-  case "$level" in k|play|phase6|phase7|phase8|phase9|escape|profiles) run_timeout=40m ;; quota) run_timeout=15m ;; *) run_timeout=20m ;; esac
+  case "$level" in k|play|phase6|phase7|phase8|phase9|phase10|escape|profiles) run_timeout=40m ;; quota) run_timeout=15m ;; *) run_timeout=20m ;; esac
 fi
 case "$build_mode" in auto|always|never) ;; *) echo "--build deve ser auto, always ou never" >&2; exit 2 ;; esac
 for n in "$min_available_mb" "$abort_below_mb" "$min_tmp_mb"; do
@@ -391,6 +404,55 @@ if [ "$level" = phase7 ]; then
   if command -v tmux >/dev/null 2>&1; then ok "tmux"; else fail "tmux não está no PATH (o nível phase7 roda a TUI num tmux)"; fi
 fi
 if [ -d node_modules ]; then ok "node_modules presente"; else fail "falta node_modules: rode 'pnpm install --frozen-lockfile'"; fi
+
+# ---- nível phase10: o aceite da distribuição (sem cliente, sem cota) ----------------------------
+
+if [ "$level" = phase10 ]; then
+  echo
+  echo "Aceite da Fase 10 [proposta] (sem cliente real, sem cota, sem serviço, sem chaveiro):"
+  if command -v python3 >/dev/null 2>&1; then ok "python3 (a TUI num pseudo-terminal)"; else warn "python3 não está no PATH: a linha da TUI fecha e reabre fica de fora"; fi
+  sea_node="${OT_SEA_NODE:-}"
+  if [ -n "$sea_node" ]; then
+    [ -x "$sea_node" ] && ok "OT_SEA_NODE: $sea_node" || fail "OT_SEA_NODE não é executável: $sea_node"
+  else
+    warn "OT_SEA_NODE vazio: o build usa o node do PATH, que precisa ser um build standalone (o pacote da distribuição, com libnode compartilhada, é recusado)"
+  fi
+  [ "$failures" = 0 ] || { echo; echo "$failures checagem(ns) falharam; nada foi rodado."; exit 1; }
+  if [ "$dry_run" = 1 ]; then
+    echo
+    echo "Vai rodar (dry-run, nada foi feito): ephemeral-key; build do 1.0.0 e do 1.0.1 com a chave da rodada; acceptance com o install.sh, em HOME e dados temporários; timeout $run_timeout"
+    exit 0
+  fi
+  case "$build_mode" in
+    always) pnpm -s build ;;
+    auto) [ -f tools/release/dist/cli.js ] || pnpm -s build ;;
+    never) [ -f tools/release/dist/cli.js ] || { echo "falta tools/release/dist/cli.js e --build never: rode 'pnpm -s build'" >&2; exit 1; } ;;
+  esac
+  work="$(mktemp -d "$tmp_dir/otheater-phase10.XXXXXX")"
+  trap 'rm -rf "$work"' EXIT
+  stamp="$(date +%Y%m%d-%H%M%S)"
+  log="$log_dir/phase10-$stamp.log"
+  cli=(node tools/release/dist/cli.js)
+  sea_args=()
+  [ -z "$sea_node" ] || sea_args=(--node "$sea_node")
+  set +e
+  {
+    "${cli[@]}" ephemeral-key --out "$work/key"
+    timeout "$build_timeout" "${cli[@]}" build --target linux-x64 --out "$work/n" --version 1.0.0 --public-key "$work/key/ephemeral-public.pem" "${sea_args[@]}"
+    timeout "$build_timeout" "${cli[@]}" build --target linux-x64 --out "$work/n1" --version 1.0.1 --public-key "$work/key/ephemeral-public.pem" "${sea_args[@]}"
+    timeout "$run_timeout" "${cli[@]}" acceptance \
+      --exe-n "$work/n/linux-x64/otheater" --version-n 1.0.0 \
+      --exe-n1 "$work/n1/linux-x64/otheater" --version-n1 1.0.1 \
+      --key "$work/key/ephemeral-private.pem" --install-script installer/install.sh \
+      --work-dir "$work/run"
+  } 2>&1 | tee "$log"
+  status=${PIPESTATUS[0]}
+  set -e
+  echo
+  grep -E '^acceptance on|^  (ok|skip|FAIL) ' "$log" | sed 's/^/[phase10-real] /' || true
+  echo "log: $log"
+  exit "$status"
+fi
 
 # ---- clientes (só procura no PATH; não executa nenhum) ------------------------------------------
 

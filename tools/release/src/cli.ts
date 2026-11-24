@@ -4,9 +4,15 @@ import { realpathSync } from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
+import { runAcceptance } from './acceptance.js';
 import { buildTarget } from './build.js';
 import { loadReleaseConfig, parseReleaseConfig, ReleaseConfigError } from './config.js';
-import { RELEASE_COMMANDS, RELEASE_USAGE, runReleaseCommand } from './release-cli.js';
+import {
+  RELEASE_COMMANDS,
+  RELEASE_USAGE,
+  readOwnSchemas,
+  runReleaseCommand,
+} from './release-cli.js';
 import { repoRoot } from './resolve.js';
 import { runSmoke } from './smoke.js';
 import { hostTarget, isTargetId, TARGET_IDS, type TargetId } from './targets.js';
@@ -26,6 +32,11 @@ Commands:
   smoke <executable> [--version <x.y.z>]
       Runs the executable as the acceptance of the build does: --version, the daemon in a temporary
       folder and its API, the TUI without a terminal, the MCP shim and the modes not yet available.
+  acceptance --exe-n <file> --version-n <x.y.z> --exe-n1 <file> --version-n1 <x.y.z> --key <private.pem>
+      --install-script <install.sh> [--work-dir <dir>] [--keep]
+      The acceptance of the distribution (Phase 10, P12): install, close and reopen the TUI, the four
+      refusals, rollback, the update in idle and park, uninstall. Two executables built with the
+      public half of --key, in a temporary HOME, against a release server on the loopback.
 ${RELEASE_USAGE}`;
 
 function fail(message: string): never {
@@ -103,6 +114,53 @@ export async function main(argv: readonly string[]): Promise<number> {
     const result = await runSmoke({
       executable: path.resolve(executable),
       expectedVersion: values.version,
+      log: (line) => process.stdout.write(`${line}\n`),
+    });
+    return result.ok ? 0 : 1;
+  }
+  if (command === 'acceptance') {
+    const { values } = parseArgs({
+      args: [...rest],
+      options: {
+        'exe-n': { type: 'string' },
+        'version-n': { type: 'string' },
+        'exe-n1': { type: 'string' },
+        'version-n1': { type: 'string' },
+        key: { type: 'string' },
+        'install-script': { type: 'string' },
+        'work-dir': { type: 'string' },
+        keep: { type: 'boolean' },
+      },
+      strict: true,
+    });
+    const exeN = values['exe-n'];
+    const versionN = values['version-n'];
+    const exeN1 = values['exe-n1'];
+    const versionN1 = values['version-n1'];
+    const key = values.key;
+    const script = values['install-script'];
+    if (
+      exeN === undefined ||
+      versionN === undefined ||
+      exeN1 === undefined ||
+      versionN1 === undefined ||
+      key === undefined ||
+      script === undefined
+    ) {
+      fail(
+        'acceptance needs --exe-n, --version-n, --exe-n1, --version-n1, --key and --install-script',
+      );
+    }
+    const result = await runAcceptance({
+      exeN: path.resolve(exeN),
+      versionN,
+      exeN1: path.resolve(exeN1),
+      versionN1,
+      privateKeyFile: path.resolve(key),
+      installScript: path.resolve(script),
+      ownSchemas: await readOwnSchemas(root),
+      workDir: values['work-dir'] === undefined ? undefined : path.resolve(values['work-dir']),
+      keep: values.keep,
       log: (line) => process.stdout.write(`${line}\n`),
     });
     return result.ok ? 0 : 1;
