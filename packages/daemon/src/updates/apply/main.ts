@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
-import { appendFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import type { Logger } from '../../logger.js';
 import { runApply } from './applier.js';
+import { appendFileLogger } from './file-log.js';
 import { readJournal } from './journal.js';
 import { layoutOf } from './layout.js';
 import { realApplyPorts } from './real-ports.js';
@@ -14,26 +13,30 @@ export const APPLY_EXIT_APPLIED = 0;
 export const APPLY_EXIT_NOT_APPLIED = 1;
 export const APPLY_EXIT_USAGE = 2;
 
-/** A logger that appends to a file beside the executable; the applier has no terminal to write to. */
-function fileLogger(file: string): Pick<Logger, 'info' | 'warn' | 'error'> {
-  const write =
-    (level: string) =>
-    (fields: unknown, message?: string): void => {
-      const text = typeof fields === 'string' ? fields : (message ?? '');
-      const extra = typeof fields === 'object' && fields !== null ? fields : {};
-      try {
-        appendFileSync(
-          file,
-          `${JSON.stringify({ time: new Date().toISOString(), level, msg: text, ...extra })}\n`,
-        );
-      } catch {
-        // Nothing to tell it to.
-      }
+/**
+ * The applier has no terminal: what ends it in a way `runApply` does not report (an error nothing
+ * caught, the exit itself) is written to its log. Returns the function that takes the handlers off.
+ */
+function guardProcess(logger: ReturnType<typeof appendFileLogger>): () => void {
+  const onCrash =
+    (origin: string) =>
+    (error: unknown): void => {
+      logger.error({ err: error, origin }, 'apply-update: stopped by an error nothing caught');
+      process.exitCode = APPLY_EXIT_NOT_APPLIED;
     };
-  return { info: write('info'), warn: write('warn'), error: write('error') } as Pick<
-    Logger,
-    'info' | 'warn' | 'error'
-  >;
+  const onUncaught = onCrash('uncaughtException');
+  const onRejected = onCrash('unhandledRejection');
+  const onExit = (code: number): void => {
+    logger.info({ code }, 'apply-update: exit');
+  };
+  process.on('uncaughtException', onUncaught);
+  process.on('unhandledRejection', onRejected);
+  process.on('exit', onExit);
+  return () => {
+    process.off('uncaughtException', onUncaught);
+    process.off('unhandledRejection', onRejected);
+    process.off('exit', onExit);
+  };
 }
 
 /**
@@ -64,22 +67,44 @@ export async function runApplyUpdate(
     process.exitCode = APPLY_EXIT_USAGE;
     return;
   }
-  const logger = fileLogger(join(layout.folder, 'update-apply.log'));
-  // The journal is not followed unless a signed manifest backs it (P8a).
-  const { key, platform } = options.trust ?? ownTrust();
-  const trusted = await checkJournalTrust({ layout, journal: reading.journal, key, platform });
-  if (!trusted.ok) {
-    logger.error(
-      { to: reading.journal.to, detail: trusted.detail },
-      'update: the journal is not backed by a signed manifest; nothing was done',
-    );
-    process.stderr.write(
-      `otheater: apply-update: the journal is not trusted (${trusted.detail})\n`,
-    );
-    process.exitCode = APPLY_EXIT_USAGE;
-    return;
+  const logger = appendFileLogger(join(layout.folder, 'update-apply.log'));
+  logger.info(
+    {
+      from: reading.journal.from,
+      to: reading.journal.to,
+      step: reading.journal.step,
+      platform: process.platform,
+      ppid: process.ppid,
+    },
+    'apply-update: started',
+  );
+  const unguard = guardProcess(logger);
+  try {
+    // The journal is not followed unless a signed manifest backs it (P8a).
+    const { key, platform } = options.trust ?? ownTrust();
+    const trusted = await checkJournalTrust({ layout, journal: reading.journal, key, platform });
+    if (!trusted.ok) {
+      logger.error(
+        { to: reading.journal.to, detail: trusted.detail },
+        'update: the journal is not backed by a signed manifest; nothing was done',
+      );
+      process.stderr.write(
+        `otheater: apply-update: the journal is not trusted (${trusted.detail})\n`,
+      );
+      process.exitCode = APPLY_EXIT_USAGE;
+      return;
+    }
+    const ports = realApplyPorts({ layout, journal: reading.journal, logger });
+    try {
+      const outcome = await runApply(layout, ports, reading.journal);
+      logger.info({ outcome }, 'apply-update: ended');
+      process.exitCode = outcome.kind === 'committed' ? APPLY_EXIT_APPLIED : APPLY_EXIT_NOT_APPLIED;
+    } catch (error) {
+      // The journal stays at the step it reached: the next start of `ot` finishes or undoes the swap.
+      logger.error({ err: error }, 'apply-update: the swap stopped on an error');
+      process.exitCode = APPLY_EXIT_NOT_APPLIED;
+    }
+  } finally {
+    unguard();
   }
-  const ports = realApplyPorts({ layout, journal: reading.journal, logger });
-  const outcome = await runApply(layout, ports, reading.journal);
-  process.exitCode = outcome.kind === 'committed' ? APPLY_EXIT_APPLIED : APPLY_EXIT_NOT_APPLIED;
 }
