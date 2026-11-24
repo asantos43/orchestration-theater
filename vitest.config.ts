@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 import { defineConfig } from 'vitest/config';
+import { DurationShardSequencer } from './tools/ci/src/duration-shard.ts';
 
 // Tests import workspace packages by name. Pointing them at the sources lets `vitest run` work on
 // a fresh checkout, without a previous `tsc -b` (the build output is only for `exports`).
@@ -14,6 +15,7 @@ export const alias = {
   '@otheater/daemon': `${import.meta.dirname}/packages/daemon/src/index.ts`,
   '@otheater/client/node': `${import.meta.dirname}/packages/client/src/node/index.ts`,
   '@otheater/client': `${import.meta.dirname}/packages/client/src/index.ts`,
+  '@otheater/protocol/quota': `${import.meta.dirname}/packages/protocol/src/quota.ts`,
   '@otheater/protocol': `${import.meta.dirname}/packages/protocol/src/index.ts`,
   '@otheater/adapter-store-sqlite': `${import.meta.dirname}/packages/adapters/store-sqlite/src/index.ts`,
   '@otheater/adapter-telemetry-sqlite': `${import.meta.dirname}/packages/adapters/telemetry-sqlite/src/index.ts`,
@@ -47,6 +49,9 @@ export const hookTimeout = override ?? (windows ? 60_000 : 10_000);
 
 export default defineConfig({
   test: {
+    // With `--shard`, the files split by their duration in CI (tools/ci/test-timings.json), not by
+    // the hash of the path; OT_TEST_SHARD_MODE=hash goes back to the vitest split.
+    sequence: { sequencer: DurationShardSequencer },
     projects: [
       {
         resolve: { alias },

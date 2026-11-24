@@ -33,6 +33,10 @@
 # tools/ci/dist). The filter applies to the final list, the affected files or the whole suite alike.
 # If the classifier fails the list stays as it was (an error never runs less), with a warning.
 # OT_CROSS_CLASSIFIER names another classifier (a test hook; the default is tools/ci/dist/cross-classify-cli.js).
+#
+# OT_TEST_SHARD=<index>/<count> runs only that part of the final list (`vitest --shard`, CI under
+# 10 min, owner, 2026-11-24): the jobs of a matrix each take one index, and together run the whole
+# list. A shard left with no file passes (`--passWithNoTests`). Unset, the whole list runs.
 set -euo pipefail
 
 base="${1:?usage: tools/ci/test-affected.sh <base-ref>}"
@@ -46,6 +50,19 @@ case "$cross" in
     exit 1
     ;;
 esac
+
+# The arguments of OT_TEST_SHARD for every `vitest run` below (none when unset).
+# `${shard_args[@]+...}` below: an empty array under `set -u` fails on the bash 3.2 of macOS.
+shard_args=()
+if [ -n "${OT_TEST_SHARD:-}" ]; then
+  if ! [[ "$OT_TEST_SHARD" =~ ^([0-9]+)/([0-9]+)$ ]] || [ "${BASH_REMATCH[1]}" -lt 1 ] \
+    || [ "${BASH_REMATCH[1]}" -gt "${BASH_REMATCH[2]}" ]; then
+    echo "test-affected: OT_TEST_SHARD=$OT_TEST_SHARD: use <index>/<count>, with 1 <= index <= count" >&2
+    exit 1
+  fi
+  shard_args=(--shard="$OT_TEST_SHARD" --passWithNoTests)
+  echo "test-affected: shard $OT_TEST_SHARD of the list"
+fi
 
 # Every test file of the suite, one per line, as `vitest list` prints them.
 all_tests() {
@@ -79,7 +96,7 @@ run_files() {
   if [ "$length" -gt 24000 ] || { [ "$cross" != os ] && [ "$count" -gt 250 ]; }; then
     echo "test-affected: full suite ($count test files, $length characters)"
     if [ "${OT_TEST_DRY:-}" = 1 ]; then exit 0; fi
-    exec pnpm exec vitest run
+    exec pnpm exec vitest run ${shard_args[@]+"${shard_args[@]}"}
   fi
   echo "test-affected: $count test file(s) ($origin)"
   if [ "${OT_TEST_DRY:-}" = 1 ]; then
@@ -87,7 +104,7 @@ run_files() {
     exit 0
   fi
   # shellcheck disable=SC2086 # one path per word; the test paths have no spaces.
-  exec node node_modules/vitest/vitest.mjs run $files
+  exec node node_modules/vitest/vitest.mjs run ${shard_args[@]+"${shard_args[@]}"} $files
 }
 
 full() {
@@ -97,7 +114,7 @@ full() {
     run_files "$list" "whole suite"
   fi
   if [ "${OT_TEST_DRY:-}" = 1 ]; then exit 0; fi
-  exec pnpm exec vitest run
+  exec pnpm exec vitest run ${shard_args[@]+"${shard_args[@]}"}
 }
 
 case "$mode" in

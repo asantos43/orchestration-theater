@@ -348,7 +348,15 @@ describe.skipIf(process.platform === 'win32' || !existsSync(cli))(
         cwd: repo,
         encoding: 'utf8',
         timeout: 120_000,
-        env: { ...process.env, OT_TEST_CI: 'full', OT_TEST_DRY: '1', OT_CROSS_TESTS: '', ...env },
+        // OT_TEST_SHARD: '' because the jobs of the CI that run this test set it for themselves.
+        env: {
+          ...process.env,
+          OT_TEST_CI: 'full',
+          OT_TEST_DRY: '1',
+          OT_CROSS_TESTS: '',
+          OT_TEST_SHARD: '',
+          ...env,
+        },
       });
     }
 
@@ -375,6 +383,23 @@ describe.skipIf(process.platform === 'win32' || !existsSync(cli))(
         expect(result.stdout.trim()).toBe('test-affected: full suite (OT_TEST_CI=full)');
       }
     }, 120_000);
+
+    it('says which shard of the list runs with OT_TEST_SHARD', () => {
+      const result = dry({ OT_TEST_SHARD: '2/4' });
+      expect(result.status).toBe(0);
+      expect(result.stdout).toContain('test-affected: shard 2/4 of the list');
+      expect(result.stdout).toContain('test-affected: full suite (OT_TEST_CI=full)');
+    }, 120_000);
+
+    it.each(['0/4', '5/4', '2', 'a/b'])(
+      'refuses OT_TEST_SHARD=%s',
+      (value) => {
+        const result = dry({ OT_TEST_SHARD: value });
+        expect(result.status).toBe(1);
+        expect(result.stderr).toContain(`OT_TEST_SHARD=${value}: use <index>/<count>`);
+      },
+      120_000,
+    );
 
     it('refuses another value', () => {
       const result = dry({ OT_CROSS_TESTS: 'some' });

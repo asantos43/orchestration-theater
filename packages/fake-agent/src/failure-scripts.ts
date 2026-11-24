@@ -3,7 +3,7 @@ import { spawn } from 'node:child_process';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { RequestError } from '@agentclientprotocol/sdk';
-import { QUOTA_EXHAUSTED_CODE } from '@otheater/protocol';
+import { QUOTA_EXHAUSTED_CODE } from '@otheater/protocol/quota';
 import { z } from 'zod';
 
 /**

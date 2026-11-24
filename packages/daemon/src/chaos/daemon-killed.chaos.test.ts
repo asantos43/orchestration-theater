@@ -8,6 +8,7 @@ import { disposeTestGitIsolation } from '@otheater/sdk';
 import {
   assertHarnessBuilt,
   ChaosRig,
+  ChaosSlicer,
   resolveSeed,
   SeededRandom,
   type RunReport,
@@ -45,6 +46,8 @@ beforeAll(assertHarnessBuilt);
 afterAll(disposeTestGitIsolation);
 
 const SEED = resolveSeed(process.env, 20_261_124);
+/** The cases of this file that the shard of the CI runs (`OT_CHAOS_SHARD`; all of them when unset). */
+const slicer = new ChaosSlicer();
 const MINUTE = 60_000;
 const STEP_MS = 150_000;
 let instantsMs = 0;
@@ -89,7 +92,7 @@ describe.skipIf(process.platform !== 'linux')(
   { timeout: 10 * MINUTE },
   () => {
     describe('at the named points of the first run', () => {
-      it.each(FIRST_START_POINTS)('%s', async (spec) => {
+      it.each(slicer.take(FIRST_START_POINTS))('%s', async (spec) => {
         const rig = await ChaosRig.create({ script: SCENARIO_A_CHILD_SCRIPT });
         try {
           const killed = await crashDaemon(rig, { mode: 'first', point: spec });
@@ -104,7 +107,7 @@ describe.skipIf(process.platform !== 'linux')(
     });
 
     describe('at the named points of the recovery (a kill during the reconciliation)', () => {
-      it.each(RECOVERY_POINTS)('%s', async (spec) => {
+      it.each(slicer.take(RECOVERY_POINTS))('%s', async (spec) => {
         const rig = await ChaosRig.create({ script: SCENARIO_A_CHILD_SCRIPT });
         try {
           const first = await rig.killAtPoint(PENDING_EFFECT);
@@ -131,7 +134,7 @@ describe.skipIf(process.platform !== 'linux')(
         );
       });
 
-      it.each(Array.from({ length: instants }, (_, index) => index))(
+      it.each(slicer.take(Array.from({ length: instants }, (_, index) => index)))(
         'instant %i',
         { timeout: 5 * MINUTE },
         async (index) => {
@@ -200,7 +203,7 @@ describe.skipIf(process.platform !== 'linux')(
         };
       }
 
-      it.each([0, 1, 2])(
+      it.each(slicer.take([0, 1, 2]))(
         'the client launched at position %i is found by its marker and ended',
         async (skip) => {
           const rig = await ChaosRig.create({ script: SCENARIO_A_CHILD_SCRIPT });
@@ -219,138 +222,154 @@ describe.skipIf(process.platform !== 'linux')(
         },
       );
 
-      it('with recovery.orphans: report the same orphan is left alone and the notice says so (I3 fails, as it must)', async () => {
+      it.runIf(slicer.has())(
+        'with recovery.orphans: report the same orphan is left alone and the notice says so (I3 fails, as it must)',
+        async () => {
+          const rig = await ChaosRig.create({ script: SCENARIO_A_CHILD_SCRIPT });
+          try {
+            const { crashed, pid } = await killInWindow(rig, 0);
+            const report = await restartDaemon(rig, { OT_CHILD_ORPHANS: 'report' });
+            expect(isAlive(pid)).toBe(true);
+            expect(checkI3(crashed.census).ok).toBe(false);
+            expect(report.recovered.at(-1)?.orphansKilled).toBe(0);
+            const db = new DatabaseSync(rig.storePath);
+            try {
+              const notices = db
+                .prepare("SELECT payload FROM events WHERE type = 'recovery.notice'")
+                .all() as { payload: string }[];
+              expect(notices.some((row) => row.payload.includes('"orphan_left"'))).toBe(true);
+            } finally {
+              db.close();
+            }
+          } finally {
+            await rig.dispose();
+          }
+        },
+      );
+    });
+
+    it.runIf(slicer.has())(
+      'the chat through the API: the connection is cut with the daemon and comes back to the next one',
+      async () => {
         const rig = await ChaosRig.create({ script: SCENARIO_A_CHILD_SCRIPT });
         try {
-          const { crashed, pid } = await killInWindow(rig, 0);
-          const report = await restartDaemon(rig, { OT_CHILD_ORPHANS: 'report' });
-          expect(isAlive(pid)).toBe(true);
-          expect(checkI3(crashed.census).ok).toBe(false);
-          expect(report.recovered.at(-1)?.orphansKilled).toBe(0);
+          const first = startDaemon(rig, 'chat');
+          const api = (await first.line(API_LINE, STEP_MS)) as { url: string };
+          const { scenarioId } = (await first.line(SCENARIO_LINE, STEP_MS)) as {
+            scenarioId: string;
+          };
+          const token = (await readFile(dataPaths(rig.dataDir).apiToken, 'utf8')).trim();
+          const before = await ChatSocket.open({ apiUrl: api.url, token, scenarioId });
+          // The Producer asks for a play through the chat itself.
+          before.send({ type: 'message', text: '#ot-play write alpha and beta #outcome:approved' });
+          await before.until('the first state', () => before.frames[0]);
+          const deadline = Date.now() + STEP_MS;
+          while (playCount(rig.storePath) === 0) {
+            if (Date.now() > deadline) throw new Error('the play was never written');
+            await new Promise((resolve) => setTimeout(resolve, 20));
+          }
+          const cursor = before.cursor;
+          // The daemon dies: the connection is cut without a close frame.
+          first.process.kill('SIGKILL');
+          await first.exited;
+          expect(await before.closed).not.toBe(1000);
+          const census = rig.census();
+
+          // The next daemon, on the same folder, keeps its API up until the test is done with it.
+          const keepUp = join(rig.runDir, 'keep-up');
+          const second = startDaemon(rig, 'resume', undefined, { OT_CHILD_KEEP_UP: keepUp });
+          const api2 = (await second.line(API_LINE, STEP_MS)) as { url: string };
+          const report = (await second.line('REPORT ', STEP_MS)) as RunReport;
+          const after = await ChatSocket.open({
+            apiUrl: api2.url,
+            token: (await readFile(dataPaths(rig.dataDir).apiToken, 'utf8')).trim(),
+            scenarioId,
+            lastEventId: cursor,
+          });
+          // What the chat said while it was cut (the events of the store after the cursor) comes, once.
           const db = new DatabaseSync(rig.storePath);
+          let missed: number[];
           try {
-            const notices = db
-              .prepare("SELECT payload FROM events WHERE type = 'recovery.notice'")
-              .all() as { payload: string }[];
-            expect(notices.some((row) => row.payload.includes('"orphan_left"'))).toBe(true);
+            missed = (
+              db
+                .prepare(
+                  "SELECT id FROM events WHERE scenario_id = ? AND id > ? AND type IN ('chat.director_reply', 'chat.ask') ORDER BY id",
+                )
+                .all(scenarioId, cursor) as { id: number }[]
+            ).map((row) => row.id);
           } finally {
             db.close();
+          }
+          await after.until('what it missed', () =>
+            missed.every((id) => after.frames.some((frame) => frame.eventId === id))
+              ? true
+              : undefined,
+          );
+          const delivered = after.frames
+            .filter((frame) => frame.type === 'director_reply' || frame.type === 'ask')
+            .map((frame) => frame.eventId);
+          expect(new Set(delivered).size).toBe(delivered.length);
+          expect(delivered.every((id) => id > cursor)).toBe(true);
+          // And it is a live socket: a message of the Producer goes through the next daemon.
+          after.send({ type: 'message', text: '#ot-chat still here' });
+          await after.until('a reply', () =>
+            after.frames.find((frame) => frame.type === 'director_reply' && frame.eventId > cursor),
+          );
+          after.close();
+          writeFileSync(keepUp, '');
+          await second.exited;
+          verdictAfter(rig, [{ census }], report, { atLeastOneBoot: false });
+        } finally {
+          await rig.dispose();
+        }
+      },
+    );
+
+    it.runIf(slicer.has())(
+      'wakeups of quota and budget (the scheduling of N285) written before a kill in the recovery fire once',
+      async () => {
+        const rig = await ChaosRig.create({ script: SCENARIO_A_CHILD_SCRIPT });
+        try {
+          const first = await crashDaemon(rig, { mode: 'first', point: PENDING_EFFECT });
+          // Due wakeups of a quota and of a budget cap of the same profile, as the daemon wrote them.
+          const db = new DatabaseSync(rig.storePath);
+          try {
+            const insert = db.prepare(
+              "INSERT INTO wakeups (id, seq, profile_id, cause, at, state, os_trigger_id, created_at, updated_at) VALUES (?, ?, 'fake/one', ?, 1, 'scheduled', NULL, 1, 1)",
+            );
+            insert.run('W1', 1, 'quota');
+            insert.run('W2', 2, 'budget');
+          } finally {
+            db.close();
+          }
+          // The second start dies in the reconciliation, before the wakeups are settled.
+          const second = await crashDaemon(rig, {
+            mode: 'resume',
+            point: 'reconcile.after_effects',
+          });
+          const report = await restartDaemon(rig);
+          verdictAfter(rig, [first, second], report);
+          const check = new DatabaseSync(rig.storePath);
+          try {
+            const rows = check
+              .prepare('SELECT id, cause, state FROM wakeups ORDER BY seq')
+              .all() as {
+              id: string;
+              cause: string;
+              state: string;
+            }[];
+            expect(rows).toEqual([
+              { id: 'W1', cause: 'quota', state: 'fired' },
+              { id: 'W2', cause: 'budget', state: 'fired' },
+            ]);
+          } finally {
+            check.close();
           }
         } finally {
           await rig.dispose();
         }
-      });
-    });
-
-    it('the chat through the API: the connection is cut with the daemon and comes back to the next one', async () => {
-      const rig = await ChaosRig.create({ script: SCENARIO_A_CHILD_SCRIPT });
-      try {
-        const first = startDaemon(rig, 'chat');
-        const api = (await first.line(API_LINE, STEP_MS)) as { url: string };
-        const { scenarioId } = (await first.line(SCENARIO_LINE, STEP_MS)) as { scenarioId: string };
-        const token = (await readFile(dataPaths(rig.dataDir).apiToken, 'utf8')).trim();
-        const before = await ChatSocket.open({ apiUrl: api.url, token, scenarioId });
-        // The Producer asks for a play through the chat itself.
-        before.send({ type: 'message', text: '#ot-play write alpha and beta #outcome:approved' });
-        await before.until('the first state', () => before.frames[0]);
-        const deadline = Date.now() + STEP_MS;
-        while (playCount(rig.storePath) === 0) {
-          if (Date.now() > deadline) throw new Error('the play was never written');
-          await new Promise((resolve) => setTimeout(resolve, 20));
-        }
-        const cursor = before.cursor;
-        // The daemon dies: the connection is cut without a close frame.
-        first.process.kill('SIGKILL');
-        await first.exited;
-        expect(await before.closed).not.toBe(1000);
-        const census = rig.census();
-
-        // The next daemon, on the same folder, keeps its API up until the test is done with it.
-        const keepUp = join(rig.runDir, 'keep-up');
-        const second = startDaemon(rig, 'resume', undefined, { OT_CHILD_KEEP_UP: keepUp });
-        const api2 = (await second.line(API_LINE, STEP_MS)) as { url: string };
-        const report = (await second.line('REPORT ', STEP_MS)) as RunReport;
-        const after = await ChatSocket.open({
-          apiUrl: api2.url,
-          token: (await readFile(dataPaths(rig.dataDir).apiToken, 'utf8')).trim(),
-          scenarioId,
-          lastEventId: cursor,
-        });
-        // What the chat said while it was cut (the events of the store after the cursor) comes, once.
-        const db = new DatabaseSync(rig.storePath);
-        let missed: number[];
-        try {
-          missed = (
-            db
-              .prepare(
-                "SELECT id FROM events WHERE scenario_id = ? AND id > ? AND type IN ('chat.director_reply', 'chat.ask') ORDER BY id",
-              )
-              .all(scenarioId, cursor) as { id: number }[]
-          ).map((row) => row.id);
-        } finally {
-          db.close();
-        }
-        await after.until('what it missed', () =>
-          missed.every((id) => after.frames.some((frame) => frame.eventId === id))
-            ? true
-            : undefined,
-        );
-        const delivered = after.frames
-          .filter((frame) => frame.type === 'director_reply' || frame.type === 'ask')
-          .map((frame) => frame.eventId);
-        expect(new Set(delivered).size).toBe(delivered.length);
-        expect(delivered.every((id) => id > cursor)).toBe(true);
-        // And it is a live socket: a message of the Producer goes through the next daemon.
-        after.send({ type: 'message', text: '#ot-chat still here' });
-        await after.until('a reply', () =>
-          after.frames.find((frame) => frame.type === 'director_reply' && frame.eventId > cursor),
-        );
-        after.close();
-        writeFileSync(keepUp, '');
-        await second.exited;
-        verdictAfter(rig, [{ census }], report, { atLeastOneBoot: false });
-      } finally {
-        await rig.dispose();
-      }
-    });
-
-    it('wakeups of quota and budget (the scheduling of N285) written before a kill in the recovery fire once', async () => {
-      const rig = await ChaosRig.create({ script: SCENARIO_A_CHILD_SCRIPT });
-      try {
-        const first = await crashDaemon(rig, { mode: 'first', point: PENDING_EFFECT });
-        // Due wakeups of a quota and of a budget cap of the same profile, as the daemon wrote them.
-        const db = new DatabaseSync(rig.storePath);
-        try {
-          const insert = db.prepare(
-            "INSERT INTO wakeups (id, seq, profile_id, cause, at, state, os_trigger_id, created_at, updated_at) VALUES (?, ?, 'fake/one', ?, 1, 'scheduled', NULL, 1, 1)",
-          );
-          insert.run('W1', 1, 'quota');
-          insert.run('W2', 2, 'budget');
-        } finally {
-          db.close();
-        }
-        // The second start dies in the reconciliation, before the wakeups are settled.
-        const second = await crashDaemon(rig, { mode: 'resume', point: 'reconcile.after_effects' });
-        const report = await restartDaemon(rig);
-        verdictAfter(rig, [first, second], report);
-        const check = new DatabaseSync(rig.storePath);
-        try {
-          const rows = check.prepare('SELECT id, cause, state FROM wakeups ORDER BY seq').all() as {
-            id: string;
-            cause: string;
-            state: string;
-          }[];
-          expect(rows).toEqual([
-            { id: 'W1', cause: 'quota', state: 'fired' },
-            { id: 'W2', cause: 'budget', state: 'fired' },
-          ]);
-        } finally {
-          check.close();
-        }
-      } finally {
-        await rig.dispose();
-      }
-    });
+      },
+    );
 
     // The scheduler of scheduled tasks is Phase 9b: until it exists there is nothing to kill. The
     // scenario is written down here so the day it lands the test only needs its body.

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { disposeTestGitIsolation } from '@otheater/sdk';
-import { assertHarnessBuilt, ChaosRig, resolveSeed, SeededRandom } from './harness.js';
+import { assertHarnessBuilt, ChaosRig, ChaosSlicer, resolveSeed, SeededRandom } from './harness.js';
 import {
   chaosInstants,
   crashDaemon,
@@ -32,6 +32,8 @@ beforeAll(assertHarnessBuilt);
 afterAll(disposeTestGitIsolation);
 
 const SEED = resolveSeed(process.env, 20_261_125);
+/** The cases of this file that the shard of the CI runs (`OT_CHAOS_SHARD`; all of them when unset). */
+const slicer = new ChaosSlicer();
 const MINUTE = 60_000;
 
 const FIRST_START_POINTS: readonly string[] = [
@@ -91,7 +93,7 @@ for (const level of [
     }
 
     describe('at the named points', { timeout: 10 * MINUTE }, () => {
-      it.each(FIRST_START_POINTS)('%s', async (point) => {
+      it.each(slicer.take(FIRST_START_POINTS))('%s', async (point) => {
         const rig = await ChaosRig.create({ script: SCENARIO_A_CHILD_SCRIPT });
         try {
           const killed = await crashDaemon(
@@ -107,7 +109,7 @@ for (const level of [
         }
       });
 
-      it.each(RECOVERY_POINTS)('the second start dies at %s', async (point) => {
+      it.each(slicer.take(RECOVERY_POINTS))('the second start dies at %s', async (point) => {
         const rig = await ChaosRig.create({ script: SCENARIO_A_CHILD_SCRIPT });
         try {
           const first = await crashDaemon(
@@ -130,7 +132,7 @@ for (const level of [
     });
 
     describe('at random instants', () => {
-      it.each(Array.from({ length: instants }, (_, index) => index))(
+      it.each(slicer.take(Array.from({ length: instants }, (_, index) => index)))(
         'instant %i',
         { timeout: 5 * MINUTE },
         async (index) => {
