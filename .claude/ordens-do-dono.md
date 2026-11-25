@@ -19,6 +19,7 @@ A `.claude/` é versionada de forma seletiva (dono, 2026-11-25). Ficam fora do g
 - O repositório não tem proteção de branch, então `gh pr merge --auto` mescla na hora: confira antes `gh pr checks N`.
 - Uma CI verde vale para outro commit com a mesma árvore.
 - Na máquina do dono, o merge passa por `nota-de-passagem/merge-pr.sh` e `ci-tree.sh`. Esses scripts não estão no git e têm caminhos fixos daquela máquina. Em outra máquina, use `gh pr merge N --squash --delete-branch` depois de conferir os checks.
+- Antes do primeiro PR numa máquina nova, confira se a conta ativa do `gh` tem push no repositório: `gh api repos/asantos43/orchestration-theater --jq .permissions.push` deve dar `true`. Se der `false`, peça ao dono para trocar a conta (`gh auth login` ou `gh auth switch`); não faça login por ele.
 - As ondas dos planos das fases começam sem pedir ok.
 
 ## Execução e recursos
