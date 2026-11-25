@@ -658,4 +658,16 @@ describe('the tokens of the Actor (P23)', () => {
     expect(nothing.said).toEqual(['fake agent: nothing to do']);
     await rm(stranger, { recursive: true, force: true });
   });
+
+  it('plays the prompt of a stage again only at the continue prompt, in the same folder (N307)', async () => {
+    const first = host(stagePrompt('PLANNING'));
+    await playRolePlay(first.host);
+    expect(first.calls.map((call) => call.tool)).toEqual(['submit_plan']);
+    const other = host('A notice with no marker.');
+    await playRolePlay(other.host);
+    expect(other.calls).toEqual([]);
+    const resumed = host('Continue the task from where you stopped. Do not start over.');
+    await playRolePlay(resumed.host);
+    expect(resumed.calls.map((call) => call.tool)).toEqual(['submit_plan']);
+  });
 });

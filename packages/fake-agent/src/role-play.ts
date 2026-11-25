@@ -282,6 +282,21 @@ function memoryFile(cwd: string): string {
   );
 }
 
+/** Where the prompt of a stage is kept for a native resume, per working directory (N307). */
+function stageMemoryFile(cwd: string): string {
+  return join(
+    stateDir(),
+    `resume-stage-${createHash('sha256').update(cwd).digest('hex').slice(0, 16)}.txt`,
+  );
+}
+
+/**
+ * The default `resume.continue_prompt` of the daemon: the turn that follows the `session/load` of a
+ * native resume. Only that turn plays a stage again, so a Director with no marker is not mistaken
+ * for one.
+ */
+const CONTINUE_PROMPT = 'Continue the task from where you stopped.';
+
 async function playActor(host: RolePlayHost, demandId: string): Promise<void> {
   await mkdir(stateDir(), { recursive: true });
   await writeFile(memoryFile(host.cwd), host.text);
@@ -367,6 +382,21 @@ async function resumeActor(host: RolePlayHost): Promise<boolean> {
 }
 
 /**
+ * The native resume of a stage (N307, `resume.on_restart: native`): the session that ran the stage
+ * is loaded again and told to go on, so the fake agent plays the prompt of that stage again in the
+ * same working directory. Returns false when the turn is not the continue prompt or nothing is kept.
+ */
+async function resumeStage(host: RolePlayHost): Promise<boolean> {
+  if (!host.text.includes(CONTINUE_PROMPT)) return false;
+  const before = await readFile(stageMemoryFile(host.cwd), 'utf8').catch(() => undefined);
+  const stage = before === undefined ? undefined : markerOf(before, '#ot-stage:');
+  if (before === undefined || stage === undefined || stage === '') return false;
+  await host.say(`fake agent: resuming the stage ${stage} where it stopped`);
+  await playStage({ ...host, text: before }, stage);
+  return true;
+}
+
+/**
  * Moves `main` of the project one commit on, with git plumbing so no worktree is touched: the
  * base of the play moves while the play runs (N83). `shared` also writes a file the play writes.
  */
@@ -418,6 +448,8 @@ async function playCritic(host: RolePlayHost, playId: string, outcome: Outcome):
 }
 
 async function playStage(host: RolePlayHost, stage: string): Promise<void> {
+  await mkdir(stateDir(), { recursive: true });
+  await writeFile(stageMemoryFile(host.cwd), host.text);
   const playId = markerOf(host.text, '#ot-play:') ?? 'unknown';
   const outcome = outcomeOf(host.text);
   switch (stage) {
@@ -676,5 +708,6 @@ export async function playRolePlay(host: RolePlayHost): Promise<void> {
     return;
   }
   if (await resumeActor(host)) return;
+  if (await resumeStage(host)) return;
   await host.say('fake agent: nothing to do');
 }
