@@ -621,6 +621,14 @@ describe('parseConfig, execution keys', () => {
     );
   });
 
+  it('takes resume.on_restart with the native resume as default', () => {
+    for (const preset of ['balanced', 'patient', 'agile']) {
+      expect(parseConfig(`resume:\n  preset: ${preset}\n`).resume.on_restart).toBe('native');
+    }
+    expect(parseConfig('resume:\n  on_restart: handoff\n').resume.on_restart).toBe('handoff');
+    expect(() => parseConfig('resume:\n  on_restart: later\n')).toThrow(/on_restart/);
+  });
+
   it('takes resume.package with the deterministic summary as default (N126, P18)', () => {
     for (const preset of ['balanced', 'patient', 'agile']) {
       expect(parseConfig(`resume:\n  preset: ${preset}\n`).resume.package).toEqual({

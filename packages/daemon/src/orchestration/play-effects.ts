@@ -280,6 +280,8 @@ export class OrchestrationEffects implements PlayEffects {
         this.#openGate(scope.playId);
         this.#spawn('cancel paused attempts', scope, async () => {
           await this.#cancelPaused(scope.playId);
+          // `resume.on_restart: native`: what the restart kept for this play will not run.
+          await this.#options.execution.releaseDeferredOf(scope.playId, 'resume:aborted');
         });
         return;
       case 'pause_work':
@@ -676,6 +678,36 @@ export class OrchestrationEffects implements PlayEffects {
     return attempts.reduce((max, a) => Math.max(max, a.attempt), 0) + 1;
   }
 
+  /**
+   * `resume.on_restart: native`: what the selection asks for first so the attempt the restart kept
+   * for this demand gets its own account back, where its conversation lives.
+   */
+  #startAtOf(kept: AttemptRecord | undefined): Pick<RoleSelectionRequest, 'startAtProfile'> {
+    return kept === undefined
+      ? {}
+      : { startAtProfile: { client: kept.client, profile: kept.profile } };
+  }
+
+  /**
+   * The kept attempt, when the Executor the selection gave is in its account: it is resumed in its
+   * session. In another account the conversation cannot be loaded, so it is parked (the handoff of
+   * before `native`) and the demand goes on with a new attempt.
+   */
+  async #resumable(
+    kept: AttemptRecord | undefined,
+    picked: Extract<Acquired, { kind: 'selected' }>,
+  ): Promise<AttemptRecord | undefined> {
+    if (kept === undefined) return undefined;
+    if (picked.profile.client === kept.client && picked.profile.profile === kept.profile) return kept;
+    await this.#options.execution.releaseDeferred(kept, 'resume:other_profile');
+    return undefined;
+  }
+
+  /** Gives a kept attempt back when the demand does not run now (cancelled, paused, no Executor). */
+  async #letGo(kept: AttemptRecord | undefined, signal: string): Promise<void> {
+    if (kept !== undefined) await this.#options.execution.releaseDeferred(kept, signal);
+  }
+
   /** The newest attempt of the demand that ran to its end. */
   async #latestCompleted(playId: string, demandId: string): Promise<AttemptRecord | undefined> {
     const attempts = await this.#attemptsOf(playId, demandId);
@@ -813,19 +845,37 @@ export class OrchestrationEffects implements PlayEffects {
         ? JSON.stringify(scriptValue, null, 2)
         : undefined;
     const demandId = stageDemandId(effect.stage);
-    const attempt = await this.#nextAttempt(playId, demandId);
+    // `resume.on_restart: native`: the attempt that was running when the daemon stopped goes on.
+    const kept = execution.claimDeferred(playId, demandId);
+    let attempt = kept?.attempt ?? (await this.#nextAttempt(playId, demandId));
     // A stage has no deadline, so it waits here for an Executor (P16); `abort_work` and the close
     // of the daemon let it go.
     const picked = await this.#acquire(
-      { role: effect.role, scenarioId, attempt: { playId, demandId, number: attempt } },
+      {
+        role: effect.role,
+        scenarioId,
+        attempt: { playId, demandId, number: attempt },
+        ...this.#startAtOf(kept),
+      },
       playId,
       this.#watchOf(scope, effect.role, demandId, undefined),
     );
-    if (picked === undefined)
+    if (picked === undefined) {
+      await this.#letGo(kept, 'resume:cancelled');
       return `The ${effect.role} was cancelled while it waited for an Executor.`;
-    if (!(await this.#unpaused(playId, generation)))
+    }
+    if (!(await this.#unpaused(playId, generation))) {
+      await this.#letGo(kept, 'resume:cancelled');
       return `The ${effect.role} was cancelled while the play was paused.`;
-    if (picked.kind === 'unavailable') throw new AdapterUnavailable(picked.reason);
+    }
+    if (picked.kind === 'unavailable') {
+      await this.#letGo(kept, 'resume:unavailable');
+      throw new AdapterUnavailable(picked.reason);
+    }
+    const resumable = await this.#resumable(kept, picked);
+    if (kept !== undefined && resumable === undefined) {
+      attempt = await this.#nextAttempt(playId, demandId);
+    }
     const base = effect.stage === 'CRITIQUING' ? integrationBranch(playId) : playBranch(playId);
     const body = stagePrompt({
       stage: effect.stage,
@@ -845,19 +895,29 @@ export class OrchestrationEffects implements PlayEffects {
     });
     const prompt = `${await this.#prefix(effect.role)}\n${body}`;
     const { profile, settings } = picked;
-    const mark = await store.events.lastId();
-    const outcome = await execution.runner.run({
-      playId,
-      demandId,
-      attempt,
-      repo: repo.path,
-      base,
-      profile,
-      executor: settings,
-      policy,
-      prompt,
-      role: effect.role,
-    });
+    // A resumed attempt may have submitted before the daemon stopped: its events are read whole.
+    const mark = resumable === undefined ? await store.events.lastId() : 0;
+    const outcome =
+      resumable === undefined
+        ? await execution.runner.run({
+            playId,
+            demandId,
+            attempt,
+            repo: repo.path,
+            base,
+            profile,
+            executor: settings,
+            policy,
+            prompt,
+            role: effect.role,
+          })
+        : await execution.runner.resume(resumable, {
+            role: effect.role,
+            base,
+            profile,
+            executor: settings,
+            policy,
+          });
     // The worktree of a stage is a scratch place; the branch (and its history) stays.
     await vcs.removeWorktree(outcome.worktree, { force: true }).catch(() => undefined);
     if (outcome.state !== 'completed') {
@@ -1238,7 +1298,9 @@ export class OrchestrationEffects implements PlayEffects {
     const { playId, scenarioId } = scope;
     const limits = await this.#limitsOf(playId);
     const timeoutMin = demand.timeoutMin ?? Math.max(1, Math.ceil(limits.demand_timeout / 60_000));
-    const attempt = await this.#nextAttempt(playId, demand.id);
+    // `resume.on_restart: native`: the attempt that was running when the daemon stopped goes on.
+    const kept = execution.claimDeferred(playId, demand.id);
+    let attempt = kept?.attempt ?? (await this.#nextAttempt(playId, demand.id));
     const failed = (reason: string): Promise<void> =>
       this.#send(playId, generation, {
         type: 'ATTEMPT_FAILED',
@@ -1248,13 +1310,30 @@ export class OrchestrationEffects implements PlayEffects {
     // The Executor is chosen before the demand starts: `DEMAND_STARTED` arms the deadline, and the
     // time a demand spends waiting for an Executor with quota must not count against it (P16).
     const picked = await this.#acquire(
-      { role: 'actor', scenarioId, attempt: { playId, demandId: demand.id, number: attempt } },
+      {
+        role: 'actor',
+        scenarioId,
+        attempt: { playId, demandId: demand.id, number: attempt },
+        ...this.#startAtOf(kept),
+      },
       playId,
       this.#watchOf(scope, 'actor', demand.id, demandKey(playId, demand.id, generation)),
     );
-    if (picked === undefined) return; // abort_work or the daemon stopped while it waited
+    if (picked === undefined) {
+      // abort_work or the daemon stopped while it waited
+      await this.#letGo(kept, 'resume:cancelled');
+      return;
+    }
     // N176: an Executor that came while the play was paused waits here, before the deadline is armed.
-    if (!(await this.#unpaused(playId, generation))) return;
+    if (!(await this.#unpaused(playId, generation))) {
+      await this.#letGo(kept, 'resume:cancelled');
+      return;
+    }
+    if (picked.kind === 'unavailable') await this.#letGo(kept, 'resume:unavailable');
+    const resumable = picked.kind === 'unavailable' ? undefined : await this.#resumable(kept, picked);
+    if (kept !== undefined && resumable === undefined) {
+      attempt = await this.#nextAttempt(playId, demand.id);
+    }
     await this.#send(playId, generation, {
       type: 'DEMAND_STARTED',
       demandId: demand.id,
@@ -1304,20 +1383,32 @@ export class OrchestrationEffects implements PlayEffects {
       ].join('\n');
       const prompt = `${await this.#prefix('actor', contract)}\n${body}`;
       const { profile, settings } = picked;
-      const mark = await store.events.lastId();
-      const outcome = await execution.runner.run({
-        playId,
-        demandId: demand.id,
-        attempt,
-        repo: repo.path,
-        base,
-        profile,
-        executor: settings,
-        policy: await this.#policyOf('actor', scenarioId),
-        prompt,
-        role: 'actor',
-        timeoutMs: timeoutMin * 60_000,
-      });
+      // A resumed attempt may have submitted before the daemon stopped: its events are read whole.
+      const mark = resumable === undefined ? await store.events.lastId() : 0;
+      const policy = await this.#policyOf('actor', scenarioId);
+      const outcome =
+        resumable === undefined
+          ? await execution.runner.run({
+              playId,
+              demandId: demand.id,
+              attempt,
+              repo: repo.path,
+              base,
+              profile,
+              executor: settings,
+              policy,
+              prompt,
+              role: 'actor',
+              timeoutMs: timeoutMin * 60_000,
+            })
+          : await execution.runner.resume(resumable, {
+              role: 'actor',
+              base,
+              profile,
+              executor: settings,
+              policy,
+              timeoutMs: timeoutMin * 60_000,
+            });
       if (outcome.state === 'interrupted') {
         // The daemon is stopping, or the attempt waits for a decision: reconciliation (P9) and the
         // Director's judgment points own what happens next, so nothing is sent.

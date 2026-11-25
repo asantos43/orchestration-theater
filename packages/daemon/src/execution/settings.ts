@@ -7,6 +7,7 @@ import {
   type QUOTA_WAIT_COUNTS_MODES,
   type QUOTA_WAIT_DEADLINE_MODES,
   type ON_PROFILE_REMOVED_MODES,
+  type ON_RESTART_MODES,
   type QUOTA_WAIT_MISSED_MODES,
   type TurnTimeoutMode,
   type PACKAGE_SHORT_OUTPUT_MODES,
@@ -111,6 +112,8 @@ export interface ExecutionSettings {
   readonly quotaWaitMissed: (typeof QUOTA_WAIT_MISSED_MODES)[number];
   /** `resume.on_profile_removed` [proposta] (P21b, N152). */
   readonly onProfileRemoved: (typeof ON_PROFILE_REMOVED_MODES)[number];
+  /** `resume.on_restart` [proposta]. */
+  readonly onRestart: (typeof ON_RESTART_MODES)[number];
   /** What the Executor is told when a conversation is reloaded. */
   readonly continuePrompt: string;
   /** `resume.package.*`. */
@@ -175,6 +178,7 @@ export function executionSettingsOf(config: DaemonConfig): ExecutionSettings {
     quotaWaitCounts: config.resume.quota_wait_counts,
     quotaWaitMissed: config.resume.quota_wait_missed,
     onProfileRemoved: config.resume.on_profile_removed,
+    onRestart: config.resume.on_restart,
     continuePrompt: config.resume.continue_prompt,
     package: {
       summarize: config.resume.package.summarize,

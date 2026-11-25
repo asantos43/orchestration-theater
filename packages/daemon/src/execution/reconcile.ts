@@ -13,10 +13,18 @@ export type AttemptResolver = (
   record: AttemptRecord,
 ) => ResumeContext | undefined | Promise<ResumeContext | undefined>;
 
+/**
+ * Whether an attempt the resolver did not take is kept for its play (`resume.on_restart: native`):
+ * it is left as it is, for the play to resume it when it runs the stage or the demand again.
+ */
+export type AttemptDeferral = (record: AttemptRecord) => boolean | Promise<boolean>;
+
 export interface ReconcileOptions {
   readonly store: Store;
   readonly runner: AttemptRunner;
   readonly resolver: AttemptResolver | undefined;
+  /** Absent: nothing is kept for the plays, and what the resolver does not know is parked. */
+  readonly defer?: AttemptDeferral | undefined;
   readonly logger: Logger;
 }
 
@@ -27,6 +35,11 @@ export interface ReconcileReport {
   readonly resuming: readonly string[];
   /** Attempts the resolver did not know: parked as `interrupted` for a decision. */
   readonly parked: readonly string[];
+  /**
+   * Attempts kept for their play (`resume.on_restart: native`), untouched: the play resumes each
+   * one when it runs its stage or demand again, or parks it when it cannot.
+   */
+  readonly deferred: readonly AttemptRecord[];
   /** Settles when every resumed attempt has ended; it never rejects. */
   readonly done: Promise<readonly AttemptOutcome[]>;
 }
@@ -42,10 +55,11 @@ const IN_PROGRESS = ['executing', 'resuming', 'awaiting_resume'] as const;
  * resumes have started; `done` is for whoever waits for them.
  */
 export async function reconcileAttempts(options: ReconcileOptions): Promise<ReconcileReport> {
-  const { store, runner, resolver, logger } = options;
+  const { store, runner, resolver, defer, logger } = options;
   const records = await store.attempts.list({ states: IN_PROGRESS });
   const resuming: string[] = [];
   const parked: string[] = [];
+  const deferred: AttemptRecord[] = [];
   const running: Promise<AttemptOutcome | undefined>[] = [];
   for (const record of records) {
     if (record.state === 'awaiting_resume' && record.cause === 'paused') {
@@ -61,8 +75,12 @@ export async function reconcileAttempts(options: ReconcileOptions): Promise<Reco
       continue;
     }
     const resolved = resolver === undefined ? undefined : await resolver(record);
+    if (resolved === undefined && defer !== undefined && (await defer(record))) {
+      deferred.push(record);
+      continue;
+    }
     if (resolved === undefined) {
-      await park(store, record);
+      await parkAttempt(store, record);
       parked.push(record.attemptId);
       continue;
     }
@@ -75,20 +93,35 @@ export async function reconcileAttempts(options: ReconcileOptions): Promise<Reco
     );
   }
   logger.info(
-    { found: records.length, resuming: resuming.length, parked: parked.length },
+    {
+      found: records.length,
+      resuming: resuming.length,
+      parked: parked.length,
+      deferred: deferred.length,
+    },
     'attempts reconciled',
   );
   return {
     found: records.map((record) => record.attemptId),
     resuming,
     parked,
+    deferred,
     done: Promise.all(running).then((all) =>
       all.filter((outcome): outcome is AttemptOutcome => outcome !== undefined),
     ),
   };
 }
 
-async function park(store: Store, record: AttemptRecord): Promise<void> {
+/**
+ * Parks an attempt no one resumes: `session.interrupted`, the interruption row with the form
+ * `handoff`, and the state `interrupted` (cause `daemon_restart`, or `profile_removed` kept).
+ * `signals` adds why on top of `action:handoff`; the default is `resolver:unknown`.
+ */
+export async function parkAttempt(
+  store: Store,
+  record: AttemptRecord,
+  reason: { readonly signal?: string; readonly detail?: string } = {},
+): Promise<void> {
   // A profile that was removed (`drain.on_timeout: force`, P21b) keeps its cause: the attempt does not
   // wait for a restart of the daemon, it waits for another Executor.
   const cause = record.cause === 'profile_removed' ? 'profile_removed' : 'daemon_restart';
@@ -99,9 +132,10 @@ async function park(store: Store, record: AttemptRecord): Promise<void> {
           sessionId: record.sessionId,
           cause,
           detail:
-            cause === 'profile_removed'
+            reason.detail ??
+            (cause === 'profile_removed'
               ? 'the profile of the session was removed and nothing knows how to resume this attempt'
-              : 'the daemon was not running and nothing knows how to resume this attempt',
+              : 'the daemon was not running and nothing knows how to resume this attempt'),
           ...(record.lastCheckpoint === null ? {} : { checkpointSha: record.lastCheckpoint }),
           playId: record.playId,
           demandId: record.demandId,
@@ -112,7 +146,7 @@ async function park(store: Store, record: AttemptRecord): Promise<void> {
       });
       // Nothing knows the Executor, so nothing can reload the conversation: the way on is a handoff
       // (5.16). A restart is no failure of the agent, so it costs no attempt.
-      const signals = ['resolver:unknown', 'action:handoff'];
+      const signals = [reason.signal ?? 'resolver:unknown', 'action:handoff'];
       const rows = await tx.interruptions.list({
         sessionId: record.sessionId,
         causes: [cause],

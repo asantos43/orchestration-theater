@@ -71,8 +71,9 @@ export const BUSY_MODES = ['idle', 'park'] as const;
 export type BusyMode = (typeof BUSY_MODES)[number];
 
 /**
- * `native` asks for the `session/load`; `any` also takes the handoff to a new session and the
- * demand run again as a later attempt (what the daemon of the release does today).
+ * `native` (the default) asks for the `session/load`, what the daemon does with
+ * `resume.on_restart: native`; `any` also takes the handoff to a new session and the demand run
+ * again as a later attempt (what it does with `resume.on_restart: handoff`).
  */
 export const BUSY_RESUME_FORMS = ['native', 'any'] as const;
 export type BusyResumeForm = (typeof BUSY_RESUME_FORMS)[number];
@@ -232,9 +233,9 @@ function sameDemandLater(attemptId: string, other: string | undefined): boolean 
  * `session.interrupted` with the cause `daemon_restart` for the attempt, then one of:
  * - `session.resumed` for it, with `form: native` (a `session/load`) or `handoff`;
  * - a `session.opened` of a later attempt of the same demand (the play ran it again).
- * With `resumeForm: native` only the first, native one counts. [V: the fake agent in the SEA,
- * 2026-11-24] the daemon of the release does not pass `resolveAttempt`, so it parks every attempt
- * for the handoff and the play runs the stage again: the form seen there is the third.
+ * With `resumeForm: native` only the first, native one counts. Before `resume.on_restart`, the
+ * daemon parked every attempt for the handoff and the play ran the stage again [V: the fake agent
+ * in the SEA, 2026-11-24]: the form seen then was the third.
  */
 export function judgePark(
   events: readonly LoggedEvent[],
