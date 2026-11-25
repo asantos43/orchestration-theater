@@ -210,7 +210,13 @@ export const LOG_LEVELS = ['fatal', 'error', 'warn', 'info', 'debug', 'trace'] a
 export const LOG_DESTINATIONS = ['file', 'stderr', 'both'] as const;
 export const LOCALE_SETTINGS = ['auto', 'en', 'pt-BR'] as const;
 export const STORE_ADAPTER_IDS = ['sqlite'] as const;
-export const VAULT_ADAPTER_IDS = ['keyring', 'encrypted-file'] as const;
+/**
+ * `adapters.vault`. `keyring`: the system keyring (Credential Manager, Keychain, Secret Service);
+ * `encrypted-file`: `vault.enc` under a master password; `auto` (N323; [proposta]): the keyring when
+ * the system has one, the encrypted file when it has none (a notice and the event `daemon.notice
+ * vault_fallback` say so). The default stays `keyring`.
+ */
+export const VAULT_ADAPTER_IDS = ['keyring', 'encrypted-file', 'auto'] as const;
 export const CLOCK_ADAPTER_IDS = ['system'] as const;
 export const PROMPT_ADAPTER_IDS = ['files'] as const;
 /**

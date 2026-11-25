@@ -196,7 +196,10 @@ import {
  */
 
 const AdapterRefSchema = z.strictObject({
-  /** Adapter id as written in the configuration (`sqlite`, `keyring`, `system`). */
+  /**
+   * Adapter id as written in the configuration (`sqlite`, `keyring`, `system`); for `adapters.vault:
+   * auto`, the one it chose (`keyring` or `encrypted-file`).
+   */
   id: z.string().min(1),
   /** Version of the port contract the daemon runs with (not the adapter package version). */
   portVersion: z.string().min(1),

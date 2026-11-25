@@ -19,6 +19,9 @@ const detail = z.string().min(1).max(512).nullable();
  * What a `daemon.notice` tells: the state of the daemon itself at start-up or while it runs.
  * - `vault_locked`: the vault stays locked (no prompt, or no master password given);
  * - `vault_wrong_password`: a wrong master password (`detail` says which try);
+ * - `vault_fallback` (N323; [proposta]): `adapters.vault: auto` found no system keyring (no Secret
+ *   Service, no access to the store) and uses the encrypted file instead (`subject`: `keyring`;
+ *   `detail`: why the keyring could not be used). A locked keyring is not a fallback: it is used.
  * - `backup_unsupported`: the store cannot make copies, so the scheduled backups are off;
  * - `deprecated_config`: a configuration key that still works and has a new place;
  * - `execution_off`: the execution of attempts is off (`subject`: `no_launcher` or `no_client`);
@@ -112,6 +115,7 @@ const detail = z.string().min(1).max(512).nullable();
 export const DAEMON_NOTICE_KINDS = [
   'vault_locked',
   'vault_wrong_password',
+  'vault_fallback',
   'backup_unsupported',
   'deprecated_config',
   'execution_off',
