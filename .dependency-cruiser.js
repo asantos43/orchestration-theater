@@ -37,6 +37,22 @@ export default {
       },
     },
     {
+      name: 'workflows-pure',
+      comment:
+        'packages/workflows/src is pure logic (docs/24, P1 of Phase 11b): it may import only itself, @otheater/core (not testing), zod and yaml. No Node built-ins, no adapter, no daemon, no xstate at run time [proposta].',
+      severity: 'error',
+      from: { path: '^packages/workflows/src/', pathNot: '\\.test\\.ts$' },
+      to: {
+        pathNot: [
+          '^packages/workflows/src/',
+          '^packages/core/(src|dist)/(?!testing/)',
+          '(^|/)node_modules/@otheater/core/(src|dist)/(?!testing/)',
+          '(^|/)node_modules/(zod|yaml)/',
+          '^(zod|yaml)(/|$)',
+        ],
+      },
+    },
+    {
       name: 'protocol-only-core-and-zod',
       comment:
         'packages/protocol/src is the wire contract: it may import only itself, @otheater/core (types and errors) and zod. No adapter, no daemon, no Node built-ins [proposta].',
