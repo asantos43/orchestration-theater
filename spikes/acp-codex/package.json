@@ -8,7 +8,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@agentclientprotocol/codex-acp": "^2.6.0",
+    "@agentclientprotocol/codex-acp": "2.12.0",
     "@agentclientprotocol/sdk": "^2.7.0",
     "@modelcontextprotocol/sdk": "^1.32.2",
     "zod": "^4.6.7"

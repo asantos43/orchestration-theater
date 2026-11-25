@@ -56,11 +56,14 @@ describe.skipIf(!flags.clients || profileDir === undefined)('the real codex-acp'
 });
 
 describe.skipIf(!flags.clients)('the real codex-acp: sessions in one process', () => {
-  // K = OT_TEST_SESSIONS_PER_PROCESS (default 4). Only `session/new` and the config options, in an
-  // empty scratch CODEX_HOME (no login, nothing billed). Whether `codex-acp` answers `session/new`
-  // without a login is [N]; if it does not, the report says so in `failures`. The line it logs is
-  // the measurement the owner reads to decide `pool.sessions_per_process` for this client.
-  // OT_TEST_CODEX_ACP_COMMAND overrides the executable.
+  // K = OT_TEST_SESSIONS_PER_PROCESS (default 4). Only `session/new` and the config options
+  // (nothing billed). The line it logs is the measurement the owner reads to decide
+  // `pool.sessions_per_process` for this client. OT_TEST_CODEX_ACP_COMMAND overrides the executable.
+  //
+  // [V: codex-acp 2.6.0 and 2.12.0, 2026-11-25] `codex-acp` refuses `session/new` without a login
+  // (-32000 "Authentication required"). So with OT_TEST_CODEX_HOME (a profile the owner logged in on
+  // purpose) the test points CODEX_HOME at it, never copying, writing or reading it, and wants the K
+  // sessions; without it, the test uses an empty scratch CODEX_HOME and wants that refusal for each.
   it('takes K sessions in one process (session/new only)', async () => {
     const { writeProfileConfig } = await import('./profile.js');
     const scratch = await mkdtemp(join(tmpdir(), 'ot-codex-real-k-'));
@@ -76,17 +79,28 @@ describe.skipIf(!flags.clients)('the real codex-acp: sessions in one process', (
         override === undefined || override === ''
           ? DEFAULT_CODEX_COMMAND
           : { cmd: override, args: [] as readonly string[] };
+      const loggedIn = profileDir !== undefined && profileDir !== '';
       const report = await probeSessionsPerProcess({
         cmd: command.cmd,
         args: command.args,
         cwd: scratch,
-        env: { PATH: process.env.PATH ?? '', HOME: scratch, CODEX_HOME: dir },
+        env: {
+          PATH: process.env.PATH ?? '',
+          HOME: loggedIn ? (process.env.HOME ?? scratch) : scratch,
+          CODEX_HOME: loggedIn ? profileDir : dir,
+        },
         sessions: realSessionsPerProcess(),
       });
       console.info(describeSessionsReport('codex', report));
-      expect(report.accepted).toBe(report.requested);
-      expect(report.distinctSessionIds).toBe(report.requested);
       expect(report.processAlive).toBe(true);
+      if (loggedIn) {
+        expect(report.accepted).toBe(report.requested);
+        expect(report.distinctSessionIds).toBe(report.requested);
+      } else {
+        expect(report.accepted).toBe(0);
+        expect(report.failures).toHaveLength(report.requested);
+        for (const failure of report.failures) expect(failure).toMatch(/Authentication required/);
+      }
     } finally {
       await rm(scratch, { recursive: true, force: true });
     }

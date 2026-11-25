@@ -1,8 +1,8 @@
 # @otheater/adapter-client-codex
 
 `CodexAdapter`, the `ClientAdapter` of `@otheater/core` for the official Codex client, through its
-ACP adapter `codex-acp` (^2.6.0), which talks to `codex app-server`. It also holds the Codex
-`ModelCatalog`. It starts nothing real in its tests: the command is a constructor option (proposed
+ACP adapter `codex-acp` (^2.6.0; `ot adapters install` pins 2.12.0), which talks to
+`codex app-server`. It also holds the Codex `ModelCatalog`. It starts nothing real in its tests: the command is a constructor option (proposed
 key `clients.codex.command`, default `codex-acp`), and the adapter is never an npm dependency of
 this package (decision N45). `command` is `{ cmd, args }` or a function that returns it, called at each
 process start: the daemon passes the managed install under `<data>/adapters/` run with its Node, or
