@@ -5,7 +5,11 @@ import { InvalidInput } from '@otheater/core';
 import { sweepTemporaries, temporaryPathOf } from './temporaries.js';
 
 /** The temporary of {@link writeProfileConfig}: `config.toml.<pid>.<12 hex>.tmp` (N306). */
-export const PROFILE_TEMPORARY_SHAPE = { hexLength: 12 } as const;
+export const PROFILE_TEMPORARY_SHAPE = {
+  hexLength: 12,
+  // Before N306 the name was `config.toml.<12 hex>.tmp`, without a pid: swept by age.
+  legacy: [{ suffix: 'hex', hexLength: 12 }],
+} as const;
 
 /** Where the client keeps the login of a profile (`cli_auth_credentials_store`, docs/08). */
 export const CREDENTIALS_STORES = ['file', 'keyring', 'auto'] as const;

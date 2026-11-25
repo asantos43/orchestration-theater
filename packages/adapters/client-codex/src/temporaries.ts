@@ -14,7 +14,12 @@ import { basename, dirname, join } from 'node:path';
  * What counts as an orphan is the key `temporaries` of `config.yaml`, as for the daemon: the client
  * module, when it is loaded in the process (the daemon), publishes its policy and its sink of failures
  * under `Symbol.for('otheater.temporaries')`, and this copy reads them there. Without it (a test, a tool
- * that runs an adapter alone) the policy is the default, `pid`, and a failure is dropped. [proposta]
+ * that runs an adapter alone) the policy is the default, `pid`, and a failure is dropped (N306, owner 2026-11-25).
+ *
+ * The names an older version wrote, before the pid was in the name, are listed in `legacy` (N306,
+ * owner 2026-11-25): one that still carries a pid follows the policy like any other; one without a
+ * pid (`<file>.<hex>.tmp`, `<file>.<uuid>.tmp`) has nothing to check, so it goes by age, older than
+ * `maxAgeMs`, in modes `pid` and `age` alike, and stays in mode `off`.
  */
 export type TemporaryCleanupMode = 'off' | 'pid' | 'age';
 
@@ -49,6 +54,18 @@ export interface TemporaryShape {
   readonly hexLength: number;
   /** The name starts with a dot: `.<file>.<pid>.tmp`. */
   readonly hidden?: boolean | undefined;
+  /** The names of the temporaries of older versions of the same writer; only swept, never written. */
+  readonly legacy?: readonly LegacyTemporaryShape[] | undefined;
+}
+
+/** A name an older version wrote for its temporary: `[.]<file>.<pid>.tmp`, `.<hex>.tmp` or `.<uuid>.tmp`. */
+export interface LegacyTemporaryShape {
+  /** What follows the name of the file. Only `pid` can be checked against a live process. */
+  readonly suffix: 'pid' | 'hex' | 'uuid';
+  /** Hex digits of the `hex` suffix (more than 0). */
+  readonly hexLength?: number | undefined;
+  /** The name starts with a dot. */
+  readonly hidden?: boolean | undefined;
 }
 
 /** The path of a new temporary of `path`, in the same folder, with this process's pid. */
@@ -82,16 +99,58 @@ function isNotFound(error: unknown): boolean {
   return (error as { code?: unknown } | undefined)?.code === 'ENOENT';
 }
 
-function patternOf(path: string, shape: TemporaryShape): RegExp {
+interface Matcher {
+  readonly pattern: RegExp;
+  /** The first group of the pattern is the pid of the writer. */
+  readonly withPid: boolean;
+}
+
+const UUID = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
+
+function hexPart(length: number): string {
+  return length > 0 ? `\\.[0-9a-f]{${String(length)}}` : '';
+}
+
+function matchersOf(path: string, shape: TemporaryShape): Matcher[] {
   const base = basename(path).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const hex = shape.hexLength > 0 ? `\\.[0-9a-f]{${String(shape.hexLength)}}` : '';
-  return new RegExp(`^${shape.hidden === true ? '\\.' : ''}${base}\\.(\\d+)${hex}\\.tmp$`);
+  const head = (hidden: boolean | undefined): string => `^${hidden === true ? '\\.' : ''}${base}`;
+  const matchers: Matcher[] = [
+    {
+      pattern: new RegExp(`${head(shape.hidden)}\\.(\\d+)${hexPart(shape.hexLength)}\\.tmp$`),
+      withPid: true,
+    },
+  ];
+  for (const old of shape.legacy ?? []) {
+    let tail: string;
+    if (old.suffix === 'pid') tail = '\\.(\\d+)';
+    else if (old.suffix === 'uuid') tail = `\\.${UUID}`;
+    else if ((old.hexLength ?? 0) > 0) tail = hexPart(old.hexLength ?? 0);
+    else continue;
+    matchers.push({
+      pattern: new RegExp(`${head(old.hidden)}${tail}\\.tmp$`),
+      withPid: old.suffix === 'pid',
+    });
+  }
+  return matchers;
+}
+
+/** The pid in a name that is a temporary of the file, `null` for one without a pid, or `undefined`. */
+function pidOf(name: string, matchers: readonly Matcher[]): number | null | undefined {
+  for (const matcher of matchers) {
+    const found = matcher.pattern.exec(name);
+    if (found === null) continue;
+    if (!matcher.withPid) return null;
+    const pid = Number(found[1]);
+    return Number.isSafeInteger(pid) && pid > 0 ? pid : undefined;
+  }
+  return undefined;
 }
 
 /**
  * Removes the orphan temporaries of `path`: in mode `pid`, the ones whose pid is not a live process
  * (never one of this process, which may be a write in flight); in mode `age`, the ones older than
- * `maxAgeMs`; in mode `off`, none. Never throws: a failure goes to `onError`. Returns the names it
+ * `maxAgeMs`; in mode `off`, none. A legacy name without a pid goes by age in both modes that remove.
+ * Never throws: a failure goes to `onError`. Returns the names it
  * removed.
  */
 export async function sweepTemporaries(
@@ -113,7 +172,7 @@ export async function sweepTemporaries(
   const removed: string[] = [];
   if (policy.mode === 'off') return removed;
   const folder = dirname(path);
-  const pattern = patternOf(path, options);
+  const matchers = matchersOf(path, options);
   let names: string[];
   try {
     names = await readdir(folder);
@@ -122,11 +181,11 @@ export async function sweepTemporaries(
     return removed;
   }
   for (const name of names) {
-    const pid = Number(pattern.exec(name)?.[1]);
-    if (!Number.isSafeInteger(pid) || pid <= 0) continue;
+    const pid = pidOf(name, matchers);
+    if (pid === undefined) continue;
     const file = join(folder, name);
     try {
-      if (policy.mode === 'pid') {
+      if (policy.mode === 'pid' && pid !== null) {
         if (pid === process.pid || alive(pid)) continue;
       } else if (now() - (await lstat(file)).mtimeMs <= policy.maxAgeMs) continue;
       await rm(file, { force: true });

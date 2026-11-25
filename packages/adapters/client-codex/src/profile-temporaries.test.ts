@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 import { spawnSync } from 'node:child_process';
-import { mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readdir, rm, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -41,5 +41,16 @@ describe('writeProfileConfig and the orphan temporaries (N306)', () => {
     await writeProfileConfig(dir, config);
     await writeProfileConfig(dir, { ...config, credentialsStore: 'keyring' });
     expect(await readdir(dir)).toEqual([CONFIG_FILE]);
+  });
+
+  it('removes a name of before N306, without a pid, once it is older than max_age (1h)', async () => {
+    await writeProfileConfig(dir, config);
+    const old = `${CONFIG_FILE}.0123456789ab.tmp`;
+    const fresh = `${CONFIG_FILE}.ba9876543210.tmp`;
+    for (const name of [old, fresh]) await writeFile(join(dir, name), 'x');
+    const then = new Date(Date.now() - 2 * 3_600_000);
+    await utimes(join(dir, old), then, then);
+    await writeProfileConfig(dir, config);
+    expect((await readdir(dir)).sort()).toEqual([CONFIG_FILE, fresh].sort());
   });
 });

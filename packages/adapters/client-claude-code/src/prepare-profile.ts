@@ -53,7 +53,11 @@ export interface ProfileSettingsOptions {
 }
 
 /** The temporary of {@link writeAtomically}: `<file>.<pid>.<8 hex>.tmp` (N306). */
-export const PROFILE_TEMPORARY_SHAPE = { hexLength: 8 } as const;
+export const PROFILE_TEMPORARY_SHAPE = {
+  hexLength: 8,
+  // Before N306 the name was `<file>.<pid>.tmp`: it has a pid, so it follows the policy.
+  legacy: [{ suffix: 'pid' }],
+} as const;
 /** The temporary the statusline script writes: `otheater-quota.json.<pid>.tmp` (its own process). */
 export const QUOTA_TEMPORARY_SHAPE = { hexLength: 0 } as const;
 

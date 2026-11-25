@@ -14,7 +14,7 @@ import { isPidAlive } from './pid.js';
  *
  * What counts as an orphan is the key `temporaries` of `config.yaml` (the daemon sets it with
  * {@link configureTemporaryCleanup}; a process that never does, such as the CLI or the TUI, uses the
- * default, `pid`). [proposta]
+ * default, `pid`). (N306, owner 2026-11-24)
  * - `cleanup` (default `pid`): `pid` removes a temporary whose pid is not a live process; `age` removes
  *   one that is older than `max_age` whatever its pid says (for a folder that processes of other
  *   machines or containers write: a pid means nothing there); `off` removes nothing.
@@ -114,7 +114,7 @@ export function reportTemporarySweepFailure(
 /**
  * The bridge to the copies of this module in the adapters (`packages/adapters/<adapter>/src/temporaries.ts`),
  * which may not import the client: the policy in force and the sink of failures, published once under
- * `Symbol.for('otheater.temporaries')` when this module is loaded. [proposta]
+ * `Symbol.for('otheater.temporaries')` when this module is loaded. (N306, owner 2026-11-25)
  */
 (globalThis as Record<symbol, unknown>)[Symbol.for('otheater.temporaries')] = {
   version: 1,

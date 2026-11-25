@@ -132,7 +132,11 @@ export async function ensureProfileFiles(
 }
 
 /** The temporary of the profile config: `opencode.json.<pid>.<16 hex>.tmp` (N306). */
-export const PROFILE_TEMPORARY_SHAPE = { hexLength: 16 } as const;
+export const PROFILE_TEMPORARY_SHAPE = {
+  hexLength: 16,
+  // Before N306 the name was `opencode.json.<uuid>.tmp`, without a pid: swept by age.
+  legacy: [{ suffix: 'uuid' }],
+} as const;
 
 async function currentText(path: string): Promise<string | undefined> {
   try {
