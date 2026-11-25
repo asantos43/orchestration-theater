@@ -102,12 +102,13 @@ O `@otheater/workflows` é pacote novo do monorepo, não dependência de fora. E
 | P13 | Mural de recados da peça (N308, opção 1): `post_note`, `read_notes` | P0 | P1, P7 | a fazer |
 | P14 | Supervisão do Diretor (N309): sinais, `warn` e `redirect`, o canal pela resposta MCP (D8) e os três extras | P13 | P2, P5 | a fazer |
 | P15 | `ask_director` (N308, opção 2): o `blocked` que não encerra, com espera, prazo e o modo `relay` pelo canal do P14 | P14 | P3 a P12 | a fazer |
-| P16 | Aceite da fase | P1 a P15 | nada | a fazer |
+| P16 | Aceite da fase | P1 a P15, P17 | nada | a fazer |
+| P17 | Testes da TUI num terminal real com o `@microsoft/tui-test` (N320) | P1, P7, P13 | os da onda 2 | a fazer |
 
 Ondas **[proposta, forma decidida na D9]**:
 
 - onda 1, logo depois do merge deste plano: **P1, P7 e P13**, em paralelo (três agentes);
-- onda 2: **P2, P5 e P14**;
+- onda 2: **P2, P5 e P14**, e o **P17** (N320, acrescentado em 2026-11-25), que mexe só nos testes da TUI e na CI;
 - onda 3: **P3, P8 e P9**, e depois **P6** e **P15**, assim que uma vaga abrir;
 - onda 4: **P4, P10 e P12**;
 - onda 5: **P11** e **P16**.
@@ -431,6 +432,19 @@ Todos **[proposta]** quanto ao nome. Cada um entra no catálogo do protocolo e n
   - a pergunta direta a outro Ator (N308, opção 3) fica para depois da 10b;
   - o editor visual fica para a Fase 12;
   - a Fase 9b completa continua fase própria.
+
+**Como ficou:** a preencher.
+
+### P17. Testes da TUI num terminal real (N320)
+
+**Arquivos:** `packages/tui/package.json` (o `@microsoft/tui-test` fixado em `0.1.1`, só como dependência de desenvolvimento), `packages/tui/src/terminal.test-support.ts` (novo), `packages/tui/src/pty.focus.test.ts` (refeito em cima dele), `packages/tui/src/tui-terminal.e2e.test.ts` (novo) e o job da CI que roda esses testes nos três sistemas.
+
+- O suporte abre o `ot tui` compilado contra o daemon do fake-agent (`startChatDaemon`), num terminal emulado, com HOME e pastas temporárias, e fecha tudo no fim.
+- O terminal vem da chave `OT_TUI_TEST_BACKEND`: `alacritty` (o padrão), `xtermjs`, `ghostty` ou `all`, que roda cada teste nos três.
+- O e2e cobre o que o `ink-testing-library` não vê: as cores do tema, o link OSC 8, o clique do mouse por área, o redimensionamento, o Ctrl+C e a saída limpa do binário real.
+- Na falha, o trace (`trace.md`) e o texto da tela vão como artefato da CI, para leitura sem rodar de novo.
+- Onde falta o build ou o binário da plataforma, o teste é pulado; com `OT_REQUIRE_PTY=1`, o pulo vira falha, como hoje.
+- **Aceite próprio:** os testes passam na CI de Linux, macOS e Windows. Um tema com a cor trocada faz o teste de cor falhar.
 
 **Como ficou:** a preencher.
 
