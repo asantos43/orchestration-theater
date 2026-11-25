@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-import { existsSync } from 'node:fs';
+import { existsSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { EventEnvelope } from '@otheater/core';
@@ -142,7 +142,8 @@ describe('simulated attempts over the real ACP stdio transport', () => {
         ).toBe(true);
         expect(existsSync(join(refused.worktree, 'sim.txt'))).toBe(false);
         expect(refusedEditsOf(events, refused.attemptId)).toMatchObject([
-          { answer: 'reject', paths: [join(refused.worktree, 'sim.txt')] },
+          // Layer 2 records the real path (on macOS /var is a link to /private/var).
+          { answer: 'reject', paths: [join(realpathSync(refused.worktree), 'sim.txt')] },
         ]);
 
         // edit-file under the policy of the real drafts: the ask is allowed inside the worktree.
