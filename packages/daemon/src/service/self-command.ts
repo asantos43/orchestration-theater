@@ -20,7 +20,15 @@ export function resolveServiceCommand(
   return { command: launcher.node, args: launcher.entry === undefined ? [] : [launcher.entry] };
 }
 
-/** `<self> daemon --data-dir <dir>`: the data folder is explicit, because a service has no `OT_DATA_DIR`. */
+/**
+ * `<self> daemon --data-dir <dir> --non-interactive`: the data folder is explicit, because a service
+ * has no `OT_DATA_DIR`; and nothing is asked, because nobody is there to answer (on Windows the
+ * logon task runs under `conhost --headless`, whose stdin is a TTY, so the daemon used to wait for a
+ * master password forever and never open its API).
+ */
 export function daemonCommandOf(self: ServiceCommand, dataDir: string): ServiceCommand {
-  return { command: self.command, args: [...self.args, 'daemon', '--data-dir', dataDir] };
+  return {
+    command: self.command,
+    args: [...self.args, 'daemon', '--data-dir', dataDir, '--non-interactive'],
+  };
 }

@@ -7,7 +7,7 @@ export const POSIX_SPEC: ServiceSpec = {
   id: 'otheater-daemon',
   command: {
     command: '/opt/node/bin/node',
-    args: ['/work/ot/dist/cli.js', 'daemon', '--data-dir', '/data/ot dir'],
+    args: ['/work/ot/dist/cli.js', 'daemon', '--data-dir', '/data/ot dir', '--non-interactive'],
   },
   dataDir: '/data/ot dir',
   restart: 'on_failure',
@@ -25,6 +25,7 @@ export const WINDOWS_SPEC: ServiceSpec = {
       'daemon',
       '--data-dir',
       'C:\\Users\\Test User\\AppData\\Local\\OTheater',
+      '--non-interactive',
     ],
   },
   dataDir: 'C:\\Users\\Test User\\AppData\\Local\\OTheater',

@@ -57,7 +57,11 @@ export interface InstallResult {
   readonly notes: readonly ServiceInstallNote[];
 }
 
-export type ServiceInstallNote = 'restart_always_is_on_failure' | 'no_restart_when_manual';
+export type ServiceInstallNote =
+  | 'restart_always_is_on_failure'
+  | 'no_restart_when_manual'
+  /** The definition on disk (or in the Task Scheduler) was already the same: it was not rewritten. */
+  | 'unchanged';
 
 export type ServiceErrorCode = 'command_failed' | 'unavailable' | 'not_installed';
 

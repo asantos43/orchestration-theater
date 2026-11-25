@@ -137,7 +137,10 @@ describe('ot init --no-tui', () => {
     expect(manager.installed).toBe(true);
     // The service is installed without starting it: the daemon comes up in step 2.
     expect(manager.spec).toMatchObject({
-      command: { command: '/n/node', args: ['/ot/dist/cli.js', 'daemon', '--data-dir', data] },
+      command: {
+        command: '/n/node',
+        args: ['/ot/dist/cli.js', 'daemon', '--data-dir', data, '--non-interactive'],
+      },
       dataDir: data,
     });
     expect((await readDiscovery(dataPaths(data).apiDiscovery)).kind).toBe('live');

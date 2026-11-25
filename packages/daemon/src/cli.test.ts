@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 import { readdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import type { Store } from '@otheater/core';
+import type { SecretVault, Store } from '@otheater/core';
 import { FakeClock, InMemorySecretVault, InMemoryStore } from '@otheater/core/testing';
 import { describe, expect, it } from 'vitest';
 import { main, type CliDeps } from './cli.js';
@@ -420,6 +420,76 @@ describe('ot daemon', () => {
     } finally {
       await tmp.dispose();
     }
+  });
+});
+
+/** A vault with a master password that nobody gives: it stays locked. */
+class LockedVault implements SecretVault {
+  readonly #inner = new InMemorySecretVault();
+  readonly isLocked = true;
+  unlocks = 0;
+  unlock(): Promise<void> {
+    this.unlocks += 1;
+    return Promise.reject(new Error('not in this test'));
+  }
+  lock(): void {
+    this.unlocks = 0;
+  }
+  get = this.#inner.get.bind(this.#inner);
+  set = this.#inner.set.bind(this.#inner);
+  delete = this.#inner.delete.bind(this.#inner);
+  list = this.#inner.list.bind(this.#inner);
+}
+
+describe('ot daemon --non-interactive (the logon service, bug of 2026-11-25)', () => {
+  // `entry()` gives a password prompt whenever stdin is a TTY, and under `conhost --headless` the
+  // stdin of the Windows logon task is one: the daemon waited for a password forever.
+  const runDaemon = async (extra: readonly string[]) => {
+    const tmp = await makeTempDataDir();
+    try {
+      await writeFile(join(tmp.dir, 'config.yaml'), 'backup:\n  when: manual\n');
+      const controller = new AbortController();
+      const captured: Captured = { out: [], err: [] };
+      let asked = 0;
+      const clock = new FakeClock(Date.UTC(2026, 10, 25, 12, 0, 0));
+      const code = await main(['daemon', '--data-dir', tmp.dir, ...extra], {
+        env: {},
+        platform: 'win32',
+        homedir: tmp.dir,
+        systemLocale: 'en',
+        out: (line) => {
+          captured.out.push(line);
+          if (line.includes('pid')) controller.abort();
+        },
+        err: (line) => captured.err.push(line),
+        signal: controller.signal,
+        overrides: { clock, store: new InMemoryStore({ clock }), vault: new LockedVault() },
+        // What `entry()` passes when stdin is a TTY: a prompt that would block on the terminal.
+        passwordPrompt: () => () => {
+          asked += 1;
+          return Promise.resolve(undefined);
+        },
+        confirm: () => Promise.resolve(true),
+        interactive: true,
+      });
+      return { code, captured, asked };
+    } finally {
+      await tmp.dispose();
+    }
+  };
+
+  it('asks nothing even with a TTY: the vault stays locked and the daemon runs', async () => {
+    const { code, captured, asked } = await runDaemon(['--non-interactive']);
+    expect(code).toBe(0);
+    expect(asked).toBe(0);
+    expect(captured.out[0]).toMatch(/pid \d+/);
+    expect(captured.err.join('\n')).toMatch(/vault is locked/);
+  });
+
+  it('without the option a terminal is still asked for the master password', async () => {
+    const { code, asked } = await runDaemon([]);
+    expect(code).toBe(0);
+    expect(asked).toBe(1);
   });
 });
 
