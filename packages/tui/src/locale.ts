@@ -28,8 +28,22 @@ export interface SystemLocaleEnv {
   readonly LANGUAGE?: string | undefined;
 }
 
-/** The language the environment asks for (POSIX order of precedence). */
-export function detectSystemLocale(env: SystemLocaleEnv = process.env): Locale {
+/** The locale the JavaScript runtime reports; `''` when it reports none. */
+function runtimeLocale(): string {
+  return Intl.DateTimeFormat().resolvedOptions().locale;
+}
+
+/**
+ * The language of the system, in the order the daemon and the CLI use (N323): first what the
+ * JavaScript runtime reports (`Intl`, which on Windows is the language of the system, where
+ * `LANG` is usually not set), and only when it reports none, the environment in POSIX order.
+ * Both sources are arguments so a test controls them.
+ */
+export function detectSystemLocale(
+  env: SystemLocaleEnv = process.env,
+  intlLocale: string = runtimeLocale(),
+): Locale {
+  if (intlLocale !== '') return localeFromTag(intlLocale);
   for (const value of [env.LC_ALL, env.LC_MESSAGES, env.LANGUAGE, env.LANG]) {
     if (value !== undefined && value !== '' && value !== 'C' && value !== 'POSIX') {
       return localeFromTag(value.split(':')[0]);
@@ -38,8 +52,12 @@ export function detectSystemLocale(env: SystemLocaleEnv = process.env): Locale {
   return DEFAULT_LOCALE;
 }
 
-export function resolveLocale(setting: LocaleSetting, env: SystemLocaleEnv = process.env): Locale {
-  return setting === 'auto' ? detectSystemLocale(env) : setting;
+export function resolveLocale(
+  setting: LocaleSetting,
+  env: SystemLocaleEnv = process.env,
+  intlLocale?: string,
+): Locale {
+  return setting === 'auto' ? detectSystemLocale(env, intlLocale) : setting;
 }
 
 /**
@@ -107,12 +125,19 @@ export async function createTuiI18n(
 export class LocaleController {
   readonly #i18n: I18nInstance;
   readonly #env: SystemLocaleEnv;
+  readonly #intlLocale: string | undefined;
   #setting: LocaleSetting;
 
-  constructor(i18n: I18nInstance, setting: LocaleSetting, env: SystemLocaleEnv = process.env) {
+  constructor(
+    i18n: I18nInstance,
+    setting: LocaleSetting,
+    env: SystemLocaleEnv = process.env,
+    intlLocale?: string,
+  ) {
     this.#i18n = i18n;
     this.#setting = setting;
     this.#env = env;
+    this.#intlLocale = intlLocale;
   }
 
   get setting(): LocaleSetting {
@@ -120,7 +145,7 @@ export class LocaleController {
   }
 
   get locale(): Locale {
-    return resolveLocale(this.#setting, this.#env);
+    return resolveLocale(this.#setting, this.#env, this.#intlLocale);
   }
 
   /** Sets the setting and switches the language when it changed. */
