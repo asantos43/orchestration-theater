@@ -69,7 +69,7 @@ describe('the sources of the .msi', () => {
 
   it('runs `ot service install` after the files and `ot service uninstall` before they go, as the user', () => {
     const actions = [...product.matchAll(/<CustomAction[\s\S]*?\/>/g)].map((m) => m[0]);
-    expect(actions).toHaveLength(2);
+    expect(actions).toHaveLength(4);
     for (const action of actions) {
       expect(action).toMatch(/Execute="deferred"/);
       expect(action).toMatch(/Impersonate="yes"/);
@@ -78,18 +78,55 @@ describe('the sources of the .msi', () => {
     expect(product).toMatch(/service install --no-start"/);
     expect(product).toMatch(/service uninstall"/);
     expect(product).toMatch(
-      /Action="OtServiceInstall" After="InstallFiles" Condition="NOT REMOVE"/,
+      /Action="OtServiceInstall" After="OtAdaptersInstall" Condition="NOT REMOVE AND LOGON_SERVICE AND LOGON_SERVICE&lt;&gt;&quot;0&quot;"/,
     );
     expect(product).toMatch(
       /Action="OtServiceUninstall" Before="RemoveFiles" Condition="REMOVE=&quot;ALL&quot;"/,
     );
   });
 
+  it('asks the choices of the install on one page, and takes them as properties when silent (N322)', () => {
+    for (const [name, value] of [
+      ['VAULT', 'keep'],
+      ['LOGON_SERVICE', '1'],
+      ['PREFETCH_ADAPTERS', '1'],
+    ] as const) {
+      expect(product).toContain(`<Property Id="${name}" Value="${value}" Secure="yes" />`);
+    }
+    // The vault and the adapters go after the files and before the service, in this order.
+    expect(product).toMatch(/vault use \[VAULT\]"/);
+    expect(product).toMatch(/adapters install"/);
+    expect(product).toMatch(
+      /Action="OtVaultUse" After="InstallFiles" Condition="NOT REMOVE AND VAULT AND VAULT&lt;&gt;&quot;keep&quot;"/,
+    );
+    expect(product).toMatch(
+      /Action="OtAdaptersInstall" After="OtVaultUse" Condition="NOT REMOVE AND PREFETCH_ADAPTERS AND PREFETCH_ADAPTERS&lt;&gt;&quot;0&quot;"/,
+    );
+    // A value of VAULT the command would refuse stops the install before anything is done.
+    expect(product).toMatch(/<Launch\s+Condition="Installed OR VAULT=/);
+    // The page: the four vaults, the two check boxes, the Install button with the shield, no EULA.
+    for (const vault of ['keep', 'keyring', 'encrypted-file', 'auto']) {
+      expect(product).toContain(`<RadioButton Value="${vault}"`);
+    }
+    expect(product).toMatch(/Type="CheckBox" Property="LOGON_SERVICE" CheckBoxValue="1"/);
+    expect(product).toMatch(/Type="CheckBox" Property="PREFETCH_ADAPTERS" CheckBoxValue="1"/);
+    expect(product).toMatch(/Id="Install" Type="PushButton"[^>]*ElevationShield="yes"/);
+    expect(product).toContain('needs administrator');
+    expect(product).toMatch(/<Show Dialog="OtOptionsDlg" [^>]*Condition="NOT Installed"/);
+    expect(product).not.toMatch(/<UIRef|WixUI_|LicenseAgreement|WixUILicenseRtf/);
+    // The test of the .msi passes them, and never downloads the adapters.
+    expect(testScript).toContain("'VAULT=encrypted-file', 'PREFETCH_ADAPTERS=0'");
+  });
+
   it('never touches the data folder', () => {
     expect(product).not.toMatch(/RemoveFolderEx/);
     // The data folder is only named as the argument given to `ot`.
     const mentions = [...product.matchAll(/OTheater&quot;/g)];
-    expect(mentions).toHaveLength(2);
+    const asArgument = [
+      ...product.matchAll(/--data-dir &quot;\[LocalAppDataFolder\]OTheater&quot;/g),
+    ];
+    expect(mentions).toHaveLength(4);
+    expect(asArgument).toHaveLength(4);
   });
 
   it('removes what the updates leave, by exact name, in the install folder only (N303)', () => {

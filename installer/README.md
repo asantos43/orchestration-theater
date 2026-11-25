@@ -15,8 +15,20 @@ O que ele faz (tudo por usuário, sem `sudo`, sem escrever fora do HOME):
 1. baixa só estes arquivos da release: `manifest.json`, `manifest.json.sig`, `manifest.json.sshsig` (a mesma assinatura no formato SSHSIG) e o executável da sua plataforma (`linux-x64` ou `darwin-arm64`; outras plataformas saem com erro);
 2. confere a assinatura Ed25519 do manifesto ANTES de ler o conteúdo dele ou de rodar qualquer coisa baixada (ver "Modelo de confiança"), recusa um manifesto vencido (`expires`) e só então confere o tamanho e o SHA-256 do executável, que estão dentro do manifesto assinado;
 3. instala o executável em `~/.local/share/otheater/bin/otheater` [proposta: a subpasta `bin/` separa o executável dos dados do daemon, que no Linux ficam na mesma pasta] e cria o link `~/.local/bin/ot`;
-4. registra o serviço de logon com `ot service install` (a menos que `OT_INSTALL_SERVICE=off`);
-5. diz o que falta: o `PATH`, os adaptadores ACP (`claude-agent-acp` e outros) e o `loginctl enable-linger` no Linux.
+4. grava o cofre escolhido com `ot vault use <modo>` (a menos que seja `keep`) (N322);
+5. baixa os adaptadores ACP com `ot adapters install` (a menos que `OT_INSTALL_PREFETCH=off`); uma falha só avisa (N321, N322);
+6. registra o serviço de logon com `ot service install` (a menos que `OT_INSTALL_SERVICE=off`);
+7. diz o que falta: o `PATH`, os adaptadores ACP que não vieram e o `loginctl enable-linger` no Linux.
+
+### As escolhas (N322)
+
+Antes de baixar, com uma pessoa no terminal, o script pergunta três coisas, cada uma com o padrão marcado (Enter fica com ele):
+
+- onde guardar os segredos: `keep` (o que já está configurado; numa instalação nova, o chaveiro), o chaveiro do sistema (`keyring`), um arquivo cifrado (`encrypted-file`) ou `auto` (o chaveiro, ou o arquivo quando não há chaveiro);
+- se registra o serviço de logon (`[S/n]`);
+- se baixa já os adaptadores ACP (`[S/n]`).
+
+Uma escolha que precisasse de `sudo` viria marcada "(pede sudo)" na pergunta; hoje nenhuma precisa, e o título das perguntas diz isso. A pergunta é feita no `/dev/tty`, então funciona também com `curl ... | sh`. Sem terminal (stderr não é um terminal, ou não há `/dev/tty`), ou com `--yes`, nada é perguntado e valem os padrões. Uma escolha dada por opção ou variável não é perguntada. [proposta] Os nomes das opções e variáveis, o padrão `keep` e o download ligado por padrão.
 
 Ele falha fechado: o que não confere é apagado, nada é instalado e o código de saída não é zero.
 
@@ -25,7 +37,10 @@ Ele falha fechado: o que não confere é apagado, nada é instalado e o código 
 | Variável                     | Valores                  | Padrão                                | Efeito                                                                                          |
 | ---------------------------- | ------------------------ | ------------------------------------- | ----------------------------------------------------------------------------------------------- |
 | `OT_INSTALL_CHANNEL`         | `stable`, `beta`         | `stable`                              | Canal. O manifesto assinado precisa ser desse canal.                                            |
-| `OT_INSTALL_SERVICE`         | `auto`, `off`            | `auto`                                | `auto` registra o serviço de logon; `off` só instala os arquivos.                               |
+| `OT_INSTALL_SERVICE`         | `auto`, `off`            | `auto`                                | `auto` registra o serviço de logon; `off` só instala os arquivos. `--no-service` é o mesmo que `off`. |
+| `OT_INSTALL_VAULT`           | `keep`, `keyring`, `encrypted-file`, `auto` | `keep`             | O cofre dos segredos (`adapters.vault`, por `ot vault use`); `keep` não muda nada. `--vault <modo>` ganha da variável. |
+| `OT_INSTALL_PREFETCH`        | `auto`, `off`            | `auto`                                | `auto` baixa os adaptadores ACP (`ot adapters install`, do registro npm); `off` não. `--no-prefetch` é o mesmo que `off`. |
+| `OT_INSTALL_ASK`             | `auto`, `off`, `stdin`   | `auto`                                | `auto` pergunta as escolhas quando há terminal; `off` não pergunta; `stdin` lê as respostas da entrada padrão (scripts e testes). |
 | `OT_INSTALL_BASE_URL`        | `https://...` ou loopback | Releases do repositório               | Onde estão os arquivos (espelho ou teste). `http` só em loopback; sem usuário e senha na URL.   |
 | `OT_INSTALL_VERIFIER`        | `auto`, `openssl`, `ssh-keygen`, `pinned` | `auto`               | Quem confere o manifesto. `auto` tenta `openssl`, depois `ssh-keygen`, depois `pinned`; com um nome, só esse. |
 | `OT_INSTALL_OPENSSL`         | caminho                  | `openssl` do PATH                     | O openssl que confere Ed25519 (precisa ser o 3 ou mais; o LibreSSL do macOS não confere). Exige `OT_INSTALL_ALLOW_KEY_OVERRIDE=1`. |
@@ -39,6 +54,8 @@ Todas são chaves de configuração do instalador com modos e padrão documentad
 
 - `--uninstall`: para e remove o serviço (`ot uninstall`), apaga o executável e o link `ot` (só se for dele) e o que as atualizações deixaram ao lado dele em `bin/` (N303): `update-state.json` (e o `update-state.json.<pid>.tmp` de um escritor que morreu), `update-apply.log`, `previous/<exe>` e `staging/<exe>`, `staging/manifest.json` e `staging/manifest.json.sig`, um por um, pelo nome, nunca por curinga de pasta. Depois tira com `rmdir` as pastas que ficaram vazias (`previous/`, `staging/`, `bin/` e a pasta do app); uma pasta com um arquivo que não é do OTheater fica, com o arquivo, e o script avisa na saída. Os dados (store, configuração, arquivos do usuário) ficam.
 - `--uninstall --purge-data`: apaga também a pasta de dados. Pergunta antes (`[y/N]`); sem terminal, exige `--yes`. Só apaga uma pasta que tenha `config.yaml`, `store.sqlite` ou `daemon-id`, e nunca a raiz nem o HOME. O chaveiro do sistema não é tocado.
+- `--vault <modo>` (ou `--vault=<modo>`), `--no-service`, `--no-prefetch`: as escolhas da instalação sem perguntar (N322). Não valem com `--uninstall` (código 2).
+- `--yes`: na instalação, não pergunta e fica com os padrões.
 - `--help`.
 
 ### Códigos de saída

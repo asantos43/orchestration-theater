@@ -105,7 +105,7 @@ O `@otheater/workflows` é pacote novo do monorepo, não dependência de fora. E
 | P16 | Aceite da fase | P1 a P15, P17, P18 | nada | a fazer |
 | P17 | Testes da TUI num terminal real com o `@microsoft/tui-test` (N320) | P1, P7, P13 | os da onda 2 | a fazer |
 | P18a | Nova detecção dos clientes (N321, itens 2 e 5): sem reiniciar o daemon, a cada abertura do assistente e ao criar uma conta; no Windows, o `Path` do registro; o motivo de cada cliente não achado na API | P7 | os da onda 2 | feito (#367) |
-| P18b | O assistente resolve na tela (N321, itens 1 e 4): as teclas I, R e A, o motivo na tela e as mensagens sem comandos `ot` | P18a | os da onda 2 | em PR |
+| P18b | O assistente resolve na tela (N321, itens 1 e 4): as teclas I, R e A, o motivo na tela e as mensagens sem comandos `ot` | P18a | os da onda 2 | feito (#371) |
 
 Ondas **[proposta, forma decidida na D9]**:
 

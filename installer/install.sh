@@ -3,7 +3,7 @@
 #
 # OTheater installer for macOS and Linux (Phase 10, step P5; docs/21, N248).
 #
-#   install:    sh install.sh
+#   install:    sh install.sh [--vault <keep|keyring|encrypted-file|auto>] [--no-service] [--no-prefetch] [--yes]
 #   uninstall:  sh install.sh --uninstall [--purge-data] [--yes]
 #
 # It downloads the release (manifest.json, its signatures and the executable of this platform),
@@ -21,7 +21,15 @@
 # Variables (documented in installer/README.md):
 #   OT_INSTALL_BASE_URL   where the release files are (default: GitHub Releases of the repository)
 #   OT_INSTALL_CHANNEL    stable (default) or beta
-#   OT_INSTALL_SERVICE    auto (default) or off: whether to register the logon service
+#   OT_INSTALL_SERVICE    auto (default) or off: whether to register the logon service (--no-service: off)
+#   OT_INSTALL_VAULT      keep (default), keyring, encrypted-file or auto: the vault of the secrets
+#                         (adapters.vault, written by `ot vault use`; keep changes nothing) (--vault)
+#   OT_INSTALL_PREFETCH   auto (default) or off: whether to download the ACP adapters now
+#                         (`ot adapters install`) (--no-prefetch: off)
+#   OT_INSTALL_ASK        auto (default), off or stdin: auto asks the three choices above on the
+#                         terminal when there is one; off asks nothing; stdin reads the answers from
+#                         the standard input (scripts and tests). A choice given by a flag or a
+#                         variable is not asked; --yes asks nothing and takes the defaults.
 #   OT_INSTALL_VERIFIER   auto (default), openssl, ssh-keygen or pinned: with a name, only that verifier
 #   OT_INSTALL_OPENSSL    the openssl to check the signature with (default: the one in the PATH)
 #   OT_INSTALL_PUBLIC_KEY_FILE  a public key (PEM for openssl, or one "ssh-ed25519 ..." line for
@@ -77,13 +85,26 @@ esac
 fmt() {
   if [ "$LANG_ID" = pt ]; then
     case $1 in
-      usage) echo 'Uso: sh install.sh [--uninstall [--purge-data] [--yes]] [--help]' ;;
+      usage) echo 'Uso: sh install.sh [--vault <keep|keyring|encrypted-file|auto>] [--no-service] [--no-prefetch] [--yes] | --uninstall [--purge-data] [--yes] | --help' ;;
       bad_arg) echo 'argumento desconhecido: %s' ;;
       purge_needs_uninstall) echo '--purge-data só vale com --uninstall' ;;
       no_home) echo 'HOME não está definido como uma pasta absoluta' ;;
       is_root) echo 'não rode como root: a instalação é por usuário e não usa sudo' ;;
       bad_channel) echo 'OT_INSTALL_CHANNEL=%s: use stable ou beta' ;;
       bad_service) echo 'OT_INSTALL_SERVICE=%s: use auto ou off' ;;
+      bad_vault) echo 'cofre %s: use keep, keyring, encrypted-file ou auto' ;;
+      bad_prefetch) echo 'OT_INSTALL_PREFETCH=%s: use auto ou off' ;;
+      bad_ask) echo 'OT_INSTALL_ASK=%s: use auto, off ou stdin' ;;
+      vault_needs_value) echo '--vault precisa de um valor: keep, keyring, encrypted-file ou auto' ;;
+      install_only) echo '%s só vale na instalação, não com --uninstall' ;;
+      ask_title) echo 'Escolhas da instalação (Enter fica com o padrão; nenhuma precisa de sudo):' ;;
+      ask_vault) echo 'Onde guardar os segredos? 1) manter o que está configurado (padrão; numa instalação nova, o chaveiro)  2) chaveiro do sistema  3) arquivo cifrado  4) auto (o chaveiro, ou o arquivo quando não houver chaveiro) [1-4] ' ;;
+      ask_service) echo 'Registrar o serviço de logon (o daemon sobe quando você entra)? [S/n] ' ;;
+      ask_prefetch) echo 'Baixar agora os adaptadores ACP (claude-agent-acp e codex-acp, do registro npm)? [S/n] ' ;;
+      ask_again) echo 'Resposta não entendida: %s' ;;
+      vault_failed) echo 'AVISO: o cofre não foi gravado. Rode "%s vault use %s" depois de ver o motivo acima.' ;;
+      prefetch_off) echo 'Adaptadores ACP: não baixados agora (OT_INSTALL_PREFETCH=off).' ;;
+      prefetch_failed) echo 'AVISO: os adaptadores ACP não foram baixados. Rode "%s adapters install" depois de ver o motivo acima.' ;;
       bad_base) echo 'OT_INSTALL_BASE_URL=%s: use https:// (ou http:// só no loopback), sem usuário e senha' ;;
       unsupported) echo 'sistema não suportado: %s %s (a v1 tem linux-x64 e darwin-arm64)' ;;
       no_downloader) echo 'preciso de curl ou wget para baixar' ;;
@@ -115,6 +136,7 @@ fmt() {
       link_ok) echo 'Atalho: %s' ;;
       link_foreign) echo 'AVISO: %s já existe e não é deste instalador; não mexi nele. Rode o ot por %s.' ;;
       service_off) echo 'Serviço de logon: não registrado (OT_INSTALL_SERVICE=off).' ;;
+      todo_adapters) echo '  - adaptadores ACP não baixados: "%s adapters install" os baixa (sem sudo).' ;;
       service_failed) echo 'AVISO: o serviço de logon não foi registrado. Rode "%s service install" depois de ver o motivo acima.' ;;
       done_title) echo 'Pronto. O que falta:' ;;
       todo_path) echo "  - %s não está no PATH. Acrescente ao perfil do seu shell: export PATH=\"%s:\$PATH\"" ;;
@@ -138,13 +160,26 @@ fmt() {
     esac
   else
     case $1 in
-      usage) echo 'Usage: sh install.sh [--uninstall [--purge-data] [--yes]] [--help]' ;;
+      usage) echo 'Usage: sh install.sh [--vault <keep|keyring|encrypted-file|auto>] [--no-service] [--no-prefetch] [--yes] | --uninstall [--purge-data] [--yes] | --help' ;;
       bad_arg) echo 'unknown argument: %s' ;;
       purge_needs_uninstall) echo '--purge-data only works with --uninstall' ;;
       no_home) echo 'HOME is not set to an absolute folder' ;;
       is_root) echo 'do not run as root: the install is per user and uses no sudo' ;;
       bad_channel) echo 'OT_INSTALL_CHANNEL=%s: use stable or beta' ;;
       bad_service) echo 'OT_INSTALL_SERVICE=%s: use auto or off' ;;
+      bad_vault) echo 'vault %s: use keep, keyring, encrypted-file or auto' ;;
+      bad_prefetch) echo 'OT_INSTALL_PREFETCH=%s: use auto or off' ;;
+      bad_ask) echo 'OT_INSTALL_ASK=%s: use auto, off or stdin' ;;
+      vault_needs_value) echo '--vault needs a value: keep, keyring, encrypted-file or auto' ;;
+      install_only) echo '%s only works for the install, not with --uninstall' ;;
+      ask_title) echo 'Choices of the install (Enter keeps the default; none needs sudo):' ;;
+      ask_vault) echo 'Where to keep the secrets? 1) keep what is configured (default; on a new install, the keyring)  2) the system keyring  3) an encrypted file  4) auto (the keyring, or the file when there is no keyring) [1-4] ' ;;
+      ask_service) echo 'Register the logon service (the daemon starts when you log on)? [Y/n] ' ;;
+      ask_prefetch) echo 'Download the ACP adapters now (claude-agent-acp and codex-acp, from the npm registry)? [Y/n] ' ;;
+      ask_again) echo 'Answer not understood: %s' ;;
+      vault_failed) echo 'WARNING: the vault was not written. Run "%s vault use %s" after you see why above.' ;;
+      prefetch_off) echo 'ACP adapters: not downloaded now (OT_INSTALL_PREFETCH=off).' ;;
+      prefetch_failed) echo 'WARNING: the ACP adapters were not downloaded. Run "%s adapters install" after you see why above.' ;;
       bad_base) echo 'OT_INSTALL_BASE_URL=%s: use https:// (or http:// on the loopback only), with no user and password' ;;
       unsupported) echo 'system not supported: %s %s (v1 has linux-x64 and darwin-arm64)' ;;
       no_downloader) echo 'curl or wget is needed to download' ;;
@@ -176,6 +211,7 @@ fmt() {
       link_ok) echo 'Shortcut: %s' ;;
       link_foreign) echo 'WARNING: %s already exists and is not from this installer; I left it alone. Run ot as %s.' ;;
       service_off) echo 'Logon service: not registered (OT_INSTALL_SERVICE=off).' ;;
+      todo_adapters) echo '  - ACP adapters not downloaded: "%s adapters install" downloads them (no sudo).' ;;
       service_failed) echo 'WARNING: the logon service was not registered. Run "%s service install" after you see why above.' ;;
       done_title) echo 'Done. What is left:' ;;
       todo_path) echo "  - %s is not in the PATH. Add to your shell profile: export PATH=\"%s:\$PATH\"" ;;
@@ -705,7 +741,23 @@ do_install() {
     link_note=1
   fi
 
-  # 8. The logon service (P3).
+  # 8. The vault of the secrets (N322), before the service starts the daemon that opens it.
+  if [ "$VAULT" != keep ]; then
+    "$EXE" vault use "$VAULT" || warn vault_failed "$EXE" "$VAULT"
+  fi
+
+  # 9. The ACP adapters (N321), before the daemon starts, so it finds them at once. A download that
+  # fails is told and the install goes on: the adapters can be installed later.
+  prefetch_ok=0
+  if [ "$PREFETCH" = off ]; then
+    say prefetch_off
+  elif "$EXE" adapters install; then
+    prefetch_ok=1
+  else
+    warn prefetch_failed "$EXE"
+  fi
+
+  # 10. The logon service (P3).
   service_rc=0
   if [ "$SERVICE" = off ]; then
     say service_off
@@ -714,7 +766,7 @@ do_install() {
     [ "$service_rc" = 0 ] || warn service_failed "$EXE"
   fi
 
-  # 9. What is left.
+  # 11. What is left.
   say done_title
   todo=0
   if [ "$link_note" = 0 ]; then
@@ -726,12 +778,16 @@ do_install() {
         ;;
     esac
   fi
-  for adapter in claude-agent-acp codex-acp; do
-    if ! command -v "$adapter" >/dev/null 2>&1; then
-      say todo_acp "$adapter"
-      todo=1
-    fi
-  done
+  if [ "$prefetch_ok" = 0 ]; then
+    for adapter in claude-agent-acp codex-acp; do
+      if ! command -v "$adapter" >/dev/null 2>&1; then
+        say todo_acp "$adapter"
+        todo=1
+      fi
+    done
+    say todo_adapters "$EXE"
+    todo=1
+  fi
   for client in claude codex opencode; do
     if ! command -v "$client" >/dev/null 2>&1; then
       say todo_client "$client"
@@ -905,34 +961,130 @@ do_uninstall() {
 }
 
 # ---------------------------------------------------------------------------------------------
+# The choices of the install (N322): asked on the terminal, unless a flag or a variable gave them.
+
+# ask_line QUESTION: prints the question (stderr) and reads one line into ASK_ANSWER, from the
+# terminal (also when the script comes from a pipe) or, with OT_INSTALL_ASK=stdin, from the input.
+ask_line() {
+  # shellcheck disable=SC2059 # the format is one of ours, from fmt
+  printf "$(fmt "$1")" >&2
+  if [ "$ASK" = stdin ]; then
+    read -r ASK_ANSWER || ASK_ANSWER=''
+  else
+    read -r ASK_ANSWER </dev/tty || ASK_ANSWER=''
+  fi
+}
+
+# ask_yes_no QUESTION: 0 for yes (also an empty answer), 1 for no; asks again on anything else.
+ask_yes_no() {
+  while :; do
+    ask_line "$1"
+    case $ASK_ANSWER in
+      '' | y | Y | yes | YES | s | S | sim | SIM) return 0 ;;
+      n | N | no | NO | nao | NAO | não | NÃO) return 1 ;;
+      *) warn ask_again "$ASK_ANSWER" ;;
+    esac
+  done
+}
+
+ask_choices() {
+  case $ASK in
+    off) return 0 ;;
+    stdin) ;;
+    auto)
+      # Only with a person in front: stderr is a terminal and the terminal can be read.
+      [ -t 2 ] || return 0
+      (: </dev/tty) 2>/dev/null || return 0
+      ;;
+  esac
+  [ "$YES" = 0 ] || return 0
+  [ -z "$VAULT" ] || [ -z "$SERVICE" ] || [ -z "$PREFETCH" ] || return 0
+  say ask_title
+  if [ -z "$VAULT" ]; then
+    while [ -z "$VAULT" ]; do
+      ask_line ask_vault
+      case $ASK_ANSWER in
+        '' | 1) VAULT=keep ;;
+        2) VAULT=keyring ;;
+        3) VAULT=encrypted-file ;;
+        4) VAULT=auto ;;
+        *) warn ask_again "$ASK_ANSWER" ;;
+      esac
+    done
+  fi
+  if [ -z "$SERVICE" ]; then
+    if ask_yes_no ask_service; then SERVICE=auto; else SERVICE=off; fi
+  fi
+  if [ -z "$PREFETCH" ]; then
+    if ask_yes_no ask_prefetch; then PREFETCH=auto; else PREFETCH=off; fi
+  fi
+}
+
+# ---------------------------------------------------------------------------------------------
 
 main() {
   UNINSTALL=0
   PURGE=0
   YES=0
-  for arg in "$@"; do
-    case $arg in
+  INSTALL_FLAG=''
+  VAULT=${OT_INSTALL_VAULT:-}
+  SERVICE=${OT_INSTALL_SERVICE:-}
+  PREFETCH=${OT_INSTALL_PREFETCH:-}
+  while [ "$#" -gt 0 ]; do
+    case $1 in
       --uninstall) UNINSTALL=1 ;;
       --purge-data) PURGE=1 ;;
       --yes | -y) YES=1 ;;
+      --vault=*)
+        VAULT=${1#--vault=}
+        INSTALL_FLAG=--vault
+        ;;
+      --vault)
+        [ "$#" -gt 1 ] || die "$EXIT_USAGE" vault_needs_value
+        shift
+        VAULT=$1
+        INSTALL_FLAG=--vault
+        ;;
+      --no-service)
+        SERVICE=off
+        INSTALL_FLAG=--no-service
+        ;;
+      --no-prefetch)
+        PREFETCH=off
+        INSTALL_FLAG=--no-prefetch
+        ;;
       --help | -h)
         say usage
         return 0
         ;;
-      *) die "$EXIT_USAGE" bad_arg "$arg" ;;
+      *) die "$EXIT_USAGE" bad_arg "$1" ;;
     esac
+    shift
   done
   if [ "$PURGE" = 1 ] && [ "$UNINSTALL" = 0 ]; then die "$EXIT_USAGE" purge_needs_uninstall; fi
+  if [ "$UNINSTALL" = 1 ] && [ -n "$INSTALL_FLAG" ]; then die "$EXIT_USAGE" install_only "$INSTALL_FLAG"; fi
 
   CHANNEL=${OT_INSTALL_CHANNEL:-stable}
   case $CHANNEL in
     stable | beta) ;;
     *) die "$EXIT_USAGE" bad_channel "$CHANNEL" ;;
   esac
-  SERVICE=${OT_INSTALL_SERVICE:-auto}
   case $SERVICE in
-    auto | off) ;;
+    '' | auto | off) ;;
     *) die "$EXIT_USAGE" bad_service "$SERVICE" ;;
+  esac
+  case $VAULT in
+    '' | keep | keyring | encrypted-file | auto) ;;
+    *) die "$EXIT_USAGE" bad_vault "$VAULT" ;;
+  esac
+  case $PREFETCH in
+    '' | auto | off) ;;
+    *) die "$EXIT_USAGE" bad_prefetch "$PREFETCH" ;;
+  esac
+  ASK=${OT_INSTALL_ASK:-auto}
+  case $ASK in
+    auto | off | stdin) ;;
+    *) die "$EXIT_USAGE" bad_ask "$ASK" ;;
   esac
   VERIFIER=${OT_INSTALL_VERIFIER:-auto}
   case $VERIFIER in
@@ -958,8 +1110,13 @@ main() {
   umask 022
 
   if [ "$UNINSTALL" = 1 ]; then
+    SERVICE=${SERVICE:-auto}
     do_uninstall
   else
+    ask_choices
+    VAULT=${VAULT:-keep}
+    SERVICE=${SERVICE:-auto}
+    PREFETCH=${PREFETCH:-auto}
     do_install
   fi
 }

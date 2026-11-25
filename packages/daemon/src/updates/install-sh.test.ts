@@ -153,6 +153,7 @@ describe.skipIf(PLATFORM === undefined)('install.sh', () => {
         HOME: home,
         OT_INSTALL_BASE_URL: server.base,
         OT_INSTALL_SERVICE: 'off',
+        OT_INSTALL_PREFETCH: 'off',
         OT_INSTALL_PUBLIC_KEY_FILE: keyFile,
         OT_INSTALL_OPENSSL: OPENSSL,
         OT_INSTALL_ALLOW_KEY_OVERRIDE: '1',
@@ -227,6 +228,140 @@ describe.skipIf(PLATFORM === undefined)('install.sh', () => {
       const result = await install({ OT_INSTALL_SERVICE: 'auto' });
       expect(result.code).toBe(0);
       expect(await calls()).toBe('service install\n');
+    });
+
+    describe('the choices of the install (N322)', () => {
+      /** No choice given by a variable: the script asks them, or takes the defaults. */
+      const UNSET = { OT_INSTALL_SERVICE: undefined, OT_INSTALL_PREFETCH: undefined } as const;
+
+      it('--vault writes the vault and the adapters are downloaded before the service', async () => {
+        publish();
+        const result = await install({ OT_INSTALL_SERVICE: 'auto', OT_INSTALL_PREFETCH: 'auto' }, [
+          '--vault',
+          'encrypted-file',
+        ]);
+        expect(result.code, result.stderr).toBe(0);
+        expect(await calls()).toBe('vault use encrypted-file\nadapters install\nservice install\n');
+        // The adapters came down, so they are not in what is left.
+        expect(result.stdout).not.toContain('ACP adapter not found in the PATH');
+        expect(result.stdout).not.toContain('adapters install" downloads them');
+      });
+
+      it('--vault=MODE is the same, and keep writes nothing', async () => {
+        publish();
+        expect((await install({}, ['--vault=auto'])).code).toBe(0);
+        expect(await calls()).toBe('vault use auto\n');
+        expect((await install({}, ['--vault=keep'])).code).toBe(0);
+        expect(await calls()).toBe('vault use auto\n');
+      });
+
+      it('--no-service and --no-prefetch win over the variables', async () => {
+        publish();
+        const result = await install({ OT_INSTALL_SERVICE: 'auto', OT_INSTALL_PREFETCH: 'auto' }, [
+          '--no-service',
+          '--no-prefetch',
+        ]);
+        expect(result.code).toBe(0);
+        expect(await calls()).toBe('');
+        expect(result.stdout).toContain(
+          'ACP adapters: not downloaded now (OT_INSTALL_PREFETCH=off).',
+        );
+        expect(result.stdout).toContain('adapters install" downloads them (no sudo)');
+      });
+
+      it('asks the three choices and asks again an answer it does not understand', async () => {
+        publish();
+        const result = await runInstaller(
+          [],
+          {
+            HOME: home,
+            OT_INSTALL_BASE_URL: server.base,
+            OT_INSTALL_PUBLIC_KEY_FILE: keyFile,
+            OT_INSTALL_OPENSSL: OPENSSL,
+            OT_INSTALL_ALLOW_KEY_OVERRIDE: '1',
+            OT_INSTALL_ASK: 'stdin',
+          },
+          { input: '9\n3\nmaybe\nn\n\n' },
+        );
+        expect(result.code, result.stderr).toBe(0);
+        expect(result.stdout).toContain(
+          'Choices of the install (Enter keeps the default; none needs sudo):',
+        );
+        expect(result.stderr).toContain('Where to keep the secrets?');
+        expect(result.stderr).toContain('Answer not understood: 9');
+        expect(result.stderr).toContain('Answer not understood: maybe');
+        expect(result.stderr).toContain('Register the logon service');
+        expect(result.stderr).toContain('Download the ACP adapters now');
+        // 3 = the encrypted file; n = no service; Enter = download the adapters.
+        expect(await calls()).toBe('vault use encrypted-file\nadapters install\n');
+      });
+
+      it('asks only what no flag gave, and --yes asks nothing and takes the defaults', async () => {
+        publish();
+        const some = await install(
+          { ...UNSET, OT_INSTALL_ASK: 'stdin' },
+          ['--vault', 'keep', '--no-service'],
+          undefined,
+        );
+        expect(some.code).toBe(0);
+        expect(some.stderr).not.toContain('Where to keep the secrets?');
+        expect(some.stderr).not.toContain('Register the logon service');
+        expect(some.stderr).toContain('Download the ACP adapters now');
+        expect(await calls()).toBe('adapters install\n');
+
+        const yes = await install({ ...UNSET, OT_INSTALL_ASK: 'stdin' }, ['--yes']);
+        expect(yes.code).toBe(0);
+        expect(yes.stderr).not.toContain('Download the ACP adapters now');
+        // A second install stops the service of the first (there was none, but the step is asked).
+        expect(await calls()).toBe(
+          'adapters install\nservice stop\nadapters install\nservice install\n',
+        );
+      });
+
+      it('without a terminal (stderr is a pipe here) it asks nothing', async () => {
+        publish();
+        const result = await install({ ...UNSET, OT_INSTALL_SERVICE: 'off' });
+        expect(result.code).toBe(0);
+        expect(result.stderr).not.toContain('Where to keep the secrets?');
+        expect(await calls()).toBe('adapters install\n');
+      });
+
+      it('a download of the adapters that fails is told and the install goes on', async () => {
+        const failing = Buffer.from(
+          `#!/bin/sh\ncase "$1" in\n  --version) echo "otheater 1.2.3" ;;\n  adapters) echo "offline" >&2; exit 1 ;;\nesac\n`,
+        );
+        publish({ exe: failing });
+        const result = await install({ OT_INSTALL_PREFETCH: 'auto' });
+        expect(result.code).toBe(0);
+        expect(result.stderr).toContain('WARNING: the ACP adapters were not downloaded.');
+        expect(result.stdout).toContain('adapters install" downloads them (no sudo)');
+      });
+
+      it('a vault that cannot be written is told and the install goes on', async () => {
+        const failing = Buffer.from(
+          `#!/bin/sh\ncase "$1" in\n  --version) echo "otheater 1.2.3" ;;\n  vault) echo "bad config" >&2; exit 1 ;;\nesac\n`,
+        );
+        publish({ exe: failing });
+        const result = await install({}, ['--vault', 'keyring']);
+        expect(result.code).toBe(0);
+        expect(result.stderr).toContain('WARNING: the vault was not written.');
+        expect(result.stderr).toContain('vault use keyring');
+      });
+
+      it('speaks Portuguese in the questions', async () => {
+        publish();
+        const result = await install(
+          { ...UNSET, LANG: 'pt_BR.UTF-8', OT_INSTALL_ASK: 'stdin' },
+          [],
+          undefined,
+        );
+        expect(result.code, result.stderr).toBe(0);
+        expect(result.stdout).toContain(
+          'Escolhas da instalação (Enter fica com o padrão; nenhuma precisa de sudo):',
+        );
+        expect(result.stderr).toContain('Onde guardar os segredos?');
+        expect(result.stderr).toContain('Registrar o serviço de logon');
+      });
     });
 
     it('exits 4 and says so when the service step fails, with the files in place', async () => {
@@ -775,6 +910,19 @@ describe.skipIf(PLATFORM === undefined)('install.sh', () => {
     it('a service mode that is not auto or off', async () => {
       const result = await install({ OT_INSTALL_SERVICE: 'maybe' });
       expect(result.code).toBe(2);
+    });
+
+    it('a vault, a prefetch or an ask mode it does not know (N322)', async () => {
+      expect((await install({}, ['--vault', 'nope'])).stderr).toContain(
+        'vault nope: use keep, keyring, encrypted-file or auto',
+      );
+      expect((await install({ OT_INSTALL_VAULT: 'nope' })).code).toBe(2);
+      expect((await install({}, ['--vault'])).stderr).toContain('--vault needs a value');
+      expect((await install({ OT_INSTALL_PREFETCH: 'maybe' })).code).toBe(2);
+      expect((await install({ OT_INSTALL_ASK: 'maybe' })).code).toBe(2);
+      const both = await install({}, ['--uninstall', '--no-service']);
+      expect(both.code).toBe(2);
+      expect(both.stderr).toContain('--no-service only works for the install');
     });
 
     it('an argument it does not know, and --purge-data without --uninstall', async () => {

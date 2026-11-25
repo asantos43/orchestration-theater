@@ -62,6 +62,7 @@ import { spawnDetachedDaemon, type DaemonSpawn } from './service/ensure-daemon.j
 import { isAdaptersAction, runAdaptersCommand, type AdaptersSeam } from './commands/adapters.js';
 import { isManagedClient } from './adapters/manager.js';
 import { runInitCommand } from './commands/init.js';
+import { isVaultAction, isVaultMode, runVaultCommand } from './commands/vault.js';
 import { execRunner } from './service/command-runner.js';
 import { createServiceManager } from './service/index.js';
 import { resolveServiceCommand } from './service/self-command.js';
@@ -162,6 +163,7 @@ const COMMANDS = [
   'uninstall',
   'init',
   'adapters',
+  'vault',
 ] as const;
 type Command = (typeof COMMANDS)[number];
 
@@ -474,6 +476,20 @@ export async function main(argv: readonly string[], given: CliDeps): Promise<num
           action,
           { json: values.json === true, clients: args },
         );
+      }
+      case 'vault': {
+        const [action, ...args] = rest;
+        if (action === undefined) return usageError(t('usage.missingVaultAction'));
+        if (!isVaultAction(action)) return usageError(t('usage.unknownVaultAction', { action }));
+        if (action === 'status') {
+          if (args.length > 0) return usageError(t('usage.tooManyArguments', { command }));
+          return await runVaultCommand(context, action, { json: values.json === true });
+        }
+        const [mode, ...extra] = args;
+        if (mode === undefined) return usageError(t('usage.missingVaultMode'));
+        if (!isVaultMode(mode)) return usageError(t('usage.unknownVaultMode', { mode }));
+        if (extra.length > 0) return usageError(t('usage.tooManyArguments', { command }));
+        return await runVaultCommand(context, action, { json: false, mode });
       }
       case 'tui': {
         if (rest.length > 0) return usageError(t('usage.tooManyArguments', { command }));

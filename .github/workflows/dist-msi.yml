@@ -83,7 +83,7 @@ jobs:
         run: |
           changed=$(git diff --name-only HEAD^1 HEAD)
           echo "$changed"
-          if printf '%s\n' "$changed" | grep -qE '^(\.github/workflows/dist-msi\.yml|installer/wix/|tools/release/|native/job-launcher/|packages/daemon/src/(sea|service)/|packages/daemon/src/commands/service|pnpm-lock\.yaml$)'; then
+          if printf '%s\n' "$changed" | grep -qE '^(\.github/workflows/dist-msi\.yml|installer/wix/|tools/release/|native/job-launcher/|packages/daemon/src/(sea|service)/|packages/daemon/src/commands/(service|vault)|pnpm-lock\.yaml$)'; then
             touched=true
           else
             touched=false
@@ -103,6 +103,8 @@ jobs:
     # skip this one.
     if: ${{ !cancelled() && (github.event_name != 'pull_request' || needs.changes.outputs.build == 'true') }}
     runs-on: windows-latest
+    # A normal run takes about 5 minutes; a hung step fails here instead of holding the runner.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -147,7 +149,32 @@ jobs:
           $extra = @{}
           if ($env:OT_RELEASE_VERSION) { $extra = @{ Version = $env:OT_RELEASE_VERSION } }
           ./installer/wix/build.ps1 @extra
+      # Probes of N322, each with its own time limit, before the full test: two runs of the test
+      # hung on 2026-11-25 until the runner was lost, with no log. The steps of the job (the API
+      # keeps their times even when the log is lost) say which part got through. [proposta] They
+      # go away once the cause is known.
+      - name: 'Probe: ot vault use and status, no msiexec'
+        timeout-minutes: 3
+        run: |
+          $exe = (Resolve-Path dist\sea\win32-x64\otheater.exe).Path
+          $data = Join-Path $env:RUNNER_TEMP 'ot-probe-data'
+          & $exe --data-dir $data vault use encrypted-file
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & $exe --data-dir $data vault status --json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Remove-Item -Recurse -Force $data
+      - name: 'Probe: msiexec with no action of ot (VAULT=keep, no service, no adapters)'
+        timeout-minutes: 6
+        env:
+          MSI: ${{ steps.build.outputs.msi }}
+        run: ./installer/wix/probe-msi.ps1 -Msi $env:MSI -Properties 'VAULT=keep', 'LOGON_SERVICE=0', 'PREFETCH_ADAPTERS=0'
+      - name: 'Probe: msiexec with ot vault use only (VAULT=encrypted-file)'
+        timeout-minutes: 6
+        env:
+          MSI: ${{ steps.build.outputs.msi }}
+        run: ./installer/wix/probe-msi.ps1 -Msi $env:MSI -Properties 'VAULT=encrypted-file', 'LOGON_SERVICE=0', 'PREFETCH_ADAPTERS=0'
       - name: Install, check, uninstall, check
+        timeout-minutes: 20
         env:
           MSI: ${{ steps.build.outputs.msi }}
           SEMVER: ${{ steps.build.outputs.semver }}

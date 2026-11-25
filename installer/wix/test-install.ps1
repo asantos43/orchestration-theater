@@ -17,12 +17,16 @@
   The version `ot --version` has to print.
 .PARAMETER Force
   Runs outside CI (a Windows virtual machine of yours).
+.PARAMETER MsiTimeoutMinutes
+  How long one msiexec may run before the test stops it and prints the end of its log (default 10;
+  a normal install or removal takes under a minute). [proposta]
 #>
 [CmdletBinding()]
 param(
   [Parameter(Mandatory = $true)] [string] $Msi,
   [Parameter(Mandatory = $true)] [string] $SemVer,
-  [switch] $Force
+  [switch] $Force,
+  [ValidateRange(1, 120)] [int] $MsiTimeoutMinutes = 10
 )
 
 Set-StrictMode -Version Latest
@@ -47,7 +51,17 @@ function Check([bool] $Condition, [string] $Message) {
 
 function Invoke-Msi([string[]] $Arguments, [string] $LogName) {
   $log = Join-Path $LogDir $LogName
-  $process = Start-Process -FilePath 'msiexec.exe' -ArgumentList ($Arguments + @('/qn', '/l*v', "`"$log`"")) -Wait -PassThru
+  $process = Start-Process -FilePath 'msiexec.exe' -ArgumentList ($Arguments + @('/qn', '/l*v', "`"$log`"")) -PassThru
+  # Read the handle now, or ExitCode stays empty once the process has ended.
+  $null = $process.Handle
+  # A bounded wait (the run of 2026-11-25 hung here until the runner was lost, with no log): on a
+  # timeout the end of the msiexec log says which action was running.
+  if (-not $process.WaitForExit($MsiTimeoutMinutes * 60 * 1000)) {
+    Write-Host "::error::msiexec $($Arguments[0]) did not end in $MsiTimeoutMinutes minute(s); the end of the log:"
+    if (Test-Path $log) { Get-Content $log -Tail 120 | ForEach-Object { Write-Host $_ } }
+    Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+    return -1
+  }
   if ($process.ExitCode -ne 0) {
     Write-Host "msiexec exited with $($process.ExitCode); the end of the log:"
     if (Test-Path $log) { Get-Content $log -Tail 80 | ForEach-Object { Write-Host $_ } }
@@ -72,8 +86,10 @@ Check (-not (Test-TaskExists)) "no task $TaskName yet"
 if ($failures.Count -gt 0) { throw 'The machine is not clean: not installing over it.' }
 $pathBefore = (Get-UserPathEntries) -join ';'
 
-Step 'Install: msiexec /i /qn'
-$code = Invoke-Msi @('/i', "`"$Msi`"") 'msi-install.log'
+Step 'Install: msiexec /i /qn VAULT=encrypted-file PREFETCH_ADAPTERS=0'
+# The choices of the page of options (N322) as properties: the vault is written by `ot vault use`, and
+# the adapters are not downloaded (no npm registry in a test).
+$code = Invoke-Msi @('/i', "`"$Msi`"", 'VAULT=encrypted-file', 'PREFETCH_ADAPTERS=0') 'msi-install.log'
 Check ($code -eq 0) "msiexec /i exited with 0 (got $code)"
 foreach ($file in 'ot.exe', 'ot-job-launcher.exe', 'LICENSE', 'THIRD_PARTY_NOTICES.md') {
   Check (Test-Path (Join-Path $InstallDir $file) -PathType Leaf) "installed $file"
@@ -95,6 +111,17 @@ Check ($null -ne $resolved -and $resolved.Source -eq (Join-Path $InstallDir 'ot.
 $versionOutput = (& (Join-Path $InstallDir 'ot.exe') --version | Out-String).Trim()
 Write-Host "ot --version: $versionOutput"
 Check ($versionOutput -eq $SemVer -or $versionOutput.Contains($SemVer)) "ot --version prints $SemVer"
+
+Step 'The vault chosen at the install (N322)'
+$configPath = Join-Path $DataDir 'config.yaml'
+Check (Test-Path $configPath -PathType Leaf) 'the install wrote config.yaml (VAULT=encrypted-file)'
+if (Test-Path $configPath) {
+  $configText = Get-Content -Raw -Path $configPath
+  Check ($configText -match 'vault:\s*encrypted-file') 'config.yaml has adapters.vault: encrypted-file'
+}
+$vaultJson = & (Join-Path $InstallDir 'ot.exe') vault status --json | Out-String
+Write-Host $vaultJson.Trim()
+Check ($vaultJson -match '"vault":\s*"encrypted-file"') 'ot vault status says encrypted-file'
 
 Step 'The service status, and the data folder'
 $statusJson = & (Join-Path $InstallDir 'ot.exe') service status --json | Out-String

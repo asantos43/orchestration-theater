@@ -40,7 +40,7 @@ export function fakeExe(marker = 'a'): Buffer {
 echo "$*" >> "$HOME/fake-ot-runs.log"
 case "$1" in
   --version) echo "otheater 1.2.3" ;;
-  service | uninstall) echo "$*" >> "$HOME/fake-ot-calls.log" ;;
+  service | uninstall | vault | adapters) echo "$*" >> "$HOME/fake-ot-calls.log" ;;
 esac
 exit 0
 `,
