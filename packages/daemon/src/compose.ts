@@ -74,6 +74,7 @@ import {
   KeyringVault,
   KeyringVaultConfigSchema,
   keyringVaultAdapter,
+  type KeyringBackend,
 } from '@otheater/adapter-vault-keyring';
 import { GIT_VCS_ADAPTER, GitVcs } from '@otheater/adapter-vcs-git';
 import {
@@ -81,6 +82,7 @@ import {
   BROWSER_SESSION_PORT_VERSION,
   CLOCK_PORT_VERSION,
   CODE_HOST_PORT_VERSION,
+  hasErrorCode,
   ISSUE_TRACKER_PORT_VERSION,
   MEMORY_PROBE_PORT_VERSION,
   InvalidInput,
@@ -195,6 +197,11 @@ export interface ComposeOverrides {
    */
   readonly telemetry?: TelemetryStore | 'none';
   readonly vault?: SecretVault;
+  /**
+   * Replaces the system keyring under `adapters.vault: keyring` or `auto` (tests): the vault is the
+   * real `KeyringVault` over this backend, and the guard of the real keyring does not apply.
+   */
+  readonly keyringBackend?: KeyringBackend;
   /** Version control for the worktrees of the attempts (`GitVcs` by default). */
   readonly vcs?: Vcs;
   /**
@@ -997,41 +1004,104 @@ export function assertRealKeyringAllowed(env: NodeJS.ProcessEnv = process.env): 
   );
 }
 
-/**
- * The vault the configuration names (`adapters.vault`), or the one a test hands in. Used by
- * {@link compose} and by `ot plugin secret set`, which needs the vault and nothing else of the
- * composition (Phase 9, P7). The returned record is the adapter's, for the list of adapters.
- */
-export function composeVault(
-  config: DaemonConfig,
+/** What {@link composeVault} hands back. */
+export interface ComposedVault {
+  readonly vault: SecretVault;
+  /** The record of the adapter in use (with `auto`, the one it chose), for the list of adapters. */
+  readonly record: AdapterRecord;
+  /** `adapters.vault: auto` found no keyring and uses the encrypted file: the error of the keyring. */
+  readonly fallback?: { readonly reason: unknown } | undefined;
+}
+
+/** The keys of the `vault` section that each adapter reads (`auto` reads both). */
+const KEYRING_VAULT_KEYS = ['service', 'linuxStore'] as const;
+const FILE_VAULT_KEYS = ['path', 'scrypt'] as const;
+
+function pickKeys(raw: Record<string, unknown>, keys: readonly string[]): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(raw).filter(([key]) => keys.includes(key)));
+}
+
+function keyringVaultOf(
+  raw: Record<string, unknown>,
+  overrides: ComposeOverrides,
+): { readonly vault: KeyringVault; readonly record: AdapterRecord } {
+  if (overrides.keyringBackend === undefined) assertRealKeyringAllowed();
+  return {
+    vault: new KeyringVault(
+      parseSection('vault', KeyringVaultConfigSchema, raw),
+      overrides.keyringBackend === undefined ? {} : { backend: overrides.keyringBackend },
+    ),
+    record: checkAdapterRange(keyringVaultAdapter, 'SecretVault', SECRET_VAULT_PORT_VERSION),
+  };
+}
+
+function fileVaultOf(
+  raw: Record<string, unknown>,
   dataDir: string,
-  overrides: ComposeOverrides = {},
-): { readonly vault: SecretVault; readonly record: AdapterRecord } {
-  if (overrides.vault !== undefined) {
-    return {
-      vault: overrides.vault,
-      record: overrideRecord('SecretVault', SECRET_VAULT_PORT_VERSION),
-    };
-  }
-  if (config.adapters.vault === 'keyring') {
-    assertRealKeyringAllowed();
-    return {
-      vault: new KeyringVault(parseSection('vault', KeyringVaultConfigSchema, config.vault)),
-      record: checkAdapterRange(keyringVaultAdapter, 'SecretVault', SECRET_VAULT_PORT_VERSION),
-    };
-  }
+): { readonly vault: EncryptedFileVault; readonly record: AdapterRecord } {
   const record = checkAdapterRange(
     encryptedFileVaultAdapter,
     'SecretVault',
     SECRET_VAULT_PORT_VERSION,
   );
-  const raw = config.vault;
   const path = typeof raw.path === 'string' ? resolve(dataDir, raw.path) : raw.path;
   const section = parseSection('vault', EncryptedFileVaultConfigSchema, {
     ...raw,
     path: raw.path === undefined ? resolve(dataDir, DEFAULT_VAULT_FILE) : path,
   });
   return { vault: new EncryptedFileVault(section), record };
+}
+
+/**
+ * The vault the configuration names (`adapters.vault`), or the one a test hands in. Used by
+ * {@link compose} and by `ot plugin secret set`, which needs the vault and nothing else of the
+ * composition (Phase 9, P7). The returned record is the adapter's, for the list of adapters.
+ *
+ * `auto` (N323; [proposta]) asks the keyring for its list of entries once: a keyring that answers,
+ * or one that is only locked (`VaultLocked`: it is there, the system asks to open it), is used; one
+ * that is not there (`AdapterUnavailable`: no Secret Service, no access to the store) gives way to
+ * the encrypted file, and `fallback` says why. The `vault` section then holds the keys of both.
+ */
+export async function composeVault(
+  config: DaemonConfig,
+  dataDir: string,
+  overrides: ComposeOverrides = {},
+): Promise<ComposedVault> {
+  if (overrides.vault !== undefined) {
+    return {
+      vault: overrides.vault,
+      record: overrideRecord('SecretVault', SECRET_VAULT_PORT_VERSION),
+    };
+  }
+  const raw = config.vault;
+  switch (config.adapters.vault) {
+    case 'keyring':
+      return keyringVaultOf(raw, overrides);
+    case 'encrypted-file':
+      return fileVaultOf(raw, dataDir);
+    case 'auto': {
+      const unknown = Object.keys(raw).filter(
+        (key) =>
+          !(KEYRING_VAULT_KEYS as readonly string[]).includes(key) &&
+          !(FILE_VAULT_KEYS as readonly string[]).includes(key),
+      );
+      if (unknown.length > 0) {
+        throw new InvalidInput(
+          `config.yaml: vault.${unknown[0] ?? ''}: not a key of the keyring or of the encrypted file`,
+        );
+      }
+      // The file is read first, so a wrong key of it is an error whichever vault is chosen.
+      const file = fileVaultOf(pickKeys(raw, FILE_VAULT_KEYS), dataDir);
+      const keyring = keyringVaultOf(pickKeys(raw, KEYRING_VAULT_KEYS), overrides);
+      try {
+        await keyring.vault.list();
+        return keyring;
+      } catch (error) {
+        if (!hasErrorCode(error, 'ADAPTER_UNAVAILABLE')) return keyring;
+        return { ...file, fallback: { reason: error } };
+      }
+    }
+  }
 }
 
 /**
@@ -1099,7 +1169,13 @@ export async function compose(config: DaemonConfig, options: ComposeOptions): Pr
       logger = daemonLogger.logger;
     }
 
-    const composedVault = composeVault(config, paths.dataDir, overrides);
+    const composedVault = await composeVault(config, paths.dataDir, overrides);
+    if (composedVault.fallback !== undefined) {
+      logger.warn(
+        { err: situationText(composedVault.fallback.reason, 200) },
+        'adapters.vault is auto and there is no system keyring: the encrypted file is used',
+      );
+    }
     vault = composedVault.vault;
     adapters.push(composedVault.record);
 
@@ -1153,6 +1229,14 @@ export async function compose(config: DaemonConfig, options: ComposeOptions): Pr
       });
     };
     for (const error of rotateErrors.splice(0)) rotate.notice(error);
+    // N323: `adapters.vault: auto` fell back to the encrypted file (the log line is above).
+    if (composedVault.fallback !== undefined) {
+      situations.record('daemon.notice', {
+        kind: 'vault_fallback',
+        subject: 'keyring',
+        detail: situationText(composedVault.fallback.reason),
+      });
+    }
     // Phase 11 (N306): an orphan temporary (of an atomic write, or of an extracted native addon in a SEA)
     // that could not be removed is a log warning and an event; the store extracted its addon before the
     // situations existed, so a failure that came first waits for this sink.

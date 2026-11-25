@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import {
   AdapterUnavailable,
   InvalidInput,
+  isLockableSecretVault,
   Secret,
   type Adapter,
   type Sandbox,
@@ -25,6 +26,7 @@ import {
   compose,
   composeClock,
   composeVault,
+  type ComposeOverrides,
   type LauncherChoiceDeps,
 } from './compose.js';
 import { parseConfig } from './config.js';
@@ -92,14 +94,152 @@ describe('the guard against the real keyring under the test runner (item 64)', (
     }).not.toThrow();
   });
 
-  it('composeVault refuses the default (keyring) here, before any keyring is built', () => {
+  it('composeVault refuses the default (keyring) here, before any keyring is built', async () => {
     // This suite runs under vitest, without OT_TEST_KEYRING: the default config reaches the guard.
     const config = parseConfig('');
     expect(config.adapters.vault).toBe('keyring');
-    expect(() => composeVault(config, '/nonexistent-data-dir')).toThrow(/real keyring/);
+    await expect(composeVault(config, '/nonexistent-data-dir')).rejects.toThrow(/real keyring/);
+    // `auto` asks the keyring too, so it reaches the guard as well.
+    await expect(
+      composeVault(parseConfig('adapters:\n  vault: auto\n'), '/nonexistent-data-dir'),
+    ).rejects.toThrow(/real keyring/);
     // A vault handed in, as the tests do, never reaches it.
     const vault = new InMemorySecretVault();
-    expect(composeVault(config, '/nonexistent-data-dir', { vault }).vault).toBe(vault);
+    expect((await composeVault(config, '/nonexistent-data-dir', { vault })).vault).toBe(vault);
+  });
+});
+
+/** A keyring backend in memory; `fail` makes every call throw that message, as the native one does. */
+/** The backend of the keyring, named through compose.ts: only it may import the adapter (5.18). */
+type KeyringBackend = NonNullable<ComposeOverrides['keyringBackend']>;
+
+class FakeKeyring implements KeyringBackend {
+  readonly entries = new Map<string, string>();
+  calls = 0;
+  constructor(private readonly fail?: string) {}
+  #call(): void {
+    this.calls += 1;
+    if (this.fail !== undefined) throw new Error(this.fail);
+  }
+  get(service: string, account: string): Promise<string | undefined> {
+    this.#call();
+    return Promise.resolve(this.entries.get(`${service}/${account}`));
+  }
+  set(service: string, account: string, value: string): Promise<void> {
+    this.#call();
+    this.entries.set(`${service}/${account}`, value);
+    return Promise.resolve();
+  }
+  delete(service: string, account: string): Promise<boolean> {
+    this.#call();
+    return Promise.resolve(this.entries.delete(`${service}/${account}`));
+  }
+  accounts(service: string): Promise<readonly string[]> {
+    this.#call();
+    return Promise.resolve(
+      [...this.entries.keys()]
+        .filter((key) => key.startsWith(`${service}/`))
+        .map((key) => key.slice(service.length + 1)),
+    );
+  }
+}
+
+describe('adapters.vault: auto (N323)', () => {
+  const auto = (vault = ''): ReturnType<typeof parseConfig> =>
+    parseConfig(`adapters:\n  vault: auto\n${vault === '' ? '' : `vault:\n${vault}`}`);
+
+  it('uses the keyring when the system has one', async () => {
+    const keyring = new FakeKeyring();
+    const composed = await composeVault(auto(), '/nonexistent-data-dir', {
+      keyringBackend: keyring,
+    });
+    expect(composed.record.id).toBe('keyring');
+    expect(composed.fallback).toBeUndefined();
+    await composed.vault.set('a', new Secret('x'));
+    expect(keyring.entries.size).toBe(1);
+  });
+
+  it('uses a keyring that is only locked: it is there, and the system asks to open it', async () => {
+    const composed = await composeVault(auto(), '/nonexistent-data-dir', {
+      keyringBackend: new FakeKeyring('Secret Service: object locked'),
+    });
+    expect(composed.record.id).toBe('keyring');
+    expect(composed.fallback).toBeUndefined();
+  });
+
+  it('falls back to the encrypted file when there is no keyring, and says why', async () => {
+    const tmp = await makeTempDataDir();
+    try {
+      const composed = await composeVault(auto(), tmp.dir, {
+        keyringBackend: new FakeKeyring('No DBus session or Secret Service provider found'),
+      });
+      expect(composed.record.id).toBe('encrypted-file');
+      expect(composed.fallback?.reason).toBeInstanceOf(AdapterUnavailable);
+      expect(isLockableSecretVault(composed.vault)).toBe(true);
+    } finally {
+      await tmp.dispose();
+    }
+  });
+
+  it('reads the keys of both vaults from the vault section, and refuses any other', async () => {
+    const keyring = new FakeKeyring();
+    const composed = await composeVault(
+      auto('  service: other\n  path: my.enc\n'),
+      '/nonexistent-data-dir',
+      { keyringBackend: keyring },
+    );
+    await composed.vault.set('a', new Secret('x'));
+    expect([...keyring.entries.keys()]).toEqual(['other/a']);
+    await expect(
+      composeVault(auto('  servce: other\n'), '/nonexistent-data-dir', {
+        keyringBackend: new FakeKeyring(),
+      }),
+    ).rejects.toThrow(/vault\.servce/);
+    // A wrong key of the file is an error even when the keyring is chosen.
+    await expect(
+      composeVault(auto('  scrypt:\n    N: 3\n'), '/nonexistent-data-dir', {
+        keyringBackend: new FakeKeyring(),
+      }),
+    ).rejects.toThrow(InvalidInput);
+  });
+
+  it('the composition logs the fallback and records daemon.notice vault_fallback', async () => {
+    const tmp = await makeTempDataDir();
+    const clock = new FakeClock(1000);
+    const warn = vi.fn();
+    const logger = { warn, info: vi.fn(), error: vi.fn(), debug: vi.fn() };
+    const composition = await compose(auto(), {
+      dataDir: tmp.dir,
+      logger: logger as never,
+      overrides: {
+        clock,
+        store: new InMemoryStore({ clock }),
+        keyringBackend: new FakeKeyring('No DBus session or Secret Service provider found'),
+        sandbox: 'none',
+        telemetry: 'none',
+      },
+      events: { registry: buildDaemonRegistries().events, unknownType: 'reject' },
+    });
+    try {
+      expect(composition.adapters.find((r) => r.port === 'SecretVault')?.id).toBe('encrypted-file');
+      expect(warn).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.stringMatching(/no system keyring/),
+      );
+      composition.situations.open();
+      await composition.situations.idle();
+      const notices = (await composition.store.events.readFrom(0, 1000)).filter(
+        (event) => event.type === 'daemon.notice',
+      );
+      expect(notices.map((event) => event.payload)).toContainEqual({
+        kind: 'vault_fallback',
+        subject: 'keyring',
+        detail: expect.stringMatching(/keyring is not available/) as string,
+      });
+    } finally {
+      await composition.close();
+      await tmp.dispose();
+    }
   });
 });
 
