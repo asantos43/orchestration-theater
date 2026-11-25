@@ -6,6 +6,7 @@ import {
   readdirSync,
   rmSync,
   statSync,
+  utimesSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -23,6 +24,7 @@ import {
   SEA_INTERNAL_PREFIX,
   type SeaSweepFailure,
 } from './sea.js';
+import { configureTemporaryCleanup } from './temporaries.js';
 
 const dirs: string[] = [];
 function tmp(): string {
@@ -157,6 +159,38 @@ describe('extractNative: orphan temporaries of a killed process (N306)', () => {
     for (const name of others) writeFileSync(join(folder, name), 'keep');
     extractNative('a.node', Buffer.from('one'), { dataDir: dir, isPidAlive: dead });
     expect(readdirSync(folder).sort()).toEqual(['a.node', ...others].sort());
+  });
+
+  it('in age mode removes the old temporary whatever its pid and keeps the new one', () => {
+    const dir = tmp();
+    const folder = folderOf(dir, 'one');
+    const old = `.a.node.4242.${hex}.tmp`;
+    const fresh = `.a.node.${String(DEAD)}.${hex}.tmp`;
+    writeFileSync(join(folder, old), 'old');
+    writeFileSync(join(folder, fresh), 'new');
+    const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60_000);
+    utimesSync(join(folder, old), twoHoursAgo, twoHoursAgo);
+    const stop = configureTemporaryCleanup({ mode: 'age', maxAgeMs: 60 * 60_000 });
+    try {
+      extractNative('a.node', Buffer.from('one'), { dataDir: dir, isPidAlive: () => true });
+    } finally {
+      stop();
+    }
+    expect(readdirSync(folder).sort()).toEqual([fresh, 'a.node'].sort());
+  });
+
+  it('with the cleaning off keeps every temporary', () => {
+    const dir = tmp();
+    const folder = folderOf(dir, 'one');
+    const orphan = `.a.node.${String(DEAD)}.${hex}.tmp`;
+    writeFileSync(join(folder, orphan), 'half');
+    const stop = configureTemporaryCleanup({ mode: 'off' });
+    try {
+      extractNative('a.node', Buffer.from('one'), { dataDir: dir, isPidAlive: () => false });
+    } finally {
+      stop();
+    }
+    expect(readdirSync(folder).sort()).toEqual([orphan, 'a.node'].sort());
   });
 
   it('tells a temporary it cannot remove and goes on', () => {

@@ -27,6 +27,7 @@ import {
 } from './config.js';
 import { FAULT_INJECT_MODES } from './chaos/faults.js';
 import { DISK_NOTIFY_MODES, DISK_ON_FULL_MODES } from './disk/settings.js';
+import { TEMPORARY_CLEANUP_MODES } from '@otheater/client/node';
 import { PLUGIN_INSTALL_SOURCES } from './plugins/install-sources.js';
 import {
   PLUGIN_APPROVAL_DETAIL_MODES,
@@ -2023,6 +2024,44 @@ describe('updates.apply, the repetition of a refused file call (N305) [proposta]
     ]) {
       expect(() => parseConfig(bad), bad).toThrow(InvalidInput);
     }
+  });
+});
+
+describe('temporaries (N306, continuation) [proposta]', () => {
+  it('cleans by pid after one hour by default', () => {
+    expect(parseConfig('').temporaries).toEqual({ cleanup: 'pid', max_age: 3_600_000 });
+  });
+
+  it('takes each mode and a max_age from 1m to 30d', () => {
+    for (const mode of TEMPORARY_CLEANUP_MODES) {
+      expect(parseConfig(`temporaries:\n  cleanup: ${mode}\n`).temporaries.cleanup).toBe(mode);
+    }
+    for (const [text, ms] of [
+      ['1m', 60_000],
+      ['90m', 5_400_000],
+      ['2h', 7_200_000],
+      ['30d', 30 * 86_400_000],
+    ] as const) {
+      const config = parseConfig(`temporaries:\n  cleanup: age\n  max_age: ${text}\n`);
+      expect(config.temporaries).toEqual({ cleanup: 'age', max_age: ms });
+    }
+  });
+
+  it('refuses what is not a mode, an age outside 1m to 30d and an unknown key', () => {
+    for (const bad of [
+      'temporaries:\n  cleanup: sometimes\n',
+      'temporaries:\n  cleanup: true\n',
+      'temporaries:\n  max_age: 59s\n',
+      'temporaries:\n  max_age: 31d\n',
+      'temporaries:\n  max_age: 0s\n',
+      'temporaries:\n  max_age: off\n',
+      'temporaries:\n  max_age: forever\n',
+      'temporaries:\n  wildcard: "*.tmp"\n',
+      'temporaries: pid\n',
+    ]) {
+      expect(() => parseConfig(bad), bad).toThrow(InvalidInput);
+    }
+    expect(() => parseConfig('temporaries:\n  max_age: 59s\n')).toThrow(/between 1m and 30d/);
   });
 });
 

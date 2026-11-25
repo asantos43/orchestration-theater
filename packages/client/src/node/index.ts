@@ -6,6 +6,7 @@ import { clientConfigFile, resolveClientConfigDir, resolveDataDir, type Env } fr
 
 export * from './paths.js';
 export * from './files.js';
+export * from './temporaries.js';
 export * from './layout-file.js';
 
 export interface NodeDaemonDirectoryOptions extends Pick<

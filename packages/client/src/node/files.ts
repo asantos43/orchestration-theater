@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: MPL-2.0
-import { randomBytes } from 'node:crypto';
 import { chmod, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
@@ -13,6 +12,10 @@ import {
   type LocalDaemonSource,
 } from '../directory.js';
 import { DaemonDirectoryError } from '../errors.js';
+import { isPidAlive } from './pid.js';
+import { sweepTemporaries, temporaryPathOf, type SweepTemporariesOptions } from './temporaries.js';
+
+export { isPidAlive };
 
 /**
  * The only module of the client that touches files (plan docs/17 P9): the list of daemons, with
@@ -44,16 +47,29 @@ export interface FileDaemonListStoreOptions {
 /** Default of `FileDaemonListStoreOptions.renameAttempts`. */
 export const DEFAULT_RENAME_ATTEMPTS = 5;
 
+/** The shape of the temporary of {@link writePrivateFileAtomic}: `<file>.<pid>.<8 hex>.tmp`. */
+export const ATOMIC_TEMPORARY_SHAPE = { hexLength: 8 } as const;
+
 export interface WritePrivateFileOptions {
   /** See {@link FileDaemonListStoreOptions.renameAttempts}. Default {@link DEFAULT_RENAME_ATTEMPTS}. */
   readonly renameAttempts?: number | undefined;
+  /**
+   * The cleaning of the orphan temporaries of this file that runs after the write (N306): the policy,
+   * the clock, the check of a pid and the handler of a failure. Default: the policy in force and the
+   * sink of `onTemporarySweepFailure`.
+   */
+  readonly sweep?: Omit<SweepTemporariesOptions, 'hexLength' | 'hidden'> | undefined;
 }
 
 /**
  * Writes `text` to `path` so a reader never sees half a file, at mode 0600: a temporary file in the
  * same folder, renamed over the target (retried while Windows refuses it, see `renameAttempts`).
- * The folder is made with mode 0700 where POSIX modes exist. Used for `client.json` and for the
- * layout file of the `local` mode.
+ * The folder is made with mode 0700 where POSIX modes exist. Used for `client.json`, for the
+ * layout file of the `local` mode and for the registry of plugins of the daemon.
+ *
+ * The temporary is `<file>.<pid>.<8 hex>.tmp`. A process killed between the write and the rename
+ * leaves it, so after a successful write the orphans of this file are removed (N306; see
+ * `sweepTemporaries` for what an orphan is). A failure to remove one never fails the write.
  */
 export async function writePrivateFileAtomic(
   path: string,
@@ -62,7 +78,7 @@ export async function writePrivateFileAtomic(
 ): Promise<void> {
   const attempts = Math.max(1, options.renameAttempts ?? DEFAULT_RENAME_ATTEMPTS);
   await mkdir(dirname(path), { recursive: true, mode: 0o700 });
-  const temporary = `${path}.${randomBytes(4).toString('hex')}.tmp`;
+  const temporary = temporaryPathOf(path, ATOMIC_TEMPORARY_SHAPE);
   try {
     await writeFile(temporary, text, { encoding: 'utf8', mode: 0o600 });
     // `writeFile` is subject to the umask, which only removes bits: set the exact mode.
@@ -70,7 +86,7 @@ export async function writePrivateFileAtomic(
     for (let attempt = 1; ; attempt += 1) {
       try {
         await rename(temporary, path);
-        return;
+        break;
       } catch (error) {
         if (attempt >= attempts || !isTransientRename(error)) throw error;
         await sleep(10 * 2 ** (attempt - 1));
@@ -80,6 +96,7 @@ export async function writePrivateFileAtomic(
     await rm(temporary, { force: true }).catch(() => undefined);
     throw error;
   }
+  await sweepTemporaries(path, { ...options.sweep, ...ATOMIC_TEMPORARY_SHAPE });
 }
 
 /**
@@ -144,16 +161,6 @@ export class FileDaemonListStore implements DaemonListStore {
     return writePrivateFileAtomic(this.#path, `${JSON.stringify(file, null, 2)}\n`, {
       renameAttempts: this.#renameAttempts,
     });
-  }
-}
-
-/** True when a process with this pid exists (signal 0 only checks). `EPERM` means it exists. */
-export function isPidAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    return (error as { code?: unknown } | undefined)?.code === 'EPERM';
   }
 }
 

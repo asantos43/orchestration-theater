@@ -1,8 +1,13 @@
 // SPDX-License-Identifier: MPL-2.0
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { constants } from 'node:fs';
-import { lstat, open, readFile, readdir, rename, rm } from 'node:fs/promises';
-import { basename, dirname, join } from 'node:path';
+import { lstat, open, readFile, rename, rm } from 'node:fs/promises';
+import {
+  isPidAlive,
+  sweepTemporaries,
+  temporaryPathOf,
+  type TemporaryCleanupPolicy,
+} from '@otheater/client/node';
 import {
   ApiDiscoverySchema,
   DaemonIdSchema,
@@ -39,7 +44,7 @@ const TOKEN_FORMAT = /^[A-Za-z0-9_-]{32,}$/;
  * The rename then replaces `path` itself, even when `path` is a link (the link is replaced, not followed).
  */
 export async function writePrivateFile(path: string, text: string): Promise<void> {
-  const temporary = `${path}.${String(process.pid)}.${randomBytes(8).toString('hex')}.tmp`;
+  const temporary = temporaryPathOf(path, PRIVATE_TEMPORARY_SHAPE);
   const flags =
     constants.O_WRONLY |
     constants.O_CREAT |
@@ -59,10 +64,12 @@ export async function writePrivateFile(path: string, text: string): Promise<void
     await rm(temporary, { force: true }).catch(() => undefined);
     throw error;
   }
+  // N306: a process killed between the write and the rename leaves its temporary; this one is whole now.
+  await sweepTemporaries(path, PRIVATE_TEMPORARY_SHAPE);
 }
 
-/** What follows `<file>` in the name of a temporary of {@link writePrivateFile}: `.<pid>.<16 hex>.tmp`. */
-const TEMPORARY_TAIL = /^\.(\d+)\.[0-9a-f]{16}\.tmp$/;
+/** The shape of the temporary of {@link writePrivateFile}: `<file>.<pid>.<16 hex>.tmp`. */
+const PRIVATE_TEMPORARY_SHAPE = { hexLength: 16 } as const;
 
 export interface SweepTemporariesOptions {
   /** Whether a pid is a live process. Default {@link isProcessAlive}; tests replace it. */
@@ -73,53 +80,42 @@ export interface SweepTemporariesOptions {
    * that had the same pid (a daemon that runs as pid 1 in a container always has it). Default `false`.
    */
   readonly includeOwnPid?: boolean | undefined;
+  /** Replaces parts of the policy in force (`temporaries.cleanup`, `temporaries.max_age`); tests use it. */
+  readonly policy?: Partial<TemporaryCleanupPolicy> | undefined;
+  /** The clock of the `age` mode. Default `Date.now`. */
+  readonly now?: (() => number) | undefined;
   /** Told about a temporary that could not be removed, or a folder that could not be read; never throws. */
   readonly onError?: ((error: unknown, name: string) => void) | undefined;
 }
 
 /**
  * Removes the orphan temporaries of `path` (Phase 11, N306): the `<name>.<pid>.<16 hex>.tmp` that
- * {@link writePrivateFile} leaves when its process dies between the write and the rename, whose pid is no
- * longer alive. Only that exact shape of name, for that exact file, is ever touched: nothing else in the
+ * {@link writePrivateFile} leaves when its process dies between the write and the rename. What counts
+ * as an orphan is the policy in force (`sweepTemporaries` in the client has the rules: by pid, by age or
+ * none). Only that exact shape of name, for that exact file, is ever touched: nothing else in the
  * folder, and no temporary of another file. A pid that was reused by a live process keeps its file (the
  * safe side). It never throws. Returns the names it removed.
  */
-export async function sweepOrphanTemporaries(
+export function sweepOrphanTemporaries(
   path: string,
   options: SweepTemporariesOptions = {},
 ): Promise<string[]> {
-  const alive = options.alive ?? isProcessAlive;
-  const folder = dirname(path);
-  const prefix = basename(path);
-  const removed: string[] = [];
-  let names: string[];
-  try {
-    names = await readdir(folder);
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') options.onError?.(error, prefix);
-    return removed;
-  }
-  for (const name of names) {
-    if (!name.startsWith(prefix)) continue;
-    const match = TEMPORARY_TAIL.exec(name.slice(prefix.length));
-    if (match === null) continue;
-    const pid = Number(match[1]);
-    if (!Number.isSafeInteger(pid) || pid <= 0) continue;
-    if (pid === process.pid ? options.includeOwnPid !== true : alive(pid)) continue;
-    try {
-      await rm(join(folder, name), { force: true });
-      removed.push(name);
-    } catch (error) {
-      options.onError?.(error, name);
-    }
-  }
-  return removed;
+  return sweepTemporaries(path, {
+    ...PRIVATE_TEMPORARY_SHAPE,
+    alive: options.alive ?? isProcessAlive,
+    includeOwnPid: options.includeOwnPid,
+    policy: options.policy,
+    now: options.now,
+    onError: options.onError,
+  });
 }
 
 export interface SweepApiTemporariesOptions {
   readonly logger?: Logger | undefined;
   readonly situations?: SituationSink | undefined;
   readonly alive?: ((pid: number) => boolean) | undefined;
+  readonly policy?: Partial<TemporaryCleanupPolicy> | undefined;
+  readonly now?: (() => number) | undefined;
 }
 
 /**
@@ -135,6 +131,8 @@ export async function sweepApiTemporaries(
   for (const path of paths) {
     const names = await sweepOrphanTemporaries(path, {
       alive: options.alive,
+      policy: options.policy,
+      now: options.now,
       includeOwnPid: true,
       onError: (error, name) => {
         options.logger?.warn(
@@ -256,14 +254,7 @@ export async function removeDiscovery(path: string): Promise<void> {
 }
 
 /** True when a process with this pid exists (a process of another user counts as alive). */
-export function isProcessAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    return (error as NodeJS.ErrnoException).code === 'EPERM';
-  }
-}
+export const isProcessAlive = isPidAlive;
 
 /** What a read of `api.json` found. */
 export type DiscoveryReading =

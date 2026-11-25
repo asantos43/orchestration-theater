@@ -61,6 +61,23 @@ Depois, `ot --version` mostra a versão, `ot service status` mostra o serviço e
 
 **[V]** `packages/daemon/src/paths.ts` (as pastas de dados; `OT_DATA_DIR` ou `--data-dir` as trocam), `installer/install.sh` e `installer/wix/Product.wxs`. O programa e os dados ficam em pastas **separadas** de propósito: desinstalar tira o programa e **mantém os dados** (seção 7).
 
+### 3.1. Os arquivos `.tmp` que sobram de uma gravação interrompida
+
+O daemon e o cliente gravam arquivo por "um temporário na mesma pasta, depois um `rename`". Um processo morto (`SIGKILL`, queda de energia) entre os dois deixa `<arquivo>.<pid>[.<hex>].tmp` na pasta **[V]** (`packages/client/src/node/temporaries.ts`). A limpeza apaga **só** o nome exato do arquivo que acabou de ser gravado (nunca por curinga: um arquivo fora do padrão, ou o temporário de outro arquivo, não é tocado) e roda depois de cada gravação com sucesso e, no daemon, ao subir. Uma falha ao apagar é aviso no log e o evento `daemon.notice` com `kind: temporary_cleanup_failed`; a gravação e o início seguem. O comportamento é a seção `temporaries` do `config.yaml` (nome, modos e padrões aceitos pelo dono em 2026-11-24, N306):
+
+| Chave (`temporaries.*`) | Valores | Padrão | O que faz |
+|---|---|---|---|
+| `cleanup` | `off`, `pid`, `age` | `pid` | `pid` apaga o temporário cujo pid não é um processo vivo (no início, também o do próprio pid, que ali é sobra de um processo anterior com o mesmo pid, como num contêiner); `age` apaga o mais velho que `max_age`, **seja qual for o pid** (para uma pasta que processos de outras máquinas ou contêineres também gravam, onde um pid não diz nada); `off` não apaga nada. |
+| `max_age` | duração, de `1m` a `30d` | `1h` | A idade do modo `age`. Os outros modos a ignoram. Abaixo de um minuto, um disco lento poderia fazer a limpeza apagar uma gravação ainda em curso. |
+
+```yaml
+temporaries:
+  cleanup: age
+  max_age: 2h
+```
+
+A chave é lida **quando o daemon sobe**. O aplicador da atualização, a CLI e a TUI são processos à parte e usam o padrão (`pid`) **[V]**. Os arquivos cobertos: `daemon-id`, `api-token`, `api.json`, as preferências de layout, a exportação ATIF, `config.yaml`, `plugins.json`, `client.json`, o arquivo de layout do modo `local`, o arquivo de informação do bloqueio da instância, o diário da atualização, os *shims* dos perfis e o addon nativo que o executável único extrai. Os adaptadores (`prepare-profile`, o `statusline` de cota, os perfis do Codex e do OpenCode e o arquivo do cofre) **ainda não** limpam as próprias sobras **[N]**.
+
 ## 4. Os avisos do SmartScreen e do Gatekeeper
 
 Os dois avisos são do **sistema operacional**, não do OTheater, e hoje aparecem porque o arquivo não tem assinatura de código. Tudo o que esta seção diz sobre o comportamento deles vem das páginas oficiais da [seção 9](#9-fontes-consultadas), consultadas em 2026-11-24; o que elas não dizem está marcado **[N]**.

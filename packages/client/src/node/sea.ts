@@ -1,11 +1,17 @@
 // SPDX-License-Identifier: MPL-2.0
-import { createHash, randomBytes } from 'node:crypto';
-import { mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import * as nodeSea from 'node:sea';
-import { isPidAlive } from './files.js';
 import { resolveDataDir, type Env } from './paths.js';
+import {
+  onTemporarySweepFailure,
+  reportTemporarySweepFailure,
+  sweepTemporariesSync,
+  temporaryPathOf,
+  type TemporarySweepFailure,
+} from './temporaries.js';
 
 /**
  * The single executable (Node SEA, Phase 10, P1) as seen from the code that runs inside it
@@ -102,82 +108,33 @@ export interface SeaNativeOptions {
 }
 
 /** An orphan temporary of an extraction that could not be removed (Phase 11, N306). */
-export interface SeaSweepFailure {
-  /** The name of the file, or of the folder that could not be read. */
-  readonly name: string;
-  readonly error: unknown;
-}
-
-const MAX_PENDING_SWEEP_FAILURES = 16;
-const pendingSweepFailures: SeaSweepFailure[] = [];
-let sweepSink: ((failure: SeaSweepFailure) => void) | undefined;
+export type SeaSweepFailure = TemporarySweepFailure;
 
 /**
- * Where the failures to remove an orphan temporary go by default (Phase 11, N306). A failure that came
- * before the sink was set (the store opens, and extracts its addon, before the daemon can write an
- * event) is delivered at once, in order. Returns the function that unsets the sink.
+ * Where the failures to remove an orphan temporary go by default (Phase 11, N306): the sink is the one
+ * of every cleaning of temporaries (`onTemporarySweepFailure`), kept under this name for the callers
+ * that were written for the addons.
  */
-export function onSeaNativeSweepFailure(sink: (failure: SeaSweepFailure) => void): () => void {
-  sweepSink = sink;
-  for (const failure of pendingSweepFailures.splice(0)) reportSweepFailure(failure, undefined);
-  return () => {
-    if (sweepSink === sink) sweepSink = undefined;
-  };
-}
+export const onSeaNativeSweepFailure = onTemporarySweepFailure;
 
-function reportSweepFailure(
-  failure: SeaSweepFailure,
-  handler: ((failure: SeaSweepFailure) => void) | undefined,
-): void {
-  const target = handler ?? sweepSink;
-  if (target === undefined) {
-    if (pendingSweepFailures.length < MAX_PENDING_SWEEP_FAILURES)
-      pendingSweepFailures.push(failure);
-    return;
-  }
-  try {
-    target(failure);
-  } catch {
-    // A sink that throws must not break the extraction it only reports about.
-  }
-}
-
-function escapeRegExp(text: string): string {
-  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
+/** The shape of the temporary of an extraction: `.<name>.<pid>.<12 hex>.tmp`. */
+const NATIVE_TEMPORARY_SHAPE = { hexLength: 12, hidden: true } as const;
 
 /**
- * Removes the orphan temporaries of the addon `name` in `folder`: the `.<name>.<pid>.<12 hex>.tmp` that
- * {@link extractNative} leaves when its process dies between the write and the rename, whose pid is no
- * longer alive. Only that exact shape, for that exact addon, is touched; a temporary of a process that is
- * alive (another extraction in the same folder) stays. The extraction is synchronous, so a temporary with
- * this process's own pid is never one of its own in flight: it is a left-over of an earlier process with
- * the same pid (a daemon that runs as pid 1 in a container), and goes too. Never throws.
+ * Removes the orphan temporaries of the addon `name` in `folder` (what an orphan is: see
+ * `sweepTemporaries`). The extraction is synchronous, so a temporary with this process's own pid is
+ * never one of its own in flight: it is a left-over of an earlier process with the same pid (a daemon
+ * that runs as pid 1 in a container), and goes too. Never throws.
  */
 function sweepNativeTemporaries(folder: string, name: string, options: SeaNativeOptions): void {
-  const alive = options.isPidAlive ?? isPidAlive;
-  const shape = new RegExp(`^\\.${escapeRegExp(name)}\\.(\\d+)\\.[0-9a-f]{12}\\.tmp$`);
-  let names: string[];
-  try {
-    names = readdirSync(folder);
-  } catch (error) {
-    if ((error as { code?: unknown }).code !== 'ENOENT') {
-      reportSweepFailure({ name, error }, options.onSweepFailure);
-    }
-    return;
-  }
-  for (const entry of names) {
-    const match = shape.exec(entry);
-    if (match === null) continue;
-    const pid = Number(match[1]);
-    if (!Number.isSafeInteger(pid) || pid <= 0) continue;
-    if (pid !== process.pid && alive(pid)) continue;
-    try {
-      rmSync(join(folder, entry), { force: true });
-    } catch (error) {
-      reportSweepFailure({ name: entry, error }, options.onSweepFailure);
-    }
-  }
+  sweepTemporariesSync(join(folder, name), {
+    ...NATIVE_TEMPORARY_SHAPE,
+    alive: options.isPidAlive,
+    includeOwnPid: true,
+    onError: (error, failed) => {
+      reportTemporarySweepFailure({ name: failed, error }, options.onSweepFailure);
+    },
+  });
 }
 
 /**
@@ -214,10 +171,7 @@ export function extractNative(
   }
   mkdirSync(folder, { recursive: true, mode: 0o700 });
   sweepNativeTemporaries(folder, name, options);
-  const temporary = join(
-    folder,
-    `.${name}.${String(process.pid)}.${randomBytes(6).toString('hex')}.tmp`,
-  );
+  const temporary = temporaryPathOf(target, NATIVE_TEMPORARY_SHAPE);
   try {
     writeFileSync(temporary, bytes, { mode: 0o755 });
     try {
