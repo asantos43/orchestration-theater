@@ -561,7 +561,8 @@ export class RoleSelection {
         : wanted === undefined
           ? -1
           : executors.findIndex(
-              (item) => item.entry.client === wanted.client && item.entry.profile === wanted.profile,
+              (item) =>
+                item.entry.client === wanted.client && item.entry.profile === wanted.profile,
             );
     const pinned = start < 0 ? undefined : executors[start];
     if (pinned === undefined) return selectExecutorFromPorts(ports, input(executors));

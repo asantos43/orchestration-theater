@@ -33,18 +33,25 @@ export const CRASH_POINTS = {
   ],
   /** The commit of a store transaction: the body has run and the commit has not, or the commit is done. */
   store: ['store.before_commit', 'store.after_commit'],
+  /**
+   * The run of an attempt: its session is in the record and its prompt has not gone (a kill here
+   * leaves a conversation that never started the task). `detail` is the role of the attempt.
+   */
+  attempt: ['attempt.before_prompt'],
 } as const;
 
 export type CrashPointName =
   | (typeof CRASH_POINTS.effects)[number]
   | (typeof CRASH_POINTS.reconcile)[number]
-  | (typeof CRASH_POINTS.store)[number];
+  | (typeof CRASH_POINTS.store)[number]
+  | (typeof CRASH_POINTS.attempt)[number];
 
 /** Every point of the catalogue, in a stable order. */
 export const CRASH_POINT_NAMES: readonly CrashPointName[] = [
   ...CRASH_POINTS.effects,
   ...CRASH_POINTS.reconcile,
   ...CRASH_POINTS.store,
+  ...CRASH_POINTS.attempt,
 ];
 
 /** The line a killed daemon writes to its stdout, followed by the JSON of {@link CrashInfo}. */

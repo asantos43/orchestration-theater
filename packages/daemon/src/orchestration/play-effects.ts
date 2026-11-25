@@ -940,6 +940,7 @@ export class OrchestrationEffects implements PlayEffects {
             profile,
             executor: settings,
             policy,
+            prompt,
           });
     // The worktree of a stage is a scratch place; the branch (and its history) stays. An attempt
     // the stop of the daemon left waiting keeps it: the native resume of the restart goes on there,
@@ -1435,6 +1436,7 @@ export class OrchestrationEffects implements PlayEffects {
               profile,
               executor: settings,
               policy,
+              prompt,
               timeoutMs: timeoutMin * 60_000,
             });
       if (outcome.state === 'interrupted') {

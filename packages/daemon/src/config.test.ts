@@ -629,6 +629,16 @@ describe('parseConfig, execution keys', () => {
     expect(() => parseConfig('resume:\n  on_restart: later\n')).toThrow(/on_restart/);
   });
 
+  it('takes resume.when_unstarted with the task sent again as default', () => {
+    for (const preset of ['balanced', 'patient', 'agile']) {
+      expect(parseConfig(`resume:\n  preset: ${preset}\n`).resume.when_unstarted).toBe('prompt');
+    }
+    expect(parseConfig('resume:\n  when_unstarted: continue\n').resume.when_unstarted).toBe(
+      'continue',
+    );
+    expect(() => parseConfig('resume:\n  when_unstarted: later\n')).toThrow(/when_unstarted/);
+  });
+
   it('takes resume.package with the deterministic summary as default (N126, P18)', () => {
     for (const preset of ['balanced', 'patient', 'agile']) {
       expect(parseConfig(`resume:\n  preset: ${preset}\n`).resume.package).toEqual({

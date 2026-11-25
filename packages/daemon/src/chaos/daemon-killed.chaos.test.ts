@@ -63,6 +63,8 @@ const FIRST_START_POINTS: readonly string[] = [
   'effects.after_execute:git_push',
   'store.before_commit#4',
   'store.after_commit#4',
+  // the session of the first attempt is in the record and its prompt has not gone
+  'attempt.before_prompt',
 ];
 
 /**

@@ -263,6 +263,14 @@ export const ON_PROFILE_REMOVED_MODES = ['handoff', 'park'] as const;
  * `interrupted` and the play opens the next attempt (the behaviour before this key).
  */
 export const ON_RESTART_MODES = ['native', 'handoff'] as const;
+/**
+ * [proposta] `resume.when_unstarted`: what a native resume after a restart sends when the reloaded
+ * conversation never started the task (the daemon died between `session.opened` and the
+ * `session/prompt`, so the log of the attempt has no work of the client: no message, thought,
+ * plan or tool call). `prompt` sends the task of the attempt again; `continue` sends
+ * `resume.continue_prompt` as for any other resume.
+ */
+export const WHEN_UNSTARTED_MODES = ['prompt', 'continue'] as const;
 export const PACKAGE_DIFF_MODES = ['full', 'stat', 'none'] as const;
 /**
  * [proposta] (P18) What the handoff does in a role of short output (Reviewer, Screenwriter,
@@ -2395,6 +2403,8 @@ export const DaemonConfigSchema = z
         on_profile_removed: z.enum(ON_PROFILE_REMOVED_MODES).default('handoff'),
         /** [proposta] See {@link ON_RESTART_MODES}. */
         on_restart: z.enum(ON_RESTART_MODES).default('native'),
+        /** [proposta] See {@link WHEN_UNSTARTED_MODES}. */
+        when_unstarted: z.enum(WHEN_UNSTARTED_MODES).default('prompt'),
         /** [proposta] What the Executor is told when a conversation is reloaded. */
         continue_prompt: z
           .string()
@@ -2447,6 +2457,7 @@ export const DaemonConfigSchema = z
           quota_wait_missed: resume.quota_wait_missed,
           on_profile_removed: resume.on_profile_removed,
           on_restart: resume.on_restart,
+          when_unstarted: resume.when_unstarted,
           continue_prompt: resume.continue_prompt,
           package: resume.package,
         };

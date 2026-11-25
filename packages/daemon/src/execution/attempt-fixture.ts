@@ -47,6 +47,7 @@ export const QUIET_SETTINGS: ExecutionSettings = {
   quotaWaitMissed: 'handoff',
   onProfileRemoved: 'handoff',
   onRestart: 'native',
+  whenUnstarted: 'prompt',
   continuePrompt: 'carry on',
   package: DEFAULT_PACKAGE_SETTINGS,
   terminalOutput: { mode: 'truncated', maxBytes: 64 * 1024 },
