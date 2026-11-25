@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-import type { SetupPlan, SetupPrompt, SetupRunView } from '@otheater/protocol';
+import type { SetupDetectedClient, SetupPlan, SetupPrompt, SetupRunView } from '@otheater/protocol';
 import type { TFunction } from 'i18next';
 import { TOKEN } from '../layout/theme.js';
 import { accountClients, stepNumber, type Draft } from './model.js';
@@ -35,6 +35,42 @@ export interface AccountsStage {
   /** The labels of the keys that add an account and that continue. */
   readonly addKey: string;
   readonly nextKey: string;
+  /** The labels of the keys that install an adapter and that look again (P18b); default none. */
+  readonly installKey?: string | undefined;
+  readonly reloadKey?: string | undefined;
+  /** The install of the adapter of this client is running (P18b), and for how many seconds. */
+  readonly installing?: { readonly client: string; readonly seconds: number } | undefined;
+}
+
+/**
+ * Why a client is or is not on this machine, short (P18, N321): the reason the daemon gave, or
+ * only installed / not found when it gave none (an old daemon).
+ */
+export function clientStateText(entry: SetupDetectedClient, t: TFunction): string {
+  if (entry.reason !== undefined) return t(`setup.reason.${entry.reason}`);
+  return t(entry.installed ? 'setup.reason.installed' : 'setup.reason.not_found');
+}
+
+/**
+ * What the person can do about a client that is not there (P18b): install its adapter (I), or
+ * install the program and look again (R). Never an `ot` command: the assistant is the way.
+ */
+export function clientTodoText(
+  entry: SetupDetectedClient,
+  keys: { readonly install: string; readonly reload: string },
+  t: TFunction,
+): string | undefined {
+  if (entry.installed) return undefined;
+  switch (entry.reason) {
+    case 'adapter_missing':
+      return t('setup.todo.adapter_missing', { client: entry.client, key: keys.install });
+    case 'managed_pending':
+      return t('setup.todo.managed_pending', { key: keys.reload });
+    case 'disabled':
+      return t('setup.todo.disabled', { client: entry.client });
+    default:
+      return t('setup.todo.not_found', { client: entry.client, key: keys.reload });
+  }
 }
 
 const MARK = { done: '✓', now: '●', todo: '○' } as const;
@@ -60,16 +96,29 @@ function accountsStageLines(run: SetupRunView, stage: AccountsStage, t: TFunctio
     { key: 'h.clients', text: t('setup.accounts.clients'), color: TOKEN.accent, bold: true },
   ];
   const detected = run.prompt?.step === 'detect';
+  const keys = { install: stage.installKey ?? '', reload: stage.reloadKey ?? '' };
   accountClients(run.prompt).forEach((entry, index) => {
-    const state = detected
-      ? t(entry.installed ? 'setup.accounts.installed' : 'setup.accounts.missing')
-      : '';
+    const state = detected ? t('setup.accounts.state', { state: clientStateText(entry, t) }) : '';
     lines.push({
       key: `c.${entry.client}`,
       text: t('setup.accounts.row', { client: entry.client, state }),
+      color: detected && !entry.installed ? TOKEN.warn : undefined,
       selected: index === stage.cursor,
     });
+    const todo = detected && index === stage.cursor ? clientTodoText(entry, keys, t) : undefined;
+    if (todo !== undefined)
+      lines.push({ key: `c.${entry.client}.todo`, text: `   ${todo}`, dim: true });
   });
+  if (stage.installing !== undefined) {
+    lines.push({
+      key: 'installing',
+      text: t('setup.install.running', {
+        client: stage.installing.client,
+        seconds: String(stage.installing.seconds),
+      }),
+      color: TOKEN.accent,
+    });
+  }
   if (stage.added.length > 0) {
     lines.push({ key: 'gap.added', text: '' });
     lines.push({
@@ -102,9 +151,7 @@ function detectLines(
 ): SetupLine[] {
   const lines: SetupLine[] = [];
   const clients = prompt.clients.map((entry) =>
-    t(entry.installed ? 'setup.detect.installed' : 'setup.detect.missing', {
-      client: entry.client,
-    }),
+    t('setup.detect.client', { client: entry.client, state: clientStateText(entry, t) }),
   );
   if (clients.length > 0) {
     lines.push({

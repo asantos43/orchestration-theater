@@ -166,8 +166,9 @@
       "add": "Add an Executor",
       "edit": "Edit the spending cap",
       "remove": "Remove the Executor",
-      "reload": "Read the step again",
-      "cancel": "Cancel the run (nothing is written)"
+      "reload": "Look for the clients again and read the step again",
+      "cancel": "Cancel the run (nothing is written)",
+      "install": "Install the ACP adapter of the client under the cursor"
     },
     "plugins": {
       "itemPrev": "Previous plugin",
@@ -226,7 +227,8 @@
       "toggle": "Pick",
       "add": "Add",
       "edit": "Cap",
-      "cancel": "Cancel run"
+      "cancel": "Cancel run",
+      "install": "Install adapter"
     }
   },
   "keymap": {
@@ -1158,16 +1160,15 @@
       "preset": "Pick the preset of the roles.",
       "executors": "Register Executors by API or local model and set the spending cap of each API account.",
       "review": "This is what will be written. Nothing is written before you confirm.",
-      "accounts": "Add an account of a client (a subscription) and log in to it now, or continue without one: you can add accounts later in the Settings tab or with ot profile add."
+      "accounts": "Add an account of a client (a subscription) and log in to it now, or continue without one: you can add accounts later in the Settings tab."
     },
     "detect": {
       "clients": "Clients on this machine: {{list}}",
-      "installed": "{{client}} (installed)",
-      "missing": "{{client}} (not found)",
       "none": "No account yet. Add one in the Settings tab, then run the assistant again.",
       "usable": "usable",
       "unusable": "not usable",
-      "order": "{{n}}. "
+      "order": "{{n}}. ",
+      "client": "{{client}} ({{state}})"
     },
     "preset": {
       "current": "in use",
@@ -1234,17 +1235,47 @@
     "accounts": {
       "clients": "Clients",
       "row": "{{client}}{{state}}",
-      "installed": "  (installed)",
-      "missing": "  (not found)",
       "added": "Added in this run: {{list}}",
       "keys": "{{add}} adds an account of the client under the cursor, {{next}} continues without adding.",
       "result": {
         "added": "Account added: {{profile}}.",
         "loggedIn": "Account added: {{profile}}. It already has a login.",
         "loginDone": "Account added: {{profile}}. The sign-in ended with code {{code}}.",
-        "loginFailed": "Account added: {{profile}}. The sign-in could not run: {{message}}. To try again: {{command}}",
+        "loginFailed": "Account added: {{profile}}. The sign-in could not run: {{message}}. You can sign in later in the Settings tab.",
         "failed": "The account was not added: {{message}}"
-      }
+      },
+      "state": "  ({{state}})",
+      "cannotAdd": "{{client}} is not ready on this machine ({{why}}), so it has no account to add yet. {{todo}}"
+    },
+    "reason": {
+      "installed": "installed",
+      "disabled": "turned off in the config",
+      "command_configured": "installed, command from the config",
+      "found_in_path": "installed",
+      "adapter_configured": "installed, adapter from the config",
+      "managed_installed": "installed, adapter by OTheater",
+      "managed_pending": "its adapter is being installed",
+      "adapter_missing": "the program is here, its ACP adapter is not",
+      "not_found": "not found",
+      "forced_not_found": "turned on in the config, but not found"
+    },
+    "todo": {
+      "adapter_missing": "{{key}} installs the ACP adapter of {{client}}.",
+      "managed_pending": "Wait a moment and press {{key}} to look again.",
+      "disabled": "Turn {{client}} on in the config (clients.{{client}}.enabled) to use it.",
+      "not_found": "Install {{client}}, then press {{key}} to look again."
+    },
+    "install": {
+      "running": "Installing the ACP adapter of {{client}}… {{seconds}} s",
+      "done": "The ACP adapter of {{client}} is installed ({{adapter}} {{version}}).",
+      "failed": "The adapter {{adapter}} could not be installed: {{message}}. {{key}} tries again.",
+      "notNeeded": "{{client}} is ready: it needs no install.",
+      "notOffered": "The assistant installs only the ACP adapter of a client whose program is here. {{todo}}",
+      "unavailable": "This daemon cannot install adapters here."
+    },
+    "redetect": {
+      "added": "Found now: {{list}}.",
+      "failed": "Could not look for the clients again: {{message}}"
     }
   },
   "plugins": {

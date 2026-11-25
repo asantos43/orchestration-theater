@@ -166,8 +166,9 @@
       "add": "Adicionar um Executor",
       "edit": "Editar o teto de gasto",
       "remove": "Remover o Executor",
-      "reload": "Ler o passo de novo",
-      "cancel": "Cancelar a execução (nada é gravado)"
+      "reload": "Procurar os clientes de novo e ler o passo de novo",
+      "cancel": "Cancelar a execução (nada é gravado)",
+      "install": "Instalar o adaptador ACP do cliente sob o cursor"
     },
     "plugins": {
       "itemPrev": "Plugin anterior",
@@ -226,7 +227,8 @@
       "toggle": "Marcar",
       "add": "Adicionar",
       "edit": "Teto",
-      "cancel": "Cancelar"
+      "cancel": "Cancelar",
+      "install": "Instalar adaptador"
     }
   },
   "keymap": {
@@ -1158,16 +1160,15 @@
       "preset": "Escolha o preset dos papéis.",
       "executors": "Cadastre Executores por API ou modelo local e defina o teto de gasto de cada conta de API.",
       "review": "Isto é o que será gravado. Nada é gravado antes de você confirmar.",
-      "accounts": "Adicione uma conta de um cliente (uma assinatura) e entre nela agora, ou continue sem nenhuma: dá para adicionar contas depois na aba Configurações ou com ot profile add."
+      "accounts": "Adicione uma conta de um cliente (uma assinatura) e entre nela agora, ou continue sem nenhuma: dá para adicionar contas depois na aba Configurações."
     },
     "detect": {
       "clients": "Clientes nesta máquina: {{list}}",
-      "installed": "{{client}} (instalado)",
-      "missing": "{{client}} (não encontrado)",
       "none": "Nenhuma conta ainda. Adicione uma na aba Configurações e rode o assistente de novo.",
       "usable": "utilizável",
       "unusable": "não utilizável",
-      "order": "{{n}}. "
+      "order": "{{n}}. ",
+      "client": "{{client}} ({{state}})"
     },
     "preset": {
       "current": "em uso",
@@ -1234,17 +1235,47 @@
     "accounts": {
       "clients": "Clientes",
       "row": "{{client}}{{state}}",
-      "installed": "  (instalado)",
-      "missing": "  (não encontrado)",
       "added": "Adicionadas nesta execução: {{list}}",
       "keys": "{{add}} adiciona uma conta do cliente sob o cursor, {{next}} continua sem adicionar.",
       "result": {
         "added": "Conta adicionada: {{profile}}.",
         "loggedIn": "Conta adicionada: {{profile}}. Ela já tem login.",
         "loginDone": "Conta adicionada: {{profile}}. O login terminou com o código {{code}}.",
-        "loginFailed": "Conta adicionada: {{profile}}. O login não pôde rodar: {{message}}. Para tentar de novo: {{command}}",
+        "loginFailed": "Conta adicionada: {{profile}}. O login não pôde rodar: {{message}}. Dá para entrar depois na aba Configurações.",
         "failed": "A conta não foi adicionada: {{message}}"
-      }
+      },
+      "state": "  ({{state}})",
+      "cannotAdd": "{{client}} não está pronto nesta máquina ({{why}}), então ainda não tem conta para adicionar. {{todo}}"
+    },
+    "reason": {
+      "installed": "instalado",
+      "disabled": "desligado na configuração",
+      "command_configured": "instalado, comando da configuração",
+      "found_in_path": "instalado",
+      "adapter_configured": "instalado, adaptador da configuração",
+      "managed_installed": "instalado, adaptador do OTheater",
+      "managed_pending": "o adaptador está sendo instalado",
+      "adapter_missing": "o programa está aqui, o adaptador ACP não",
+      "not_found": "não encontrado",
+      "forced_not_found": "ligado na configuração, mas não encontrado"
+    },
+    "todo": {
+      "adapter_missing": "{{key}} instala o adaptador ACP do {{client}}.",
+      "managed_pending": "Espere um pouco e aperte {{key}} para procurar de novo.",
+      "disabled": "Ligue o {{client}} na configuração (clients.{{client}}.enabled) para usá-lo.",
+      "not_found": "Instale o {{client}} e aperte {{key}} para procurar de novo."
+    },
+    "install": {
+      "running": "Instalando o adaptador ACP do {{client}}… {{seconds}} s",
+      "done": "O adaptador ACP do {{client}} está instalado ({{adapter}} {{version}}).",
+      "failed": "O adaptador {{adapter}} não pôde ser instalado: {{message}}. {{key}} tenta de novo.",
+      "notNeeded": "O {{client}} está pronto: não precisa instalar nada.",
+      "notOffered": "O assistente instala só o adaptador ACP de um cliente cujo programa está aqui. {{todo}}",
+      "unavailable": "Este daemon não consegue instalar adaptadores daqui."
+    },
+    "redetect": {
+      "added": "Encontrado agora: {{list}}.",
+      "failed": "Não deu para procurar os clientes de novo: {{message}}"
     }
   },
   "plugins": {

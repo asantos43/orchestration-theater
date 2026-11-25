@@ -6,10 +6,12 @@ import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { plain, waitFor } from '../ink.test-support.js';
 import { buildTuiKeymap } from '../keys/use-keymap.js';
 import { createTuiI18n, loadTuiCatalogs } from '../locale.js';
+import type { SetupDetectedClient } from '@otheater/protocol';
 import type { SetupFlow } from './api.js';
 import {
   FakeSetupApi,
   FakeSetupAccounts,
+  type FakeSetupOptions,
   profileOf,
   requestError,
 } from './fake-api.test-support.js';
@@ -37,6 +39,12 @@ const keymap = buildTuiKeymap(
   { preset: 'agents', environment: 'auto', overrides: {} },
   { env: {}, platform: 'linux' },
 );
+
+/** Both clients on the machine (a test that adds an account of each). */
+const BOTH_INSTALLED: readonly SetupDetectedClient[] = [
+  { client: 'claude-code', installed: true },
+  { client: 'codex', installed: true },
+];
 
 const PROFILES = [
   profileOf('claude-code/main'),
@@ -463,8 +471,11 @@ describe('the setup screen: the other flows', () => {
 });
 
 describe('the setup screen: the step that adds an account (N274)', () => {
-  function withAccounts(): { api: FakeSetupApi; accounts: FakeSetupAccounts } {
-    const api = new FakeSetupApi({ profiles: PROFILES, withAccounts: true });
+  function withAccounts(options: Partial<FakeSetupOptions> = {}): {
+    api: FakeSetupApi;
+    accounts: FakeSetupAccounts;
+  } {
+    const api = new FakeSetupApi({ profiles: PROFILES, withAccounts: true, ...options });
     const accounts = api.accounts;
     if (accounts === undefined) throw new Error('the fake has no accounts');
     return { api, accounts };
@@ -516,7 +527,7 @@ describe('the setup screen: the step that adds an account (N274)', () => {
   });
 
   it('takes the provider of the line when it has one, and the default of the client otherwise', async () => {
-    const { api, accounts } = withAccounts();
+    const { api, accounts } = withAccounts({ clients: BOTH_INSTALLED });
     const screen = await atStep(api);
     await screen.press(DOWN);
     await screen.press('a');
@@ -576,7 +587,9 @@ describe('the setup screen: the step that adds an account (N274)', () => {
     const frame = (await screen.seen('The sign-in could not run: no such program.'))
       .replace(/[│\n]/g, ' ')
       .replace(/\s+/g, ' ');
-    expect(frame).toContain('To try again: ot profile exec claude-code/work login');
+    // The texts of the assistant name no command (N321): the tab Settings signs in later.
+    expect(frame).toContain('You can sign in later in the Settings tab.');
+    expect(frame).not.toContain('ot profile');
     expect(frame).toContain('Added in this run: claude-code/work');
   });
 
@@ -638,7 +651,7 @@ describe('the setup screen: the step that adds an account (N274)', () => {
   });
 
   it('can be repeated: a second account of another client', async () => {
-    const { api, accounts } = withAccounts();
+    const { api, accounts } = withAccounts({ clients: BOTH_INSTALLED });
     const screen = await atStep(api);
     await screen.press('a');
     await screen.type('work');
@@ -661,5 +674,130 @@ describe('the setup screen: the step that adds an account (N274)', () => {
     const first = await screen.seen('Pick the account to bring into the roles.');
     expect(first).toContain('Step 1 of 3');
     expect(first).not.toContain('New account');
+  });
+});
+
+describe('SetupScreen looks for the clients and installs an adapter (P18b, N321)', () => {
+  const ADAPTER_MISSING: readonly SetupDetectedClient[] = [
+    { client: 'claude-code', installed: true, reason: 'found_in_path' },
+    { client: 'codex', installed: false, reason: 'adapter_missing' },
+  ];
+  const NOT_FOUND: readonly SetupDetectedClient[] = [
+    { client: 'claude-code', installed: true, reason: 'found_in_path' },
+    { client: 'codex', installed: false, reason: 'not_found' },
+  ];
+
+  /** The frame as one line: a long text wraps inside the box. */
+  function flat(frame: string): string {
+    return frame.replace(/[│\n]/g, ' ').replace(/\s+/g, ' ');
+  }
+
+  async function atStep(options: Partial<FakeSetupOptions>): Promise<{
+    api: FakeSetupApi;
+    accounts: FakeSetupAccounts;
+    screen: Mounted;
+  }> {
+    const api = new FakeSetupApi({ profiles: PROFILES, withAccounts: true, ...options });
+    const accounts = api.accounts;
+    if (accounts === undefined) throw new Error('the fake has no accounts');
+    const screen = mount('first_run', api);
+    await screen.seen('Add an account of a client');
+    return { api, accounts, screen };
+  }
+
+  it('says why each client is not there, and what to do under the cursor', async () => {
+    const { screen } = await atStep({ clients: ADAPTER_MISSING });
+    const first = screen.frame();
+    expect(first).toContain('claude-code  (installed)');
+    expect(flat(first)).toContain('codex (the program is here, its ACP adapter is not)');
+    const second = flat(await screen.press(DOWN));
+    expect(second).toContain('I installs the ACP adapter of codex.');
+    expect(second).toContain('Install adapter');
+  });
+
+  it('A on a client that is not found warns briefly and adds no account', async () => {
+    const { api, accounts, screen } = await atStep({ clients: NOT_FOUND });
+    await screen.press(DOWN);
+    const frame = flat(await screen.press('a'));
+    expect(frame).toContain('codex is not ready on this machine (not found)');
+    expect(frame).toContain('Install codex, then press R to look again.');
+    expect(frame).not.toContain('Account of codex as');
+    // No `ot` command in the texts of the assistant (N321).
+    expect(frame).not.toMatch(/\bot [a-z]/);
+    expect(accounts.added).toEqual([]);
+    expect(api.calls.some((call) => call.startsWith('install:'))).toBe(false);
+  });
+
+  it('I installs the adapter with its progress, and the client is there after it', async () => {
+    let open: () => void = () => undefined;
+    const { api, screen } = await atStep({ clients: ADAPTER_MISSING });
+    api.installGate = new Promise<void>((resolve) => {
+      open = resolve;
+    });
+    await screen.press(DOWN);
+    await screen.press('i');
+    const running = await screen.seen(/Installing the ACP adapter of codex… \d+ s/);
+    expect(running).not.toContain('is installed');
+    expect(api.calls).toContain('install:codex');
+    open();
+    const done = flat(await screen.seen('is installed'));
+    expect(done).toContain('The ACP adapter of codex is installed (codex-acp 1.2.3).');
+    expect(done).toContain('codex (installed, adapter by OTheater)');
+    expect(done).not.toContain('Installing the ACP adapter');
+  });
+
+  it('a failed install says why, and the client stays as it was', async () => {
+    const { api, screen } = await atStep({ clients: ADAPTER_MISSING });
+    api.installFailure = 'the registry answered 500';
+    await screen.press(DOWN);
+    await screen.press('i');
+    const frame = flat(await screen.seen('could not be installed'));
+    expect(frame).toContain(
+      'The adapter codex-acp could not be installed: the registry answered 500. I tries again.',
+    );
+    expect(frame).toContain('codex (the program is here, its ACP adapter is not)');
+  });
+
+  it('a daemon that refuses the install is shown too', async () => {
+    const { api, screen } = await atStep({ clients: ADAPTER_MISSING });
+    api.failNext = requestError('unavailable', 503, 'No adapter manager here.');
+    await screen.press(DOWN);
+    await screen.press('i');
+    const frame = flat(await screen.seen('could not be installed'));
+    expect(frame).toContain('No adapter manager here.');
+  });
+
+  it('I says when there is nothing to install', async () => {
+    const { api, screen } = await atStep({ clients: NOT_FOUND });
+    expect(flat(await screen.press('i'))).toContain('claude-code is ready: it needs no install.');
+    await screen.press(DOWN);
+    const frame = flat(await screen.press('i'));
+    expect(frame).toContain(
+      'The assistant installs only the ACP adapter of a client whose program',
+    );
+    expect(frame).toContain('Install codex, then press R to look again.');
+    expect(api.calls.some((call) => call.startsWith('install:'))).toBe(false);
+  });
+
+  it('I on a daemon without the route says it cannot install here', async () => {
+    const { screen } = await atStep({ clients: ADAPTER_MISSING, noClientRoutes: true });
+    await screen.press(DOWN);
+    expect(flat(await screen.press('i'))).toContain('This daemon cannot install adapters here.');
+  });
+
+  it('R looks for the clients again and lists the one found now', async () => {
+    const { api, screen } = await atStep({ clients: NOT_FOUND });
+    api.foundNext = ['codex'];
+    await screen.press('r');
+    const frame = flat(await screen.seen('Found now: codex.'));
+    expect(frame).toContain('codex (installed)');
+    expect(api.calls).toContain('redetect');
+  });
+
+  it('R on a daemon without the route only reads the step again', async () => {
+    const { api, screen } = await atStep({ clients: NOT_FOUND, noClientRoutes: true });
+    await screen.press('r');
+    await screen.seen('Add an account of a client');
+    expect(api.calls).not.toContain('redetect');
   });
 });
