@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0
-import { randomBytes } from 'node:crypto';
 import { mkdir, open, readFile, rename, stat, unlink } from 'node:fs/promises';
-import { basename, dirname, join } from 'node:path';
+import { dirname } from 'node:path';
 import { MAX_FILE_BYTES } from './format.js';
+import { sweepTemporaries, temporaryPathOf } from './temporaries.js';
 
 /** `true` for an error carrying this errno code (`ENOENT`...). */
 export function hasCode(error: unknown, ...codes: string[]): boolean {
@@ -36,11 +36,13 @@ export async function ensureDirectory(path: string): Promise<void> {
 /**
  * Replaces the file atomically: write a temporary file in the same directory (mode 0600), fsync
  * it, rename it over the target, fsync the directory. A reader sees the old or the new content,
- * never a mix, and a crash leaves at most a stray `.tmp` (removed here on every failure we see).
+ * never a mix. The temporary is `.<file>.<pid>.<16 hex>.tmp`: a failure we see removes it, and a
+ * process killed before the rename leaves it, so after the write the orphans of this file are
+ * removed (N306); a failure to remove one never fails the write.
  */
 export async function writeFileAtomic(path: string, text: string): Promise<void> {
   const directory = dirname(path);
-  const temporary = join(directory, `.${basename(path)}.${randomBytes(8).toString('hex')}.tmp`);
+  const temporary = temporaryPathOf(path, VAULT_TEMPORARY_SHAPE);
   let handle: Awaited<ReturnType<typeof open>> | undefined;
   try {
     handle = await open(temporary, 'wx', 0o600);
@@ -55,7 +57,11 @@ export async function writeFileAtomic(path: string, text: string): Promise<void>
     throw error;
   }
   await syncDirectory(directory);
+  await sweepTemporaries(path, VAULT_TEMPORARY_SHAPE);
 }
+
+/** The temporary of {@link writeFileAtomic}: `.<file>.<pid>.<16 hex>.tmp` (N306). */
+export const VAULT_TEMPORARY_SHAPE = { hexLength: 16, hidden: true } as const;
 
 /** fsync of a directory makes the rename durable. Platforms that cannot open one are skipped. */
 async function syncDirectory(directory: string): Promise<void> {

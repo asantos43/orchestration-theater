@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0
-import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { isAbsolute, join } from 'node:path';
 import { InvalidInput } from '@otheater/core';
+import { sweepTemporaries, temporaryPathOf } from './temporaries.js';
 
 /**
  * The directories of OpenCode that can be moved into the profile through the XDG variables. The
@@ -116,16 +116,23 @@ export async function ensureProfileFiles(
   await mkdir(layout.dbDir, { recursive: true, mode: 0o700 });
   if (profileConfig === null || !homes.includes('config')) return;
   const text = `${JSON.stringify(profileConfig, null, 2)}\n`;
-  if ((await currentText(layout.configFile)) === text) return;
-  await mkdir(join(layout.homes.config, 'opencode'), { recursive: true, mode: 0o700 });
-  const temporary = `${layout.configFile}.${randomUUID()}.tmp`;
-  await writeFile(temporary, text, { mode: 0o600 });
-  try {
-    await replaceWith(temporary, layout.configFile, text);
-  } finally {
-    await rm(temporary, { force: true });
+  if ((await currentText(layout.configFile)) !== text) {
+    await mkdir(join(layout.homes.config, 'opencode'), { recursive: true, mode: 0o700 });
+    const temporary = temporaryPathOf(layout.configFile, PROFILE_TEMPORARY_SHAPE);
+    await writeFile(temporary, text, { mode: 0o600 });
+    try {
+      await replaceWith(temporary, layout.configFile, text);
+    } finally {
+      await rm(temporary, { force: true });
+    }
   }
+  // A process killed between the write and the rename leaves the temporary; the file rarely changes,
+  // so the orphans are looked for on every call, not only after a write (N306).
+  await sweepTemporaries(layout.configFile, PROFILE_TEMPORARY_SHAPE);
 }
+
+/** The temporary of the profile config: `opencode.json.<pid>.<16 hex>.tmp` (N306). */
+export const PROFILE_TEMPORARY_SHAPE = { hexLength: 16 } as const;
 
 async function currentText(path: string): Promise<string | undefined> {
   try {

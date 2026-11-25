@@ -1,15 +1,17 @@
 // SPDX-License-Identifier: MPL-2.0
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { InvalidInput, type Profile, type RolePolicy } from '@otheater/core';
 import { isManagedToolName, permissionSettings, sessionModeOf } from './policy.js';
 import {
   isOurStatusline,
+  STATUSLINE_QUOTA_FILE,
   STATUSLINE_SCRIPT,
   STATUSLINE_SCRIPT_FILE,
   statuslineSetting,
   type QuotaStatuslineMode,
 } from './quota-statusline.js';
+import { sweepTemporaries, temporaryPathOf } from './temporaries.js';
 
 /** The one file this adapter writes in the profile directory. Never a credential file. */
 export const PROFILE_SETTINGS_FILE = 'settings.json';
@@ -50,10 +52,25 @@ export interface ProfileSettingsOptions {
   readonly nodePath?: string;
 }
 
+/** The temporary of {@link writeAtomically}: `<file>.<pid>.<8 hex>.tmp` (N306). */
+export const PROFILE_TEMPORARY_SHAPE = { hexLength: 8 } as const;
+/** The temporary the statusline script writes: `otheater-quota.json.<pid>.tmp` (its own process). */
+export const QUOTA_TEMPORARY_SHAPE = { hexLength: 0 } as const;
+
+/**
+ * Temporary file, then rename. A process killed in between leaves the temporary, so after the write
+ * the orphans of this file are removed (N306); a failure to remove one never fails the write.
+ */
 async function writeAtomically(path: string, text: string): Promise<void> {
-  const temporary = `${path}.${String(process.pid)}.tmp`;
-  await writeFile(temporary, text, 'utf8');
-  await rename(temporary, path);
+  const temporary = temporaryPathOf(path, PROFILE_TEMPORARY_SHAPE);
+  try {
+    await writeFile(temporary, text, { encoding: 'utf8', flag: 'wx' });
+    await rename(temporary, path);
+  } catch (error) {
+    await rm(temporary, { force: true });
+    throw error;
+  }
+  await sweepTemporaries(path, PROFILE_TEMPORARY_SHAPE);
 }
 
 /**
@@ -109,4 +126,7 @@ export async function writeProfileSettings(
     ...(statusLine === undefined ? {} : { statusLine }),
   };
   await writeAtomically(path, `${JSON.stringify(next, null, 2)}\n`);
+  // The statusline runs in processes of the client, and one killed between its write and its rename
+  // leaves `otheater-quota.json.<pid>.tmp`; a session start is when this adapter can take it away.
+  await sweepTemporaries(join(profile.dir, STATUSLINE_QUOTA_FILE), QUOTA_TEMPORARY_SHAPE);
 }

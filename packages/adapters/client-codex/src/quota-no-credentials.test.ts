@@ -81,7 +81,7 @@ describe('the quota probe and the credentials of the profile', () => {
     for (const path of touched.paths) {
       if (path === dir) continue; // the directory itself is created, never listed
       expect(dirname(path)).toBe(dir);
-      expect(basename(path)).toMatch(/^config\.toml(\.[0-9a-f]+\.tmp)?$/u);
+      expect(basename(path)).toMatch(/^config\.toml(\.\d+\.[0-9a-f]+\.tmp)?$/u);
     }
     expect(await readFile(join(dir, 'credential-canary.json'), 'utf8')).toBe(
       '{"canary":"never-read"}',

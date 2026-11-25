@@ -111,6 +111,19 @@ export function reportTemporarySweepFailure(
   }
 }
 
+/**
+ * The bridge to the copies of this module in the adapters (`packages/adapters/<adapter>/src/temporaries.ts`),
+ * which may not import the client: the policy in force and the sink of failures, published once under
+ * `Symbol.for('otheater.temporaries')` when this module is loaded. [proposta]
+ */
+(globalThis as Record<symbol, unknown>)[Symbol.for('otheater.temporaries')] = {
+  version: 1,
+  policy: temporaryCleanupPolicy,
+  report: (name: string, error: unknown) => {
+    reportTemporarySweepFailure({ name, error });
+  },
+};
+
 /** The shape of the name of a temporary: `[.]<file>.<pid>[.<hex>].tmp`. */
 export interface TemporaryShape {
   /** Hex digits after the pid (an even number); 0 for `<file>.<pid>.tmp`. */

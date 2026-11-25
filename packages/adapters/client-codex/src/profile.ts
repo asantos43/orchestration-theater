@@ -1,8 +1,11 @@
 // SPDX-License-Identifier: MPL-2.0
-import { randomBytes } from 'node:crypto';
 import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { isAbsolute, join } from 'node:path';
 import { InvalidInput } from '@otheater/core';
+import { sweepTemporaries, temporaryPathOf } from './temporaries.js';
+
+/** The temporary of {@link writeProfileConfig}: `config.toml.<pid>.<12 hex>.tmp` (N306). */
+export const PROFILE_TEMPORARY_SHAPE = { hexLength: 12 } as const;
 
 /** Where the client keeps the login of a profile (`cli_auth_credentials_store`, docs/08). */
 export const CREDENTIALS_STORES = ['file', 'keyring', 'auto'] as const;
@@ -53,17 +56,23 @@ export async function writeProfileConfig(dir: string, config: ProfileConfig): Pr
   const target = join(dir, CONFIG_FILE);
   const content = renderConfigToml(config);
   await mkdir(dir, { recursive: true });
+  let current: string | undefined;
   try {
-    if ((await readFile(target, 'utf8')) === content) return;
+    current = await readFile(target, 'utf8');
   } catch {
     // Missing, or not readable as text: written below.
   }
-  const temporary = join(dir, `${CONFIG_FILE}.${randomBytes(6).toString('hex')}.tmp`);
-  try {
-    await writeFile(temporary, content, { flag: 'wx' });
-    await rename(temporary, target);
-  } catch (error) {
-    await rm(temporary, { force: true });
-    throw error;
+  if (current !== content) {
+    const temporary = temporaryPathOf(target, PROFILE_TEMPORARY_SHAPE);
+    try {
+      await writeFile(temporary, content, { flag: 'wx' });
+      await rename(temporary, target);
+    } catch (error) {
+      await rm(temporary, { force: true });
+      throw error;
+    }
   }
+  // A process killed between the write and the rename leaves the temporary; the file rarely changes,
+  // so the orphans are looked for on every call, not only after a write (N306).
+  await sweepTemporaries(target, PROFILE_TEMPORARY_SHAPE);
 }
