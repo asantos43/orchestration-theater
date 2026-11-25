@@ -7,8 +7,16 @@
   - Per user: no administrator, no UAC. Files in %LOCALAPPDATA%\Programs\OTheater, the registry in
     HKCU, and the PATH of the user (HKCU\Environment). The data folder (%LOCALAPPDATA%\OTheater) is
     not part of the package: install, repair, upgrade and uninstall never touch it.
-  - No UI: a double click installs at once into the folder above (there is no wizard and no EULA
-    page). [proposta]
+  - One page of options (N322): a double click shows the choices of the install (the vault of the
+    secrets, the logon service, the download of the ACP adapters) and an Install button; there is no
+    wizard, no folder choice and no EULA page. A silent install (`/qn`) takes them as properties:
+      VAULT              keep (default), keyring, encrypted-file or auto (`ot vault use`; keep writes nothing)
+      LOGON_SERVICE      1 (default) or 0: `ot service install` (OtServiceInstall below)
+      PREFETCH_ADAPTERS  1 (default) or 0: `ot adapters install` (claude-agent-acp and codex-acp, from npm)
+    for example `msiexec /i otheater.msi /qn VAULT=encrypted-file PREFETCH_ADAPTERS=0`. A choice that
+    needs an administrator is marked with the UAC shield and "needs administrator"; none of these does
+    (the package is per user), so the page says so. The names and defaults are [proposta].
+    The page is made of core elements (Dialog, Control, Publish): no WixUI extension. [proposta]
   - No WiX extension (so no `wix extension add`, which would download one): the custom actions are
     the core ones, and the .msi carries nothing of WiX besides the standard Windows Installer tables.
   - Unsigned (N247): SmartScreen warns on the first run.
@@ -38,6 +46,15 @@
       DowngradeErrorMessage="A newer version of OTheater is already installed. Remove it first to install this one."
     />
     <MediaTemplate EmbedCab="yes" />
+
+    <!-- The choices of the install (N322). Secure: a silent install passes them to the execution. -->
+    <Property Id="VAULT" Value="keep" Secure="yes" />
+    <Property Id="LOGON_SERVICE" Value="1" Secure="yes" />
+    <Property Id="PREFETCH_ADAPTERS" Value="1" Secure="yes" />
+    <Launch
+      Condition="Installed OR VAULT=&quot;keep&quot; OR VAULT=&quot;keyring&quot; OR VAULT=&quot;encrypted-file&quot; OR VAULT=&quot;auto&quot;"
+      Message="VAULT=[VAULT]: use keep, keyring, encrypted-file or auto."
+    />
 
     <StandardDirectory Id="LocalAppDataFolder">
       <Directory Id="OtProgramsDir" Name="Programs">
@@ -117,6 +134,28 @@
       (Impersonate), never as SYSTEM, and neither fails the installation: without the service `ot tui`
       starts a daemon of its own, and an installation that cannot be removed would be worse. [proposta]
     -->
+    <!--
+      The vault and the adapters (N322) go before the service, so the daemon it starts later finds
+      them. Same rules as the service: as the user, never failing the installation (a vault that
+      cannot be written and a download that fails are said by `ot` in the log; both can be done
+      later with `ot vault use` and `ot adapters install`).
+    -->
+    <CustomAction
+      Id="OtVaultUse"
+      Directory="INSTALLFOLDER"
+      ExeCommand="&quot;[INSTALLFOLDER]ot.exe&quot; --data-dir &quot;[LocalAppDataFolder]OTheater&quot; vault use [VAULT]"
+      Execute="deferred"
+      Impersonate="yes"
+      Return="ignore"
+    />
+    <CustomAction
+      Id="OtAdaptersInstall"
+      Directory="INSTALLFOLDER"
+      ExeCommand="&quot;[INSTALLFOLDER]ot.exe&quot; --data-dir &quot;[LocalAppDataFolder]OTheater&quot; adapters install"
+      Execute="deferred"
+      Impersonate="yes"
+      Return="ignore"
+    />
     <CustomAction
       Id="OtServiceInstall"
       Directory="INSTALLFOLDER"
@@ -137,7 +176,102 @@
     <InstallExecuteSequence>
       <!-- REMOVE="ALL" is also true for the old product in a major upgrade: its service goes first, the new one installs its own. -->
       <Custom Action="OtServiceUninstall" Before="RemoveFiles" Condition="REMOVE=&quot;ALL&quot;" />
-      <Custom Action="OtServiceInstall" After="InstallFiles" Condition="NOT REMOVE" />
+      <Custom Action="OtVaultUse" After="InstallFiles" Condition="NOT REMOVE AND VAULT AND VAULT&lt;&gt;&quot;keep&quot;" />
+      <Custom Action="OtAdaptersInstall" After="OtVaultUse" Condition="NOT REMOVE AND PREFETCH_ADAPTERS AND PREFETCH_ADAPTERS&lt;&gt;&quot;0&quot;" />
+      <Custom Action="OtServiceInstall" After="OtAdaptersInstall" Condition="NOT REMOVE AND LOGON_SERVICE AND LOGON_SERVICE&lt;&gt;&quot;0&quot;" />
     </InstallExecuteSequence>
+
+    <!--
+      The page of options (N322), a progress page and the three end pages, all core WiX. A check box
+      sets its property to 1 when checked and clears it when not (hence the conditions above take an
+      empty value or 0 as no). The texts are in English, like the rest of the package. [proposta]
+      The Install button asks the shield of Windows (ElevationShield): Windows draws it only when
+      the install needs elevation, which a per-user package does not.
+    -->
+    <UI>
+      <TextStyle Id="OtNormal" FaceName="Segoe UI" Size="9" />
+      <TextStyle Id="OtTitle" FaceName="Segoe UI" Size="12" Bold="yes" />
+      <Property Id="DefaultUIFont" Value="OtNormal" />
+
+      <RadioButtonGroup Property="VAULT">
+        <RadioButton Value="keep" X="0" Y="0" Width="320" Height="15" Text="Keep what is configured (on a new install, the Windows Credential Manager)" />
+        <RadioButton Value="keyring" X="0" Y="16" Width="320" Height="15" Text="The Windows Credential Manager" />
+        <RadioButton Value="encrypted-file" X="0" Y="32" Width="320" Height="15" Text="An encrypted file in the data folder (asks a passphrase)" />
+        <RadioButton Value="auto" X="0" Y="48" Width="320" Height="15" Text="Auto: the Credential Manager, or the file when it cannot be used" />
+      </RadioButtonGroup>
+
+      <Dialog Id="OtOptionsDlg" Width="370" Height="270" Title="[ProductName] [ProductVersion]">
+        <Control Id="Title" Type="Text" X="20" Y="12" Width="330" Height="20" Transparent="yes" NoPrefix="yes" Text="{\OtTitle}Install [ProductName] [ProductVersion]" />
+        <Control Id="Where" Type="Text" X="20" Y="34" Width="330" Height="26" NoPrefix="yes" Text="For your user only, in [INSTALLFOLDER]. Your data folder (%LOCALAPPDATA%\OTheater) is never touched." />
+        <Control Id="VaultLabel" Type="Text" X="20" Y="64" Width="330" Height="12" NoPrefix="yes" Text="Where to keep the secrets of the accounts:" />
+        <Control Id="Vault" Type="RadioButtonGroup" Property="VAULT" X="28" Y="78" Width="322" Height="64" />
+        <Control Id="Service" Type="CheckBox" Property="LOGON_SERVICE" CheckBoxValue="1" X="20" Y="148" Width="330" Height="16" Text="Start the OTheater daemon when I log on (a Scheduled Task of my user)" />
+        <Control Id="Prefetch" Type="CheckBox" Property="PREFETCH_ADAPTERS" CheckBoxValue="1" X="20" Y="166" Width="330" Height="26" Text="Download the ACP adapters now (claude-agent-acp and codex-acp, from the npm registry; it needs the internet and can take a minute)" />
+        <Control Id="Elevation" Type="Text" X="20" Y="200" Width="330" Height="26" NoPrefix="yes" Text="None of these choices needs an administrator. A choice that did would show the shield of Windows and say &quot;needs administrator&quot;." />
+        <Control Id="Line" Type="Line" X="0" Y="234" Width="370" Height="0" />
+        <Control Id="Install" Type="PushButton" X="226" Y="243" Width="66" Height="17" Default="yes" ElevationShield="yes" Text="&amp;Install">
+          <Publish Event="EndDialog" Value="Return" />
+        </Control>
+        <Control Id="Cancel" Type="PushButton" X="300" Y="243" Width="56" Height="17" Cancel="yes" Text="Cancel">
+          <Publish Event="EndDialog" Value="Exit" />
+        </Control>
+      </Dialog>
+
+      <Dialog Id="OtProgressDlg" Width="370" Height="130" Title="[ProductName] [ProductVersion]" Modeless="yes">
+        <Control Id="Title" Type="Text" X="20" Y="12" Width="330" Height="20" Transparent="yes" NoPrefix="yes" Text="{\OtTitle}Installing [ProductName]" />
+        <Control Id="Action" Type="Text" X="20" Y="40" Width="330" Height="14" NoPrefix="yes">
+          <Subscribe Event="ActionText" Attribute="Text" />
+        </Control>
+        <Control Id="Progress" Type="ProgressBar" X="20" Y="58" Width="330" Height="12" ProgressBlocks="yes" Text="Progress">
+          <Subscribe Event="SetProgress" Attribute="Progress" />
+        </Control>
+        <Control Id="Note" Type="Text" X="20" Y="76" Width="330" Height="14" NoPrefix="yes" Text="The download of the ACP adapters, when chosen, can take a minute." />
+        <Control Id="Line" Type="Line" X="0" Y="96" Width="370" Height="0" />
+        <Control Id="Cancel" Type="PushButton" X="300" Y="104" Width="56" Height="17" Default="yes" Cancel="yes" Text="Cancel">
+          <Publish Event="EndDialog" Value="Exit" />
+        </Control>
+      </Dialog>
+
+      <Dialog Id="OtExitDlg" Width="370" Height="130" Title="[ProductName] [ProductVersion]">
+        <Control Id="Title" Type="Text" X="20" Y="12" Width="330" Height="20" Transparent="yes" NoPrefix="yes" Text="{\OtTitle}[ProductName] [ProductVersion]" />
+        <Control Id="Installed" Type="Text" X="20" Y="40" Width="330" Height="40" NoPrefix="yes" Hidden="yes" ShowCondition="NOT Installed" Text="Installed. Open a new terminal and type ot to start (the terminals open before the install do not have the new PATH yet)." />
+        <Control Id="Changed" Type="Text" X="20" Y="40" Width="330" Height="40" NoPrefix="yes" Hidden="yes" ShowCondition="Installed" Text="Done." />
+        <Control Id="Line" Type="Line" X="0" Y="96" Width="370" Height="0" />
+        <Control Id="Finish" Type="PushButton" X="300" Y="104" Width="56" Height="17" Default="yes" Cancel="yes" Text="&amp;Finish">
+          <Publish Event="EndDialog" Value="Return" />
+        </Control>
+      </Dialog>
+
+      <Dialog Id="OtUserExitDlg" Width="370" Height="130" Title="[ProductName] [ProductVersion]">
+        <Control Id="Title" Type="Text" X="20" Y="12" Width="330" Height="20" Transparent="yes" NoPrefix="yes" Text="{\OtTitle}[ProductName] [ProductVersion]" />
+        <Control Id="Text" Type="Text" X="20" Y="40" Width="330" Height="40" NoPrefix="yes" Text="Cancelled. Nothing was changed." />
+        <Control Id="Line" Type="Line" X="0" Y="96" Width="370" Height="0" />
+        <Control Id="Finish" Type="PushButton" X="300" Y="104" Width="56" Height="17" Default="yes" Cancel="yes" Text="&amp;Finish">
+          <Publish Event="EndDialog" Value="Exit" />
+        </Control>
+      </Dialog>
+
+      <Dialog Id="OtFatalErrorDlg" Width="370" Height="130" Title="[ProductName] [ProductVersion]">
+        <Control Id="Title" Type="Text" X="20" Y="12" Width="330" Height="20" Transparent="yes" NoPrefix="yes" Text="{\OtTitle}[ProductName] [ProductVersion]" />
+        <Control Id="Text" Type="Text" X="20" Y="40" Width="330" Height="40" NoPrefix="yes" Text="The installation failed and nothing was changed. msiexec /i with /l*v and a file name writes a log that says why." />
+        <Control Id="Line" Type="Line" X="0" Y="96" Width="370" Height="0" />
+        <Control Id="Finish" Type="PushButton" X="300" Y="104" Width="56" Height="17" Default="yes" Cancel="yes" Text="&amp;Finish">
+          <Publish Event="EndDialog" Value="Exit" />
+        </Control>
+      </Dialog>
+
+      <InstallUISequence>
+        <Show Dialog="OtOptionsDlg" Before="OtProgressDlg" Condition="NOT Installed" />
+        <Show Dialog="OtProgressDlg" Before="ExecuteAction" />
+        <Show Dialog="OtExitDlg" OnExit="success" />
+        <Show Dialog="OtUserExitDlg" OnExit="cancel" />
+        <Show Dialog="OtFatalErrorDlg" OnExit="error" />
+      </InstallUISequence>
+      <AdminUISequence>
+        <Show Dialog="OtExitDlg" OnExit="success" />
+        <Show Dialog="OtUserExitDlg" OnExit="cancel" />
+        <Show Dialog="OtFatalErrorDlg" OnExit="error" />
+      </AdminUISequence>
+    </UI>
   </Package>
 </Wix>

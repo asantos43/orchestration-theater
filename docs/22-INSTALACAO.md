@@ -30,6 +30,8 @@ Todas as instalações são **por usuário**: sem `sudo`, sem administrador, nad
 3. Abra o `.msi`. Se o SmartScreen avisar, veja a [seção 4.1](#41-windows-smartscreen).
 4. Ou, no PowerShell: `msiexec /i OTheater-<versão>-win32-x64.msi`.
 
+Ao abrir, o `.msi` mostra uma página de opções (N322): onde guardar os segredos, se o daemon sobe no logon e se os adaptadores ACP são baixados já, com o botão Instalar **[V: `installer/wix/Product.wxs`; N: a tela num Windows real]**. Nenhuma das opções precisa de administrador. Sem tela: `msiexec /i ... /qn VAULT=encrypted-file LOGON_SERVICE=0 PREFETCH_ADAPTERS=0` (os padrões são `keep`, `1` e `1`) **[V]** (`installer/wix/README.md`).
+
 O pacote instala o executável como `ot.exe` em `%LOCALAPPDATA%\Programs\OTheater`, põe essa pasta no `PATH` do usuário e registra o serviço de logon (uma Tarefa Agendada, por `ot service install --no-start`: o daemon começa no próximo logon) **[V]** (`installer/wix/README.md`, `Product.wxs`). Abra um terminal novo e rode `ot --version` **[V]** (`packages/daemon/src/cli.ts`).
 
 ### 2.2. macOS e Linux (`install.sh`)
@@ -45,9 +47,12 @@ O que o script faz **[V]** (`installer/install.sh`, `installer/README.md`):
 1. baixa `manifest.json`, as assinaturas e o executável da sua plataforma;
 2. confere a **assinatura do manifesto antes de ler o conteúdo dele** e depois o SHA-256 e o tamanho do executável; o que não confere é apagado e nada fica instalado (código de saída 3);
 3. instala o executável em `~/.local/share/otheater/bin/otheater` e o atalho `~/.local/bin/ot`;
-4. registra o serviço de logon (`ot service install`): `systemd --user` no Linux, `launchd` no macOS.
+4. grava o cofre escolhido (`ot vault use`) e baixa os adaptadores ACP (`ot adapters install`);
+5. registra o serviço de logon (`ot service install`): `systemd --user` no Linux, `launchd` no macOS.
 
-Se `~/.local/bin` não está no seu `PATH`, o script avisa. As variáveis do script (todas opcionais): `OT_INSTALL_CHANNEL` (`stable`, o padrão, ou `beta`), `OT_INSTALL_SERVICE` (`auto`, o padrão, ou `off`: não registra o serviço), `OT_INSTALL_VERIFIER` (`auto`, `openssl`, `ssh-keygen` ou `pinned`), `OT_INSTALL_BASE_URL` (um espelho seu) **[V]**. As demais (`OT_INSTALL_PUBLIC_KEY_FILE`, `OT_INSTALL_OPENSSL`, `OT_INSTALL_ALLOW_KEY_OVERRIDE`) são para testes e espelhos, e trocam quem assina: **não as use para "fazer passar"** uma release que foi recusada.
+Com uma pessoa no terminal, antes de baixar, o script pergunta essas três escolhas (cofre, serviço, adaptadores), com o padrão marcado; `--vault <modo>`, `--no-service`, `--no-prefetch` e `--yes` respondem sem perguntar (N322) **[V]** (`installer/README.md`).
+
+Se `~/.local/bin` não está no seu `PATH`, o script avisa. As variáveis do script (todas opcionais): `OT_INSTALL_CHANNEL` (`stable`, o padrão, ou `beta`), `OT_INSTALL_SERVICE` (`auto`, o padrão, ou `off`: não registra o serviço), `OT_INSTALL_VAULT` (`keep`, o padrão, `keyring`, `encrypted-file` ou `auto`), `OT_INSTALL_PREFETCH` (`auto`, o padrão, ou `off`), `OT_INSTALL_ASK` (`auto`, o padrão, `off` ou `stdin`), `OT_INSTALL_VERIFIER` (`auto`, `openssl`, `ssh-keygen` ou `pinned`), `OT_INSTALL_BASE_URL` (um espelho seu) **[V]**. As demais (`OT_INSTALL_PUBLIC_KEY_FILE`, `OT_INSTALL_OPENSSL`, `OT_INSTALL_ALLOW_KEY_OVERRIDE`) são para testes e espelhos, e trocam quem assina: **não as use para "fazer passar"** uma release que foi recusada.
 
 Depois, `ot --version` mostra a versão, `ot service status` mostra o serviço e `ot init` abre a configuração inicial **[V]** (`packages/daemon/src/cli.ts`).
 

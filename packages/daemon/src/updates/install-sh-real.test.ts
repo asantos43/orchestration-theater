@@ -78,6 +78,8 @@ describe.skipIf(!ENABLED)('install.sh with the real executable and service (CI o
       OT_INSTALL_PUBLIC_KEY_FILE: keyFile,
       OT_INSTALL_OPENSSL: OPENSSL,
       OT_INSTALL_ALLOW_KEY_OVERRIDE: '1',
+      // No download from the npm registry in a test (N322).
+      OT_INSTALL_PREFETCH: 'off',
     };
     for (const key of ['XDG_RUNTIME_DIR', 'DBUS_SESSION_BUS_ADDRESS', 'USER']) {
       const value = process.env[key];

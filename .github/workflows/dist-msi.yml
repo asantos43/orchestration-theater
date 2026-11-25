@@ -83,7 +83,7 @@ jobs:
         run: |
           changed=$(git diff --name-only HEAD^1 HEAD)
           echo "$changed"
-          if printf '%s\n' "$changed" | grep -qE '^(\.github/workflows/dist-msi\.yml|installer/wix/|tools/release/|native/job-launcher/|packages/daemon/src/(sea|service)/|packages/daemon/src/commands/service|pnpm-lock\.yaml$)'; then
+          if printf '%s\n' "$changed" | grep -qE '^(\.github/workflows/dist-msi\.yml|installer/wix/|tools/release/|native/job-launcher/|packages/daemon/src/(sea|service)/|packages/daemon/src/commands/(service|vault)|pnpm-lock\.yaml$)'; then
             touched=true
           else
             touched=false
