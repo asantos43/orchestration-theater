@@ -60,8 +60,17 @@ async function withPanelDaemon(
     const daemon = await startDaemon({
       dataDir: data.dir,
       clientSearch: NO_CLIENTS,
-      config: parseConfig(`backup:\n  when: manual\n${configText}`),
-      overrides: { clock, store: new InMemoryStore({ clock }), vault: new InMemorySecretVault() },
+      // No launcher, so no plays and no Producer to ask: an empty pool alone keeps the plays on
+      // (P18, N321), and an approval would wait for the Producer.
+      config: parseConfig(
+        `backup:\n  when: manual\nprocesses:\n  windows_launcher: off\n${configText}`,
+      ),
+      overrides: {
+        clock,
+        store: new InMemoryStore({ clock }),
+        vault: new InMemorySecretVault(),
+        launcherDeps: { platform: 'win32' },
+      },
       logger: createSilentLogger(),
     });
     try {
@@ -332,7 +341,7 @@ describe('the /v1/plugins routes on a daemon', () => {
         (await post('/v1/plugins/panel-demo/actions/clear', { project: 'nothing' })).status,
       ).toBe(404);
 
-      // This daemon has no client to ask the Producer (the orchestration is not bound): an action
+      // This daemon runs no plays, so no Producer to ask (the orchestration is not bound): an action
       // that needs approval is 503, never a yes, and the tool does not run.
       const asked = await post('/v1/plugins/panel-demo/actions/purge', { project: 'sc1' });
       expect(asked.status).toBe(503);

@@ -55,10 +55,11 @@ async function start(
 }
 
 describe('startDaemon with the default client factory', () => {
-  it('keeps the execution off, with a warning, when no client is configured or found', async () => {
+  // P18 (N321): the execution is built with an empty pool, so a client found later enters it.
+  it('builds the execution with an empty pool, with a warning, when no client is configured or found', async () => {
     const t = await start(MANUAL, NOTHING);
     try {
-      expect(t.daemon.execution).toBeUndefined();
+      expect(t.daemon.execution?.pool.clients()).toEqual([]);
       const warning = t.lines.find(
         (l) => l.level === 'warn' && l.msg.includes('no client is enabled'),
       );
@@ -73,11 +74,11 @@ describe('startDaemon with the default client factory', () => {
     }
   });
 
-  it('keeps the execution off when every client is disabled by the config', async () => {
+  it('leaves the pool empty when every client is disabled by the config', async () => {
     const config = `${MANUAL}clients:\n  claude-code: { enabled: false }\n  codex: { enabled: false }\n  opencode: { enabled: false }\n`;
     const t = await start(config, () => '/bin/found');
     try {
-      expect(t.daemon.execution).toBeUndefined();
+      expect(t.daemon.execution?.pool.clients()).toEqual([]);
       expect(
         t.lines.some((l) => l.level === 'warn' && l.msg.includes('no client is enabled')),
       ).toBe(true);

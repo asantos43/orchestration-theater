@@ -8,6 +8,7 @@ import {
   isLockableSecretVault,
   PermissionDenied,
   assertValidPrompts,
+  type ClientAdapter,
   type Clock,
   type LockableSecretVault,
   type ProfileRef,
@@ -42,7 +43,12 @@ import { registerCommandRoutes, registerReadRoutes } from './api/routes/index.js
 import { createTranslator, detectSystemLocale, resolveLocale } from './i18n.js';
 import { SlashCatalog, SlashCommandService } from './slash/index.js';
 import { SetupService } from './setup/index.js';
-import { buildClientEnv, type ClientFactory, type ClientFactoryParts } from './clients.js';
+import {
+  buildClientEnv,
+  type ClientFactory,
+  type ClientFactoryParts,
+  type ClientSelection,
+} from './clients.js';
 import {
   compose,
   composeOwnSchemas,
@@ -65,6 +71,7 @@ import { DirectiveService, registerDirectiveTools } from './directives/index.js'
 import {
   QuotaService,
   quotaProbeOf,
+  type QuotaProbeWiring,
   quotaSettingsOf,
   tapClient,
   WakeupManager,
@@ -146,6 +153,9 @@ import { createUpdateSource, type FetchFunction } from './updates/source.js';
 import { UpdateStaging } from './updates/staging.js';
 import { parsePublicKey } from './updates/verify.js';
 import { packageVersion } from './version.js';
+import { ClientRedetector, type ClientRedetectTrigger } from './client-redetect.js';
+import { clientSearchEnv } from './windows-path.js';
+import type { Env } from './paths.js';
 
 /** How many times the master password is asked before the daemon gives up. */
 export const MAX_PASSWORD_ATTEMPTS = 3;
@@ -293,8 +303,13 @@ export interface DaemonHandle {
   readonly codeHost: Composition['codeHost'];
   /** Whether the vault is open now (a vault without a master password is always open). */
   readonly vaultLocked: boolean;
-  /** The execution of attempts; `undefined` when no clients were given or there is no launcher. */
+  /**
+   * The execution of attempts; `undefined` only when there is no launcher. With no client found it
+   * is there with an empty pool, so a client found later enters it (P18, N321).
+   */
   readonly execution: Execution | undefined;
+  /** Looks for the clients again (P18, N321); `undefined` with no execution. */
+  readonly clients: ClientRedetector | undefined;
   /**
    * `http://127.0.0.1:<port>/mcp`: where the framework MCP server listens, with the port it got
    * (`mcp.port: auto` takes a free one at each start). Handed to the sessions of the attempts.
@@ -426,6 +441,9 @@ export async function startDaemon(options: StartDaemonOptions): Promise<DaemonHa
       ...(options.overrides === undefined ? {} : { overrides: options.overrides }),
       ...(options.logger === undefined ? {} : { logger: options.logger }),
     });
+    // P18 (N321): the `PATH` the clients are searched in and started with (on Windows, completed
+    // from the registry with `clients.detection.path: merge`).
+    const clientEnv = await readClientEnv(config, options, composition);
     const orchestrationHandlers = new OrchestrationHandlers();
     const scenarioHandlers = new ScenarioHandlers();
     // The framework MCP server (5.3) lives and dies with the daemon: a port that cannot be taken
@@ -479,7 +497,7 @@ export async function startDaemon(options: StartDaemonOptions): Promise<DaemonHa
       codeHost: composition.codeHost,
       confine: composition.sandbox?.confineCommand,
       clock: composition.clock,
-      env: options.clientSearch?.env ?? process.env,
+      env: clientEnv,
       host: nodePathHost(),
       logger: composition.logger,
     };
@@ -623,6 +641,7 @@ export async function startDaemon(options: StartDaemonOptions): Promise<DaemonHa
       options,
       config,
       composition,
+      clientEnv,
       registries,
       mcp,
       telemetry,
@@ -665,6 +684,8 @@ interface RunInput {
   readonly options: StartDaemonOptions;
   readonly config: DaemonConfig;
   readonly composition: Composition;
+  /** The environment the clients are searched in and started with (P18, N321). */
+  readonly clientEnv: Env;
   readonly registries: Registries;
   readonly mcp: FrameworkMcpServer;
   readonly telemetry: TelemetryRuntime | undefined;
@@ -881,10 +902,11 @@ async function run(input: RunInput): Promise<DaemonHandle> {
   // The rules of exhaustion (P19) come from the roles and the budget, which exist later: the runner
   // holds the port from the start and the daemon binds the real one once the budget is up.
   const exhaustion = createLateExhaustion();
-  const execution = buildExecution(
+  const built = buildExecution(
     options,
     config,
     composition,
+    input.clientEnv,
     paths.worktrees,
     mcp,
     quota,
@@ -893,6 +915,31 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     exhaustion.port,
     telemetry,
   );
+  const execution = built?.execution;
+  const clientRedetector = built?.redetector;
+  // P18 (N321): the search for the clients again. `asked` (the R key of the assistant) always
+  // looks and lets a failure reach the caller. The others (the assistant opening, an account being
+  // added) look only with `clients.detection.redetect: auto`; a failure is logged and told, and
+  // the call goes on with the clients the pool has.
+  const redetectClients = async (trigger: ClientRedetectTrigger): Promise<readonly string[]> => {
+    if (clientRedetector === undefined) return [];
+    if (trigger === 'asked') return (await clientRedetector.redetect()).added;
+    if (config.clients.detection.redetect !== 'auto') return [];
+    try {
+      return (await clientRedetector.redetect()).added;
+    } catch (error) {
+      logger.warn({ err: error, trigger }, 'the search for the clients again failed');
+      composition.situations.record('daemon.notice', {
+        kind: 'client_redetect_failed',
+        subject: null,
+        detail: situationText(error instanceof Error ? error.message : String(error)),
+      });
+      return [];
+    }
+  };
+  const redetectAuto = async (): Promise<void> => {
+    await redetectClients('open');
+  };
   // The probes were handed over by `buildExecution`. The profiles the registry already has are
   // tracked before the readings start, so a MiniMax profile is read without waiting for a session.
   for (const prepare of quotaPrepare) {
@@ -993,7 +1040,7 @@ async function run(input: RunInput): Promise<DaemonHandle> {
       env: () =>
         buildClientEnv(
           { env_inherit: config.tools.env_inherit, env_allow: config.tools.env_allow, env: {} },
-          options.clientSearch?.env ?? process.env,
+          input.clientEnv,
         ),
       scenariosDir: paths.scenarios,
       settings: () => ({
@@ -1328,6 +1375,7 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     },
     transport: () => composition.transport,
     roleLists: roleListsOf(config, store),
+    redetect: redetectAuto,
     ...(execution === undefined
       ? {}
       : {
@@ -1538,6 +1586,8 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     catalogs: (client) => clientAdapter(client)?.models,
     installedClients: () =>
       new Set(CLIENT_IDS.filter((client) => clientAdapter(client) !== undefined)),
+    clientReasons: (client) => clientRedetector?.reasonOf(client),
+    redetect: redetectClients,
   });
 
   // P5 (Phase 6): the read routes of the REST API. They need the services above, so they are
@@ -1663,6 +1713,7 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     adapters: composition.adapters,
     codeHost: composition.codeHost,
     execution,
+    clients: clientRedetector,
     mcpUrl: mcp.url,
     mcp,
     telemetryUrl: telemetry?.receiver.url,
@@ -1700,6 +1751,7 @@ function buildExecution(
   options: StartDaemonOptions,
   config: DaemonConfig,
   composition: Composition,
+  clientEnv: Env,
   worktreeRoot: string,
   mcp: McpAccess,
   quota: QuotaService,
@@ -1707,7 +1759,7 @@ function buildExecution(
   handoff: HandoffPort,
   exhaustion: ExhaustionPort,
   telemetry: TelemetryRuntime | undefined,
-): Execution | undefined {
+): { execution: Execution; redetector: ClientRedetector } | undefined {
   const { logger } = composition;
   const { launcher: rawLauncher } = composition;
   if (rawLauncher === undefined) {
@@ -1727,8 +1779,9 @@ function buildExecution(
     logger,
     composition.situations,
   );
-  const factory = options.clients ?? productionClients(config, options.clientSearch);
-  const built = factory({
+  const factoryOf = (env: Env): ClientFactory =>
+    options.clients ?? productionClients(config, { ...options.clientSearch, env });
+  const parts: ClientFactoryParts = {
     launcher,
     clock: composition.clock,
     transport: composition.transport,
@@ -1756,24 +1809,33 @@ function buildExecution(
             ]),
           },
         }),
+  };
+  const firstSelections: ClientSelection[] = [];
+  const built = factoryOf(clientEnv)({
+    ...parts,
+    report: (selections) => firstSelections.push(...selections),
   });
   if (built.length === 0) {
+    // P18 (N321): the execution is built with an empty pool, so a client found later (the setup
+    // assistant looks again) enters it without a restart. Until then no attempt can start.
     logger.warn(
-      'no client is enabled (none configured or found in PATH); the execution of attempts is off',
+      'no client is enabled (none configured or found in PATH); no attempt can run until one is found',
     );
     composition.situations.record('daemon.notice', {
       kind: 'execution_off',
       subject: 'no_client',
       detail: null,
     });
-    return undefined;
   }
   // The service listens to the sessions of every client (the limit error with its reset time, the
   // usage events), and each client has its quota probe (P6 to P8); the service takes it from here.
-  const clients = built.map((client) => tapClient(client, quota, logger, composition.situations));
+  const tap = (client: ClientAdapter): ClientAdapter =>
+    tapClient(client, quota, logger, composition.situations);
   // P25: an OpenCode profile linked to a Codex one is read through the probe of Codex.
-  const codexQuota = clients.find((client) => client.id === 'codex')?.quota;
-  for (const client of clients) {
+  const handProbe = (
+    client: ClientAdapter,
+    codexQuota: ClientAdapter['quota'] | undefined,
+  ): QuotaProbeWiring['prepare'] => {
     const wiring = quotaProbeOf(client, {
       config,
       codexQuota,
@@ -1784,9 +1846,15 @@ function buildExecution(
       situations: composition.situations,
     });
     quota.addProbe(client.id, wiring.probe);
-    if (wiring.prepare !== undefined) quotaPrepare.push(wiring.prepare);
+    return wiring.prepare;
+  };
+  const clients = built.map(tap);
+  const codexQuota = clients.find((client) => client.id === 'codex')?.quota;
+  for (const client of clients) {
+    const prepare = handProbe(client, codexQuota);
+    if (prepare !== undefined) quotaPrepare.push(prepare);
   }
-  return new Execution({
+  const execution = new Execution({
     clients,
     launcher,
     transport: () => composition.transport,
@@ -1805,6 +1873,61 @@ function buildExecution(
     ...(composition.waitEvents === undefined ? {} : { waits: composition.waitEvents }),
     ...(options.resolveAttempt === undefined ? {} : { resolver: options.resolveAttempt }),
   });
+  // P18 (N321): the search for the clients again, with the environment read again. A client found
+  // is tapped, gets its quota probe, and its profiles are tracked, as the ones of the start.
+  const redetector = new ClientRedetector({
+    pool: execution.pool,
+    build: async (skip, report) => {
+      const env = await readClientEnv(config, options, composition);
+      return factoryOf(env)({ ...parts, skip, report });
+    },
+    wire: async (client) => {
+      const tapped = tap(client);
+      const linked = execution.pool.has('codex')
+        ? execution.pool.adapterOf('codex').quota
+        : undefined;
+      const prepare = handProbe(tapped, tapped.id === 'codex' ? tapped.quota : linked);
+      if (prepare !== undefined) for (const ref of await prepare()) quota.track(ref);
+      return tapped;
+    },
+    logger,
+    situations: composition.situations,
+  });
+  redetector.note(firstSelections);
+  return { execution, redetector };
+}
+
+/**
+ * The environment the clients are searched in and started with (P18, N321): the one of the
+ * options (tests) or of the process, completed on Windows from the `Path` of the registry. A key
+ * that cannot be read is told (`client_path_unreadable`) and left out.
+ */
+async function readClientEnv(
+  config: DaemonConfig,
+  options: StartDaemonOptions,
+  composition: Pick<Composition, 'logger' | 'situations'>,
+): Promise<Env> {
+  const search = options.clientSearch;
+  const result = await clientSearchEnv(search?.env ?? process.env, {
+    mode: config.clients.detection.path,
+    ...(search?.platform === undefined ? {} : { platform: search.platform }),
+    ...(search?.registryRunner === undefined ? {} : { run: search.registryRunner }),
+  });
+  for (const key of result.failed) {
+    composition.logger.warn({ key }, 'the Path of the registry could not be read; it is left out');
+    composition.situations.record('daemon.notice', {
+      kind: 'client_path_unreadable',
+      subject: situationSubject(key),
+      detail: null,
+    });
+  }
+  if (result.added > 0) {
+    composition.logger.info(
+      { added: result.added },
+      'folders of the Path of the registry added to the PATH the clients are searched in',
+    );
+  }
+  return result.env;
 }
 
 function recoveredPayload(

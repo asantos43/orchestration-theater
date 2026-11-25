@@ -160,6 +160,7 @@ import { recordFeedStore } from './orchestration/record-feed.js';
 import { createLogger, type DaemonLogger, type Logger } from './logger.js';
 import { dataPaths, profileDirOf, type DataPaths, type Env, type ProfileNames } from './paths.js';
 import { buildSandboxWiring, type SandboxWiring } from './sandbox-wiring.js';
+import type { CommandRunner } from './service/command-runner.js';
 
 /** The ports the daemon composes. */
 export type PortName =
@@ -1553,6 +1554,12 @@ export interface ProductionClientsOptions {
     AdapterManagerOptions,
     'fetch' | 'platform' | 'self' | 'installOptions' | 'lockOf'
   >;
+  /**
+   * Test seams of the `Path` of the Windows registry (P18, N321): the platform the daemon acts as
+   * (default `process.platform`) and what runs `reg query` (the fake answers from a table).
+   */
+  readonly platform?: NodeJS.Platform;
+  readonly registryRunner?: CommandRunner;
 }
 
 function minLayersOf(security: DaemonConfig['security']): MinLayers {
@@ -1856,7 +1863,12 @@ export function productionClients(
       };
     };
     const needing: ManagedClientId[] = [];
-    for (const selection of selectClients(config, DEFAULT_CLIENT_EXECUTABLES, find, probe)) {
+    // P18 (N321): the clients the pool already has are not looked at again.
+    const selections = selectClients(config, DEFAULT_CLIENT_EXECUTABLES, find, probe).filter(
+      (selection) => parts.skip?.has(selection.id) !== true,
+    );
+    parts.report?.(selections);
+    for (const selection of selections) {
       const { id, reason, executable } = selection;
       if (reason === 'forced_not_found') {
         parts.logger.warn(

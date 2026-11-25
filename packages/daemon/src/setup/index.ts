@@ -7,5 +7,6 @@ export {
   detectClients,
   detectedProfileOf,
   detectProfiles,
+  type ClientReasons,
   type InstalledClients,
 } from './detect.js';
