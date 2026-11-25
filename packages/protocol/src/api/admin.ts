@@ -29,4 +29,22 @@ export const rotateApiToken = defineRoute({
   response: ApiTokenRotatedSchema,
 });
 
-export const ADMIN_ROUTES = defineRoutes(rotateApiToken);
+/** What `POST /v1/daemon/stop` answers: the daemon answers first, then stops. */
+export const DaemonStoppingSchema = z.strictObject({ stopping: z.literal(true) });
+export type DaemonStopping = z.infer<typeof DaemonStoppingSchema>;
+
+/**
+ * `ot service stop` and `ot uninstall` (N323). [proposta] The clean stop of a daemon that the
+ * service manager could not stop (on Windows, ending the scheduled task does not reach the daemon):
+ * the daemon sends the answer, then shuts down as on a signal. A stop already under way is not an
+ * error; the caller waits for the instance lock to be free to know the daemon is gone.
+ */
+export const stopDaemon = defineRoute({
+  id: 'stopDaemon',
+  method: 'POST',
+  path: '/v1/daemon/stop',
+  summary: 'Stop the daemon: it answers first, then shuts down as on a signal',
+  response: DaemonStoppingSchema,
+});
+
+export const ADMIN_ROUTES = defineRoutes(rotateApiToken, stopDaemon);

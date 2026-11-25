@@ -835,6 +835,20 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     }
     return { status: 'ok' as const, version, pid: process.pid };
   });
+  // N323: the stop through the API, for a daemon the service manager does not reach. The answer
+  // goes out first; the stop starts on the next turn of the event loop. Not held by the recovery
+  // gate: a daemon still reconciling must be stoppable too.
+  api.handlers.register(
+    'stopDaemon',
+    () => {
+      logger.info('stop requested through the API');
+      setImmediate(() => {
+        void handle.stop('shutdown');
+      });
+      return { stopping: true as const };
+    },
+    { command: false },
+  );
   // P4 (Phase 6): the event stream. It reads the log through the hub and heartbeats on the clock.
   registerEventRoutes({
     handlers: api.handlers,

@@ -48,6 +48,8 @@ interface Run {
 }
 
 const noSpawn: DaemonSpawn = () => Promise.resolve({ ok: false, detail: 'no spawn in this test' });
+/** No test reaches a network by accident: the stop route answers only where a test says so. */
+const noFetch = (): Promise<Response> => Promise.reject(new Error('no network in this test'));
 
 async function ot(
   argv: readonly string[],
@@ -66,7 +68,13 @@ async function ot(
     systemLocale: 'en',
     version: '0.0.0-test',
     otLauncher: LAUNCHER,
-    serviceHost: { manager, spawnDaemon: noSpawn, alive: (pid) => pid === PID, ...host },
+    serviceHost: {
+      manager,
+      spawnDaemon: noSpawn,
+      alive: (pid) => pid === PID,
+      fetch: noFetch,
+      ...host,
+    },
     ...extra,
   });
   return { code, out, err };
@@ -79,6 +87,18 @@ const publish = (): Promise<void> =>
     pid: PID,
     apiVersion: 1,
   });
+
+/** A clock that moves only when the command sleeps. */
+const clock = (): { now: () => number; sleep: (ms: number) => Promise<void> } => {
+  let at = 0;
+  return {
+    now: () => at,
+    sleep: (ms) => {
+      at += ms;
+      return Promise.resolve();
+    },
+  };
+};
 
 const exists = (path: string): Promise<boolean> =>
   access(path).then(
@@ -220,6 +240,13 @@ describe('ot service', () => {
     expect(slept).toHaveLength(3);
   });
 
+  it('without the service and with nothing running, stop says it is not installed', async () => {
+    const result = await ot(['service', 'stop'], new FakeServiceManager());
+    expect(result.code).toBe(1);
+    expect(result.err.join('\n')).toMatch(/not installed/i);
+    expect(result.out.join('\n')).not.toMatch(/stopped/i);
+  });
+
   it('a manager that is unavailable is reported with its reason', async () => {
     const manager = new FakeServiceManager();
     manager.installed = true;
@@ -318,9 +345,10 @@ describe('ot uninstall', () => {
     const paths = dataPaths(data);
     const lock = await InstanceLock.acquire(paths.lock, paths.lockInfo);
     try {
-      const result = await ot(['uninstall', '--purge-data', '--yes'], manager);
+      const result = await ot(['uninstall', '--purge-data', '--yes'], manager, {}, clock());
       expect(result.code).toBe(1);
-      expect(result.err.join('\n')).toMatch(/running/i);
+      expect(manager.installed).toBe(false);
+      expect(result.err.join('\n')).toMatch(/still holds the data folder/i);
       expect(await exists(join(data, 'config.yaml'))).toBe(true);
     } finally {
       await lock.release();
@@ -522,5 +550,146 @@ describe('ot tui starts the daemon when it is not running (tui.start_daemon)', (
     expect(code).toBe(0);
     expect(out).toEqual([]);
     expect(tui.liveAtLaunch).toEqual([false]);
+  });
+});
+
+/**
+ * N323, bug 2: on Windows ending the scheduled task did not reach the daemon, and `ot service stop`
+ * said "stopped" with the daemon still running. The stop now asks the daemon through its API, waits
+ * for the instance lock, ends a daemon that does not go by its pid, and says "stopped" only then.
+ */
+describe('ot service stop stops the daemon for real (N323)', () => {
+  const OTHER = 5555;
+  let handle: DaemonHandle | undefined;
+  let held: InstanceLock | undefined;
+  afterEach(async () => {
+    await handle?.stop();
+    handle = undefined;
+    await held?.release();
+    held = undefined;
+  });
+
+  /** A daemon that answers nothing: the test holds its lock and `api.json` names {@link PID}. */
+  const deafDaemon = async (lockPid = PID): Promise<void> => {
+    const paths = dataPaths(data);
+    held = await InstanceLock.acquire(paths.lock, paths.lockInfo);
+    await held.publish({ pid: lockPid, startedAt: 0, version: '0.0.0-test' });
+    await publish();
+    await writeFile(paths.apiToken, 'test-token\n');
+  };
+
+  it('without the service, it stops the daemon through POST /v1/daemon/stop and waits for it', async () => {
+    handle = await startDaemon({
+      dataDir: data,
+      clientSearch: NO_CLIENTS,
+      config: parseConfig('backup:\n  when: manual\n'),
+      overrides: {
+        clock: new FakeClock(),
+        vault: new InMemorySecretVault(),
+        store: new InMemoryStore({ clock: new FakeClock() }),
+      },
+      logger: createSilentLogger(),
+      version: '0.0.0-test',
+    });
+    const manager = new FakeServiceManager();
+    const result = await ot(
+      ['service', 'stop'],
+      manager,
+      {},
+      { alive: undefined, fetch: undefined, kill: () => expect.fail('nothing is killed') },
+    );
+    expect(result).toMatchObject({ code: 0, err: [] });
+    expect(result.out.join('\n')).toMatch(/stopped/i);
+    await handle.stopped;
+    expect((await readDiscovery(dataPaths(data).apiDiscovery)).kind).toBe('none');
+    // The lock is free: the data folder can be taken again.
+    const paths = dataPaths(data);
+    await (await InstanceLock.acquire(paths.lock, paths.lockInfo)).release();
+  });
+
+  it('asks the daemon with the token and, when it does not go, ends its pid and says so', async () => {
+    const manager = new FakeServiceManager();
+    manager.installed = true;
+    await deafDaemon();
+    let alive = true;
+    const requests: string[] = [];
+    const kills: string[] = [];
+    const result = await ot(
+      ['service', 'stop'],
+      manager,
+      {},
+      {
+        ...clock(),
+        alive: (pid) => pid === PID && alive,
+        fetch: (url, init) => {
+          const headers = new Headers(init?.headers);
+          const target = typeof url === 'string' ? url : 'not a string';
+          requests.push(`${init?.method ?? 'GET'} ${target} ${headers.get('authorization') ?? ''}`);
+          return Promise.reject(new Error('connection reset'));
+        },
+        kill: (pid, signal) => {
+          kills.push(`${String(pid)} ${signal}`);
+          alive = false;
+          void held?.release();
+        },
+      },
+    );
+    expect(requests).toEqual(['POST http://127.0.0.1:9/v1/daemon/stop Bearer test-token']);
+    expect(kills).toEqual([`${String(PID)} SIGTERM`]);
+    expect(result.code).toBe(0);
+    expect(result.err.join('\n')).toMatch(new RegExp(`process \\(${String(PID)}\\) was ended`));
+    expect(result.out.join('\n')).toMatch(/stopped/i);
+  });
+
+  it('a daemon that survives SIGKILL is an error and never "stopped"', async () => {
+    const manager = new FakeServiceManager();
+    manager.installed = true;
+    await deafDaemon();
+    const kills: string[] = [];
+    const result = await ot(
+      ['service', 'stop'],
+      manager,
+      {},
+      { ...clock(), kill: (pid, signal) => kills.push(`${String(pid)} ${signal}`) },
+    );
+    expect(kills).toEqual([`${String(PID)} SIGTERM`, `${String(PID)} SIGKILL`]);
+    expect(result.code).toBe(1);
+    expect(result.err.join('\n')).toMatch(new RegExp(`pid ${String(PID)}\\) is still running`));
+    expect(result.out.join('\n')).not.toMatch(/stopped/i);
+  });
+
+  it('does not end a pid when the lock and api.json disagree on who holds the folder', async () => {
+    const manager = new FakeServiceManager();
+    manager.installed = true;
+    await deafDaemon(OTHER);
+    const kills: string[] = [];
+    const result = await ot(
+      ['service', 'stop'],
+      manager,
+      {},
+      {
+        ...clock(),
+        alive: (pid) => pid === PID || pid === OTHER,
+        kill: (pid, signal) => kills.push(`${String(pid)} ${signal}`),
+      },
+    );
+    expect(kills).toEqual([]);
+    expect(result.code).toBe(1);
+    expect(result.err.join('\n')).toMatch(/pid is not known/);
+  });
+
+  it('uninstall removes the service even when the daemon does not stop, and says it is running', async () => {
+    const manager = new FakeServiceManager();
+    manager.installed = true;
+    await deafDaemon();
+    const result = await ot(
+      ['service', 'uninstall'],
+      manager,
+      {},
+      { ...clock(), kill: () => undefined },
+    );
+    expect(manager.installed).toBe(false);
+    expect(result.code).toBe(1);
+    expect(result.err.join('\n')).toMatch(/still running/);
   });
 });
