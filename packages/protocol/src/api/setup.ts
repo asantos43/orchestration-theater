@@ -135,6 +135,11 @@ export const SetupNoteSchema = z.strictObject({
   severity: z.enum(['info', 'warning']),
   code: z.string().min(1),
   role: z.enum(ROLE_IDS).nullable(),
+  /**
+   * The `<model>-<effort>` of the preset a `no_account` note is about (N324): the screens fold the
+   * notes of one family of models into one line. Absent on the other notes and from older daemons.
+   */
+  head: z.string().min(1).optional(),
   message: z.string(),
 });
 export type SetupNote = z.infer<typeof SetupNoteSchema>;

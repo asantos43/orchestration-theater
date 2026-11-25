@@ -170,6 +170,8 @@ export interface ResolveNote {
   readonly code: (typeof NOTE_CODES)[number];
   readonly role: RoleId;
   readonly executorId: string | null;
+  /** The `<model>-<effort>` of the preset a `no_account` note is about (N324), for the screens to group. */
+  readonly head?: string | undefined;
   readonly message: string;
 }
 
@@ -417,6 +419,7 @@ export function resolveRoleExecutors(input: ResolveInput): ResolvedRoles {
             code: 'no_account',
             role,
             executorId: null,
+            head,
             message:
               named.length > 0
                 ? `roles.${role}: preset "${preset}" names "${head}" and every account that has it is set to preset_expand: false; it is left out`

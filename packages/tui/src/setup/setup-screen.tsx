@@ -15,6 +15,7 @@ import { useSuspendTerminal } from '../mouse/index.js';
 import { useRenderControl } from '../render-control.js';
 import { fieldStep } from '../tabs/settings/field.js';
 import { errorText, runInTerminal } from '../tabs/settings/index.js';
+import type { SetupReviewNotesMode } from '../settings.js';
 import type { SetupApi, SetupFlow } from './api.js';
 import { clientStateText, clientTodoText, setupLines, type SetupLine } from './lines.js';
 import {
@@ -63,6 +64,8 @@ export interface SetupScreenProps {
   readonly keymap: TuiKeymap;
   /** The screen is done: the run was left (kept), confirmed or cancelled. */
   readonly onClose: (outcome: SetupOutcome) => void;
+  /** `ui.setup.reviewNotes` (N324): how the review shows its notes at first; `grouped` by default. */
+  readonly reviewNotes?: SetupReviewNotesMode | undefined;
 }
 
 type Tone = 'ok' | 'warn' | 'error';
@@ -101,6 +104,8 @@ interface State {
   readonly added: readonly string[];
   /** The install of an adapter that runs now (P18b, the I key), and since when (ms). */
   readonly installing: { readonly client: string; readonly since: number } | undefined;
+  /** The review shows every note (N324); otherwise it folds them. */
+  readonly details: boolean;
 }
 
 const IDLE: Mode = { kind: 'idle' };
@@ -122,6 +127,7 @@ const FIRST: State = {
   accountsCursor: 0,
   added: [],
   installing: undefined,
+  details: false,
 };
 
 /** The hints of the bar that make sense at the step on screen. */
@@ -139,6 +145,7 @@ function relevantBar(
       'setup.remove',
       'setup.moveUp',
       'setup.moveDown',
+      'setup.details',
     ].includes(item.id);
   }
   switch (item.id) {
@@ -146,6 +153,8 @@ function relevantBar(
       return false;
     case 'setup.toggle':
       return step === 'detect';
+    case 'setup.details':
+      return step === 'review';
     case 'setup.add':
     case 'setup.edit':
       return step === 'executors';
@@ -163,10 +172,11 @@ export function SetupScreen(props: SetupScreenProps): ReactNode {
   // The step that adds an account exists in the first run, when the API has the routes for it.
   const accountsOn = flow === 'first_run' && api.accounts !== undefined;
 
-  const [state, setState] = useState<State>(FIRST);
+  const start: State = { ...FIRST, details: props.reviewNotes === 'all' };
+  const [state, setState] = useState<State>(start);
   // While an adapter installs, the screen draws the seconds it has taken, once a second.
   const [now, setNow] = useState(() => Date.now());
-  const ref = useRef<State>(FIRST);
+  const ref = useRef<State>(start);
   const alive = useRef(true);
   // The draft of each step already answered, to bring back when the person goes back to it.
   const memory = useRef(new Map<string, Draft>());
@@ -695,6 +705,9 @@ export function SetupScreen(props: SetupScreenProps): ReactNode {
       case 'reload':
         void lookAgain(run);
         return;
+      case 'details':
+        if (run.step === 'review' && !isFinished(run)) update({ details: !current.details });
+        return;
       case 'cancel':
         if (!isFinished(run)) update({ mode: { kind: 'confirmCancel' } });
         return;
@@ -779,6 +792,7 @@ export function SetupScreen(props: SetupScreenProps): ReactNode {
           draft,
           t,
           closeKey,
+          reviewNotes: { all: state.details, key: keyLabel(keymap, 'setup.details') ?? '' },
           accounts: accountsOn
             ? {
                 active: onAccounts,

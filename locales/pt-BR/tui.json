@@ -168,7 +168,8 @@
       "remove": "Remover o Executor",
       "reload": "Procurar os clientes de novo e ler o passo de novo",
       "cancel": "Cancelar a execução (nada é gravado)",
-      "install": "Instalar o adaptador ACP do cliente sob o cursor"
+      "install": "Instalar o adaptador ACP do cliente sob o cursor",
+      "details": "Mostra ou dobra o detalhe das notas da revisão"
     },
     "plugins": {
       "itemPrev": "Plugin anterior",
@@ -228,7 +229,8 @@
       "add": "Adicionar",
       "edit": "Teto",
       "cancel": "Cancelar",
-      "install": "Instalar adaptador"
+      "install": "Instalar adaptador",
+      "details": "Detalhe"
     },
     "settings": {
       "add": "Adicionar conta",
@@ -1223,7 +1225,11 @@
       "notes": "Notas",
       "info": "info",
       "warning": "aviso",
-      "none": "nenhuma"
+      "none": "nenhuma",
+      "noAccountFamily": "{{family}}: nenhuma conta deste computador tem {{models}}; fica fora de {{count}} papel(éis)",
+      "emptyRoles": "Nenhum Executor sobra em {{count}} papel(éis): {{roles}} (eles seguem o when_exhausted)",
+      "detailsHint": "{{key}} mostra cada nota",
+      "detailsHintAll": "{{key}} dobra as notas de novo"
     },
     "source": {
       "discovered": "achado",

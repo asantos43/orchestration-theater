@@ -152,6 +152,8 @@ const SETUP_KEYS: readonly (readonly [
   ['install', ['I'], ['bar.setup.install', 17]],
   ['reload', ['R']],
   ['cancel', ['C'], ['bar.setup.cancel', 20]],
+  // N324: at the review, the detail of the notes the screen folds (`ui.setup.reviewNotes`). [proposta] D.
+  ['details', ['D'], ['bar.setup.details', 19]],
 ];
 
 function setupActions(): NonNullable<UiRegistryDefinition['actions']> {
