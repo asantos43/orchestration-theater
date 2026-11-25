@@ -203,6 +203,61 @@ describe('ot service', () => {
     expect(text.out.join('\n')).toMatch(/running[\s\S]*4242/);
   });
 
+  it('a manager that cannot tell is answered by the lock and api.json of the daemon (N323 (5))', async () => {
+    const manager = new FakeServiceManager();
+    await ot(['service', 'install', '--no-start'], manager);
+    manager.activeUnknown = true;
+    const status = async (): Promise<{ json: unknown; text: string }> => ({
+      json: JSON.parse((await ot(['service', 'status', '--json'], manager)).out.join('\n')),
+      text: (await ot(['service', 'status'], manager)).out.join('\n'),
+    });
+
+    const stopped = await status();
+    expect(stopped.json).toMatchObject({
+      service: { installed: true, active: false, activeFrom: 'daemon' },
+      daemon: { running: false },
+    });
+    expect(stopped.text).toMatch(/Running: no \(read from the daemon/);
+    expect(stopped.text).toMatch(/Daemon: not running/);
+
+    // A daemon that holds the lock but has no API yet (waiting for the master password) runs.
+    const paths = dataPaths(data);
+    const lock = await InstanceLock.acquire(paths.lock, paths.lockInfo);
+    try {
+      const starting = await status();
+      expect(starting.json).toMatchObject({
+        service: { active: true, activeFrom: 'daemon' },
+        daemon: { running: true },
+      });
+      expect(starting.text).toMatch(/Running: yes \(read from the daemon/);
+      expect(starting.text).toMatch(/API is not published yet/);
+    } finally {
+      await lock.release();
+    }
+
+    await publish();
+    const live = await status();
+    expect(live.json).toMatchObject({
+      service: { active: true, activeFrom: 'daemon' },
+      daemon: { running: true, pid: PID },
+    });
+    expect(live.text).toMatch(/running \(pid 4242/);
+  });
+
+  it('a manager that tells keeps its own answer, with no activeFrom', async () => {
+    const manager = new FakeServiceManager();
+    await ot(['service', 'install', '--no-start'], manager);
+    await publish();
+    const json = JSON.parse(
+      (await ot(['service', 'status', '--json'], manager)).out.join('\n'),
+    ) as { service: Record<string, unknown> };
+    expect(json.service.active).toBe(false);
+    expect(json.service).not.toHaveProperty('activeFrom');
+    expect((await ot(['service', 'status'], manager)).out.join('\n')).toMatch(
+      /Running by the service: no/,
+    );
+  });
+
   it('start and stop go through the manager; without the service they say so and exit 1', async () => {
     const manager = new FakeServiceManager();
     const missing = await ot(['service', 'start'], manager);
