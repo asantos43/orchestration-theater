@@ -3,7 +3,6 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { EventEnvelope } from '@otheater/core';
-import { sessionModeOf } from '@otheater/adapter-client-claude-code';
 import { FakeClientAdapter, FakeClock, InMemorySecretVault } from '@otheater/core/testing';
 import { disposeTestGitIsolation, testGit } from '@otheater/sdk';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -12,6 +11,7 @@ import { parseConfig } from '../config.js';
 import { startDaemon } from '../daemon.js';
 import { createSilentLogger } from '../logger.js';
 import { makeTempDataDir, NO_CLIENTS, TEST_PROFILE } from '../test-helpers.js';
+import { defaultPolicySettings } from '../orchestration/role-policy.js';
 import { ASKING_WRITER, refusedEditsOf, WRITER } from './acceptance-policy-fixture.js';
 import { makeRepo } from './attempt-fixture.js';
 import type { AttemptSpec } from './attempt-runner.js';
@@ -167,9 +167,14 @@ describe('simulated attempts over the real ACP stdio transport', () => {
 
 describe('the policies of the real acceptance', () => {
   // The defect of 2026-11-25 [V]: the drafts of the real clients ran under a policy with no
-  // `editInWorktree`, so Claude Code opened in `default` and asked for every `Write`.
-  it('opens Claude Code in acceptEdits for the drafts and in default for the asking writer', () => {
-    expect(sessionModeOf(WRITER)).toBe('acceptEdits');
-    expect(sessionModeOf(ASKING_WRITER)).toBe('default');
+  // `editInWorktree`, so Claude Code opened in `default` and asked for every `Write`. Absent counts
+  // as `ask` (N182); the adapter tests cover the mode that follows (policy.test.ts, sessionModeOf).
+  it('gives the drafts the editInWorktree of the Actor and leaves it absent in the asking writer', () => {
+    const actor = defaultPolicySettings('actor').editInWorktree;
+    expect(actor).toBe('allow');
+    expect(WRITER.editInWorktree).toBe(actor);
+    expect(WRITER.nativeTools).toEqual(expect.arrayContaining(['edit', 'write']));
+    expect(ASKING_WRITER.editInWorktree).toBeUndefined();
+    expect(ASKING_WRITER.nativeTools).toEqual(expect.arrayContaining(['edit', 'write']));
   });
 });
