@@ -215,9 +215,41 @@
 #            (OT_SEA_NODE, como em tools/release; o do pacote da distribuição não serve) e do
 #            python3 (a TUI num pseudo-terminal). Não passa pelas checagens de clientes nem pelo
 #            monitor de memória dos outros níveis; o --timeout vale (padrão 40m).
+#   phase10-busy  [proposta] o teste real da atualização com uma peça em curso (Phase 10, N303 (2);
+#            docs/21, P12 "Como ficou"), COM cliente real (o Claude Code; o dono decidiu em
+#            2026-11-24 que ele é real) e gasta cota da conta do perfil. Reaproveita o phase10: a
+#            chave da rodada (ephemeral-key), os dois executáveis (1.0.0 e 1.0.1), o servidor de
+#            versões assinado no loopback e o install.sh num HOME e numa pasta de dados temporários,
+#            com o daemon como processo filho (`otheater-release acceptance-busy`,
+#            tools/release/src/acceptance-busy.ts). Em cada modo de OT_TEST_BUSY_MODES (idle,park;
+#            o padrão são os dois, cada um num HOME novo) ele instala o 1.0.0, escreve o config.yaml
+#            (Executor claude-code/real, sandbox.mode off, nenhum adaptador instalado, sem CodeHost)
+#            e um link `<dados>/profiles/claude-code/real` para OT_TEST_CLAUDE_PROFILE_DIR (o perfil
+#            é só apontado: nada é copiado nem lido, e não há gancho de teste no executável), abre
+#            um cenário num projeto git com um `origin` local, manda a necessidade
+#            (OT_TEST_BUSY_NEED, pequena) ao Diretor e responde as perguntas dele com a primeira
+#            opção. ENQUANTO uma tentativa roda, publica o 1.0.1 e pede a atualização. Em idle, a
+#            troca espera a tentativa acabar (estado `waiting` do /v1/updates e `applying` DEPOIS do
+#            `attempt.submitted` no log; OT_TEST_BUSY_MAX_WAIT, padrão 20m, é o `updates.max_wait`:
+#            se vencer e o daemon perguntar, é falha); em park, a troca vem na hora, a parada limpa
+#            deixa a tentativa `awaiting_resume` (`session.interrupted` com a causa
+#            `daemon_restart`) e a peça segue: por `session.resumed` (forma `native`, ou seja
+#            `session/load`, ou `handoff`) ou, como o daemon do release hoje faz [V: fake-agent no
+#            SEA, 2026-11-24; o `resolveAttempt` não é passado], com uma tentativa nova da mesma
+#            demanda (`.../2`). OT_TEST_BUSY_RESUME_FORM=any (padrão) aceita as três; `native`
+#            exige o `session/load` e falha enquanto o daemon não o fizer. Nos dois:
+#            o diário diz `committed`, os eventos `applying` e `applied` estão no log, o executável
+#            diz 1.0.1, a peça termina em DONE com `delivery.completed` (não se perdeu) e nenhum
+#            processo da rodada sobra. O prazo da peça é OT_TEST_PLAY_TIMEOUT_MS (25m) POR MODO e os
+#            limites são OT_TEST_PLAY_LIMITS (moderate); as checagens prévias (claude-agent-acp no
+#            PATH, OT_TEST_CLAUDE_PROFILE_DIR e OT_TEST_CLAUDE_MODEL, memória) são as do phase9, mais
+#            OT_SEA_NODE (um Node standalone, como no phase10). O resumo de cada passo sai no log com
+#            o prefixo [phase10-busy-real]. [N] Não rodou com cliente real quando foi escrito; não
+#            está provado que o cliente leia um link dentro da pasta de dados com o sandbox off, nem
+#            que o daemon do 1.0.1 restaure a sessão real por session/load. --timeout padrão: 90m.
 #
 # Uso:
-#   tools/acceptance/real-acceptance.sh [--level clients|prompts|k|play|phase6|phase7|phase8|phase9|phase10|escape|mcp|quota|profiles] [--dry-run] [--with-adapters]
+#   tools/acceptance/real-acceptance.sh [--level clients|prompts|k|play|phase6|phase7|phase8|phase9|phase10|phase10-busy|escape|mcp|quota|profiles] [--dry-run] [--with-adapters]
 #       [--build auto|always|never] [--build-timeout DURAÇÃO]
 #       [--min-available-mb N] [--abort-below-mb N] [--min-tmp-mb N] [--timeout DURAÇÃO]
 #       [--log-dir DIR] [--bin-dir DIR]... [--yes]
@@ -236,7 +268,7 @@
 #
 # Cada opção também lê uma variável (a opção ganha):
 #   OT_ACCEPT_LEVEL (clients), OT_ACCEPT_MIN_AVAILABLE_MB (4096), OT_ACCEPT_ABORT_BELOW_MB (1024),
-#   OT_ACCEPT_MIN_TMP_MB (1024), OT_ACCEPT_TIMEOUT (20m; 40m nos níveis k, play, phase6, phase7, phase8, phase9, phase10, escape e profiles; 15m em quota), OT_ACCEPT_BUILD (auto),
+#   OT_ACCEPT_MIN_TMP_MB (1024), OT_ACCEPT_TIMEOUT (20m; 40m nos níveis k, play, phase6, phase7, phase8, phase9, phase10, escape e profiles; 90m em phase10-busy; 15m em quota), OT_ACCEPT_BUILD (auto),
 #   OT_ACCEPT_BUILD_TIMEOUT (10m), OT_ACCEPT_LOG_DIR
 #   (${XDG_STATE_HOME:-~/.local/state}/otheater/acceptance), OT_ACCEPT_BIN_DIRS (pastas separadas
 #   por ':').
@@ -277,13 +309,13 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-case "$level" in clients|prompts|k|play|phase6|phase7|phase8|phase9|phase10|escape|mcp|quota|profiles) ;; *) echo "--level deve ser clients, prompts, k, play, phase6, phase7, phase8, phase9, phase10, escape, mcp, quota ou profiles" >&2; exit 2 ;; esac
-# Os níveis play, phase6, phase7, phase8 e phase9 [proposta] rodam uma peça inteira com um só cliente: mesmas
-# exigências. O play e o phase7 são só o Claude Code; o phase6 usa o de OT_TEST_PHASE6_CLIENT
+case "$level" in clients|prompts|k|play|phase6|phase7|phase8|phase9|phase10|phase10-busy|escape|mcp|quota|profiles) ;; *) echo "--level deve ser clients, prompts, k, play, phase6, phase7, phase8, phase9, phase10, phase10-busy, escape, mcp, quota ou profiles" >&2; exit 2 ;; esac
+# Os níveis play, phase6, phase7, phase8, phase9 e phase10-busy [proposta] rodam uma peça inteira com um só cliente: mesmas
+# exigências. O play, o phase7 e o phase10-busy são só o Claude Code; o phase6 usa o de OT_TEST_PHASE6_CLIENT
 # (claude-code, o padrão); o phase8 usa os de OT_TEST_PHASE8_CLIENTS (claude-code, o padrão; uma peça
 # por cliente da lista); o phase9 usa os de OT_TEST_PHASE9_CLIENTS (o mesmo padrão).
 play_like=0
-if [ "$level" = play ] || [ "$level" = phase6 ] || [ "$level" = phase7 ] || [ "$level" = phase8 ] || [ "$level" = phase9 ]; then play_like=1; fi
+if [ "$level" = play ] || [ "$level" = phase6 ] || [ "$level" = phase7 ] || [ "$level" = phase8 ] || [ "$level" = phase9 ] || [ "$level" = phase10-busy ]; then play_like=1; fi
 play_key=CLAUDE
 play_keys=CLAUDE
 if [ "$level" = phase6 ]; then
@@ -321,7 +353,9 @@ fi
 # minutos (teto de 5m na tentativa). O do nível escape [proposta] também: até 8m por cliente, com
 # três clientes, mais o sandbox subindo e parando.
 if [ -z "$run_timeout" ]; then
-  case "$level" in k|play|phase6|phase7|phase8|phase9|phase10|escape|profiles) run_timeout=40m ;; quota) run_timeout=15m ;; *) run_timeout=20m ;; esac
+  # O phase10-busy [proposta] roda uma peça por modo (idle e park), cada uma com até o prazo da peça
+  # (25m), mais dois builds do executável e a espera da troca.
+  case "$level" in k|play|phase6|phase7|phase8|phase9|phase10|escape|profiles) run_timeout=40m ;; phase10-busy) run_timeout=90m ;; quota) run_timeout=15m ;; *) run_timeout=20m ;; esac
 fi
 case "$build_mode" in auto|always|never) ;; *) echo "--build deve ser auto, always ou never" >&2; exit 2 ;; esac
 for n in "$min_available_mb" "$abort_below_mb" "$min_tmp_mb"; do
@@ -404,6 +438,26 @@ if [ "$level" = phase7 ]; then
   if command -v tmux >/dev/null 2>&1; then ok "tmux"; else fail "tmux não está no PATH (o nível phase7 roda a TUI num tmux)"; fi
 fi
 if [ -d node_modules ]; then ok "node_modules presente"; else fail "falta node_modules: rode 'pnpm install --frozen-lockfile'"; fi
+sea_node="${OT_SEA_NODE:-}"
+if [ "$level" = phase10-busy ]; then
+  if [ -n "$sea_node" ]; then
+    if [ -x "$sea_node" ]; then ok "OT_SEA_NODE: $sea_node"; else fail "OT_SEA_NODE não é executável: $sea_node"; fi
+  else
+    warn "OT_SEA_NODE vazio: o build usa o node do PATH, que precisa ser um build standalone (o pacote da distribuição, com libnode compartilhada, é recusado)"
+  fi
+  busy_modes="${OT_TEST_BUSY_MODES:-idle,park}"
+  IFS=, read -r -a busy_mode_list <<<"${busy_modes// /}"
+  [ "${#busy_mode_list[@]}" -gt 0 ] || fail "OT_TEST_BUSY_MODES está vazia (use idle, park ou idle,park)"
+  for name in "${busy_mode_list[@]}"; do
+    case "$name" in idle|park) ;; *) fail "OT_TEST_BUSY_MODES: modo desconhecido (use idle ou park): $name" ;; esac
+  done
+  busy_max_wait="${OT_TEST_BUSY_MAX_WAIT:-20m}"
+  [[ "$busy_max_wait" =~ ^[0-9]+(ms|s|m|h|d)$ ]] || fail "OT_TEST_BUSY_MAX_WAIT deve ser uma duração como 90s ou 20m: $busy_max_wait"
+  busy_resume_form="${OT_TEST_BUSY_RESUME_FORM:-any}"
+  case "$busy_resume_form" in native|any) ;; *) fail "OT_TEST_BUSY_RESUME_FORM deve ser native ou any: $busy_resume_form" ;; esac
+  busy_need="${OT_TEST_BUSY_NEED:-Create a file named fib.js that exports a function fib(n) (iterative, returns the n-th Fibonacci number), and a file fib.test.js with at least five cases using node:test. Run the tests with node --test and fix any failure. Keep it minimal.}"
+  [ -n "$busy_need" ] || fail "OT_TEST_BUSY_NEED está vazia"
+fi
 
 # ---- nível phase10: o aceite da distribuição (sem cliente, sem cota) ----------------------------
 
@@ -657,6 +711,9 @@ elif [ "$level" = phase8 ]; then
 elif [ "$level" = phase9 ]; then
   tests=(packages/daemon/src/api/phase9-acceptance.real.test.ts)
   [ "$with_adapters" = 0 ] || warn "--with-adapters não vale no nível phase9: roda só a peça com o plugin notes"
+elif [ "$level" = phase10-busy ]; then
+  tests=()
+  [ "$with_adapters" = 0 ] || warn "--with-adapters não vale no nível phase10-busy: roda só a atualização com a peça em curso"
 elif [ "$level" = phase7 ]; then
   tests=(packages/tui/src/phase7-acceptance.real.test.ts)
   [ "$with_adapters" = 0 ] || warn "--with-adapters não vale no nível phase7: roda só a TUI no tmux com a peça real"
@@ -693,6 +750,8 @@ elif [ "$level" = phase8 ]; then
   echo "Vai rodar: OT_TEST_REAL_CLIENTS=1 OT_TEST_REAL_PROMPTS=1 OT_TEST_REAL_PHASE8=1 vitest run --silent=false ${tests[*]}"
 elif [ "$level" = phase9 ]; then
   echo "Vai rodar: OT_TEST_REAL_CLIENTS=1 OT_TEST_REAL_PROMPTS=1 OT_TEST_REAL_PHASE9=1 vitest run --silent=false ${tests[*]}"
+elif [ "$level" = phase10-busy ]; then
+  echo "Vai rodar: ephemeral-key; build do 1.0.0 e do 1.0.1 com a chave da rodada; otheater-release acceptance-busy (modos: ${busy_modes// /}), com o install.sh, em HOME e dados temporários"
 elif [ "$level" = phase7 ]; then
   echo "Vai rodar: OT_TEST_REAL_CLIENTS=1 OT_TEST_REAL_PROMPTS=1 OT_TEST_REAL_PHASE7=1 vitest run --silent=false ${tests[*]}"
 elif [ "$level" = quota ]; then
@@ -743,6 +802,15 @@ if [ "$level" = phase9 ]; then
   echo "  Prazo total da peça: ${OT_TEST_PLAY_TIMEOUT_MS:-1500000} ms. Limites: ${OT_TEST_PLAY_LIMITS:-moderate}. A entrega vai para o CodeHost falso; o servidor do plugin roda dentro do daemon do teste, em loopback, sem rede nem segredo."
   echo "  O perfil é só apontado: nada é copiado nem lido. A nota fica no arquivo .plugin-notes.json da pasta temporária do projeto."
   echo "  O resumo (grants por papel, evento da nota, painel, tempo, processos) sai no log com o prefixo [phase9-real]."
+fi
+if [ "$level" = phase10-busy ]; then
+  echo "Atenção: o nível phase10-busy roda UMA PEÇA REAL por modo (${busy_modes// /}) com o Claude Code em todos os papéis, dentro do executável único instalado num HOME temporário, e atualiza o executável do 1.0.0 para o 1.0.1 ENQUANTO uma tentativa roda. Gasta cota da conta do perfil."
+  # [proposta] Estimativa, não medida: a mesma ordem de grandeza da peça do nível play (N88), por modo.
+  echo "  Estimativa [proposta, não medida]: de 10 a 25 turnos no caso feliz por modo; com repetições até cerca de 50."
+  echo "  Prazo da peça por modo: ${OT_TEST_PLAY_TIMEOUT_MS:-1500000} ms. Limites: ${OT_TEST_PLAY_LIMITS:-moderate}. updates.max_wait do idle: $busy_max_wait. Retomada aceita: $busy_resume_form. Não há CodeHost: a peça termina na entrega local, nada vai ao GitHub."
+  echo "  O perfil é só apontado por um link em <dados>/profiles/claude-code/real: nada é copiado nem lido, o chaveiro e o HOME de verdade não são tocados, e nenhum serviço é registrado. O sandbox do daemon fica off (o sandbox padrão esconde o perfil apontado por link; verificado em 2026-11-20)."
+  echo "  Necessidade: $busy_need"
+  echo "  O resumo de cada passo (instalação, peça em curso, troca, diário, eventos, peça concluída, processos) sai no log com o prefixo [phase10-busy-real]."
 fi
 if [ "$level" = phase7 ]; then
   echo "Atenção: o nível phase7 roda a TUI compilada num tmux de verdade (socket próprio) e UMA PEÇA INTEIRA com ${executable[$play_key]} em todos os papéis, tudo pelas teclas: a necessidade no chat, as respostas ao Diretor e a escolha do pull request. Gasta cota da conta do perfil."
@@ -878,8 +946,48 @@ else
 fi
 
 baseline="$(available_mb)"
+busy_work=""
+if [ "$level" = phase10-busy ]; then
+  case "$build_mode" in
+    never) [ -f tools/release/dist/cli.js ] || { echo "falta tools/release/dist/cli.js e --build never: rode 'pnpm -s build'" >&2; exit 1; } ;;
+  esac
+  [ -f tools/release/dist/cli.js ] || { echo "falta tools/release/dist/cli.js: rode 'pnpm -s build'" >&2; exit 1; }
+  busy_work="$(mktemp -d "$tmp_dir/otheater-phase10-busy.XXXXXX")"
+  trap 'rm -rf "$busy_work"' EXIT
+  # O que o roteiro precisa vai por variáveis de ambiente de nomes próprios: o texto da necessidade
+  # não passa por nenhuma linha de comando montada à mão.
+  export BUSY_WORK="$busy_work" BUSY_BUILD_TIMEOUT="$build_timeout" BUSY_SEA_NODE="$sea_node" \
+    BUSY_MODES="${busy_modes// /}" BUSY_MAX_WAIT="$busy_max_wait" BUSY_RESUME_FORM="$busy_resume_form" \
+    BUSY_NEED="$busy_need" BUSY_PLAY_TIMEOUT_MS="${OT_TEST_PLAY_TIMEOUT_MS:-1500000}" \
+    BUSY_LIMITS="${OT_TEST_PLAY_LIMITS:-moderate}" BUSY_MODEL="${OT_TEST_CLAUDE_MODEL}" \
+    BUSY_PROFILE_DIR="${OT_TEST_CLAUDE_PROFILE_DIR}" BUSY_CLIENT_MODE="${OT_TEST_CLAUDE_MODE:-}" \
+    BUSY_DAEMON_PATH="$PATH"
+  cat >"$busy_work/run.sh" <<'BUSY_EOF'
+#!/usr/bin/env bash
+# Each step needs the one before: a failed build stops here, instead of testing a leftover binary.
+set -euo pipefail
+cli=(node tools/release/dist/cli.js)
+sea_args=()
+[ -z "$BUSY_SEA_NODE" ] || sea_args=(--node "$BUSY_SEA_NODE")
+"${cli[@]}" ephemeral-key --out "$BUSY_WORK/key"
+timeout "$BUSY_BUILD_TIMEOUT" "${cli[@]}" build --target linux-x64 --out "$BUSY_WORK/n" --version 1.0.0 --public-key "$BUSY_WORK/key/ephemeral-public.pem" "${sea_args[@]}"
+timeout "$BUSY_BUILD_TIMEOUT" "${cli[@]}" build --target linux-x64 --out "$BUSY_WORK/n1" --version 1.0.1 --public-key "$BUSY_WORK/key/ephemeral-public.pem" "${sea_args[@]}"
+mode_args=()
+[ -z "$BUSY_CLIENT_MODE" ] || mode_args=(--client-mode "$BUSY_CLIENT_MODE")
+exec "${cli[@]}" acceptance-busy \
+  --exe-n "$BUSY_WORK/n/linux-x64/otheater" --version-n 1.0.0 \
+  --exe-n1 "$BUSY_WORK/n1/linux-x64/otheater" --version-n1 1.0.1 \
+  --key "$BUSY_WORK/key/ephemeral-private.pem" --install-script installer/install.sh \
+  --work-dir "$BUSY_WORK/run" --modes "$BUSY_MODES" --max-wait "$BUSY_MAX_WAIT" \
+  --resume-form "$BUSY_RESUME_FORM" --need "$BUSY_NEED" --play-timeout-ms "$BUSY_PLAY_TIMEOUT_MS" \
+  --limits "$BUSY_LIMITS" --model "$BUSY_MODEL" --profile-dir "$BUSY_PROFILE_DIR" \
+  --daemon-path "$BUSY_DAEMON_PATH" --prefix '[phase10-busy-real]' "${mode_args[@]}"
+BUSY_EOF
+fi
 # setsid põe o teste num grupo de processos próprio: o aborto mata só esse grupo, nada mais.
-if [ "$level" = play ]; then
+if [ "$level" = phase10-busy ]; then
+  setsid timeout --kill-after=30s "$run_timeout" bash "$busy_work/run.sh" >"$log" 2>&1 &
+elif [ "$level" = play ]; then
   # Um arquivo por vez, na ordem de `tests`, parando no primeiro que falha: o vitest roda arquivos
   # em paralelo e na ordem que ele escolhe, e a peça cara não deve começar se a chamada MCP falhou.
   setsid timeout --kill-after=30s "$run_timeout" bash -c \
@@ -955,7 +1063,7 @@ if [ -n "$tailer" ]; then sleep 1; kill "$tailer" 2>/dev/null || true; wait "$ta
 cleanup_code_fifo
 
 echo
-grep -E 'Test Files|Tests |✓|✗|×|FAIL|skipped|left out|\[etapa\]|\[k-measure\]|\[play-real\]|\[phase6-real\]|\[phase7-real\]|\[phase8-real\]|\[phase9-real\]|\[escape-real\]|\[quota-real\]|\[profiles-real\]' "$log" | tail -60 || true
+grep -E 'Test Files|Tests |✓|✗|×|FAIL|skipped|left out|\[etapa\]|\[k-measure\]|\[play-real\]|\[phase6-real\]|\[phase7-real\]|\[phase8-real\]|\[phase9-real\]|\[phase10-busy-real\]|\[escape-real\]|\[quota-real\]|\[profiles-real\]' "$log" | tail -60 || true
 echo
 echo "Memória disponível: ${baseline} MB no início, mínimo de ${lowest} MB durante o teste (consumo de pico ≈ $((baseline - lowest)) MB)."
 echo "Log completo: $log"

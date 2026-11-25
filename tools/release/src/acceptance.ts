@@ -41,6 +41,10 @@ import { hostTarget, type TargetId } from './targets.js';
  * take their place in a built executable; the waits of `idle` and `park` with a running attempt
  * are covered by `packages/daemon/src/updates/apply/coordinator.test.ts`. Here `idle` and `park`
  * run with the daemon quiet, and the scenario of the chat stays open across the TUI and the swap.
+ * The update with a piece in progress, in `idle` and in `park`, is the other level, with a real
+ * client (`acceptance-busy.ts`, level `phase10-busy` of `tools/acceptance/real-acceptance.sh`);
+ * it reuses the pieces exported from this file (the run, the release server, the daemon as a
+ * child, the API, the steps).
  */
 
 export interface AcceptanceOptions {
@@ -81,11 +85,12 @@ export interface AcceptanceResult {
   readonly daemonPath: 'child';
 }
 
-class Skip extends Error {}
+export class Skip extends Error {}
 
-const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+export const sleep = (ms: number): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, ms));
 
-async function until<T>(
+export async function until<T>(
   what: string,
   timeoutMs: number,
   read: () => Promise<T | undefined> | T | undefined,
@@ -107,14 +112,14 @@ async function until<T>(
 
 // ---- the release server ----------------------------------------------------------------------
 
-interface ReleaseServer {
+export interface ReleaseServer {
   /** `http://127.0.0.1:<port>/releases`, no trailing slash. */
   readonly base: string;
   readonly files: Map<string, Buffer>;
   close(): Promise<void>;
 }
 
-async function startReleaseServer(): Promise<ReleaseServer> {
+export async function startReleaseServer(): Promise<ReleaseServer> {
   const files = new Map<string, Buffer>();
   const server: Server = createServer((request, response) => {
     const url = request.url ?? '';
@@ -143,7 +148,7 @@ async function startReleaseServer(): Promise<ReleaseServer> {
 
 // ---- a release: manifest, signatures, executable --------------------------------------------
 
-interface PublishSpec {
+export interface PublishSpec {
   /** The version the manifest says. */
   readonly version: string;
   /** The executable that is served. */
@@ -159,7 +164,7 @@ interface PublishSpec {
   readonly lieSha256?: string | undefined;
 }
 
-interface Run {
+export interface Run {
   readonly options: AcceptanceOptions;
   readonly platform: NodeJS.Platform;
   readonly target: TargetId;
@@ -176,7 +181,7 @@ interface Run {
   daemonOutput: () => string;
 }
 
-async function publish(run: Run, spec: PublishSpec): Promise<void> {
+export async function publish(run: Run, spec: PublishSpec): Promise<void> {
   const dir = mkdtempSync(path.join(run.root, 'release-'));
   const name = executableAssetName(run.target);
   copyFileSync(spec.exe, path.join(dir, name));
@@ -206,13 +211,13 @@ async function publish(run: Run, spec: PublishSpec): Promise<void> {
 
 // ---- processes --------------------------------------------------------------------------------
 
-interface Finished {
+export interface Finished {
   readonly code: number | null;
   readonly stdout: string;
   readonly stderr: string;
 }
 
-function run(
+export function run(
   command: string,
   args: readonly string[],
   env: NodeJS.ProcessEnv,
@@ -240,7 +245,7 @@ function run(
   });
 }
 
-function sandboxEnv(
+export function sandboxEnv(
   root: string,
   platform: NodeJS.Platform,
 ): { home: string; data: string; env: NodeJS.ProcessEnv } {
@@ -271,13 +276,25 @@ function sandboxEnv(
   return { home, data, env };
 }
 
+/** What `writeConfig` takes besides `updates.apply_when`: the other keys of the section, and more. */
+export interface ConfigSpec {
+  readonly apply_when: string;
+  readonly health_timeout?: string;
+  /** `updates.max_wait`; default: the one of the daemon (24h). */
+  readonly max_wait?: string;
+  /** `adapters.code_host`; default `fake`. `none` survives a restart (the fake one is in memory). */
+  readonly code_host?: 'fake' | 'none';
+  /** Whole top-level sections added after the ones above (`security`, `limits`, `clients`...). */
+  readonly extra?: string;
+}
+
 /** The `config.yaml` of the daemon in the run. The keys of `updates` are the ones under test. */
-function writeConfig(r: Run, updates: { apply_when: string; health_timeout?: string }): void {
+export function writeConfig(r: Run, updates: ConfigSpec): void {
   const text = `ui:
   locale: en
 adapters:
   vault: encrypted-file
-  code_host: fake
+  code_host: ${updates.code_host ?? 'fake'}
 vault:
   scrypt: { N: 16384, r: 8, p: 1 }
 backup:
@@ -294,18 +311,18 @@ updates:
   apply_when: ${updates.apply_when}
   rollback: auto
   health_timeout: ${updates.health_timeout ?? '60s'}
-  manifest_expiry: enforce
-`;
+${updates.max_wait === undefined ? '' : `  max_wait: ${updates.max_wait}\n`}  manifest_expiry: enforce
+${updates.extra ?? ''}`;
   writeFileSync(path.join(r.data, 'config.yaml'), text);
 }
 
-interface Api {
+export interface Api {
   get(route: string): Promise<unknown>;
   send(method: string, route: string, body?: unknown): Promise<{ status: number; body: unknown }>;
-  events(prefix: string): Promise<Record<string, unknown>[]>;
+  events(prefix: string | readonly string[]): Promise<Record<string, unknown>[]>;
 }
 
-function readDiscovery(data: string): { url: string; pid: number } | undefined {
+export function readDiscovery(data: string): { url: string; pid: number } | undefined {
   try {
     return JSON.parse(readFileSync(path.join(data, 'api.json'), 'utf8')) as {
       url: string;
@@ -316,7 +333,7 @@ function readDiscovery(data: string): { url: string; pid: number } | undefined {
   }
 }
 
-function apiOf(data: string): Api {
+export function apiOf(data: string): Api {
   const call = async (
     method: string,
     route: string,
@@ -351,13 +368,17 @@ function apiOf(data: string): Api {
       const info = readDiscovery(data);
       if (info === undefined) throw new Error('no api.json');
       const token = readFileSync(path.join(data, 'api-token'), 'utf8').trim();
+      // One `types` per prefix: the daemon takes a repeated parameter, not a comma list.
+      const query = (typeof prefix === 'string' ? [prefix] : prefix)
+        .map((type) => `types=${encodeURIComponent(type)}`)
+        .join('&');
       const controller = new AbortController();
       const timer = setTimeout(() => {
         controller.abort();
       }, 2500);
       let text = '';
       try {
-        const response = await fetch(`${info.url}/v1/events?since=0&types=${prefix}`, {
+        const response = await fetch(`${info.url}/v1/events?since=0&${query}`, {
           headers: { authorization: `Bearer ${token}` },
           signal: controller.signal,
         });
@@ -387,13 +408,13 @@ function apiOf(data: string): Api {
   };
 }
 
-interface Status {
+export interface Status {
   state?: string;
   version?: string;
   pid?: number;
 }
 
-async function statusOf(r: Run): Promise<Status | undefined> {
+export async function statusOf(r: Run): Promise<Status | undefined> {
   try {
     return (await apiOf(r.data).get('/v1/status')) as Status;
   } catch {
@@ -402,7 +423,7 @@ async function statusOf(r: Run): Promise<Status | undefined> {
 }
 
 /** Starts the daemon of the installed executable as a child and waits for it to answer. */
-async function startDaemon(r: Run): Promise<number> {
+export async function startDaemon(r: Run): Promise<number> {
   const child = spawn(r.installed, ['daemon', '--data-dir', r.data], {
     env: r.env,
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -431,7 +452,7 @@ async function startDaemon(r: Run): Promise<number> {
 }
 
 /** Stops whatever daemon answers in the data folder (the child, or the one the applier started). */
-async function stopDaemon(r: Run): Promise<void> {
+export async function stopDaemon(r: Run): Promise<void> {
   const info = readDiscovery(r.data);
   const pid = info?.pid;
   if (pid !== undefined) {
@@ -460,7 +481,7 @@ async function stopDaemon(r: Run): Promise<void> {
 
 // ---- the installation -------------------------------------------------------------------------
 
-function installedPath(r: Run): string {
+export function installedPath(r: Run): string {
   if (r.platform === 'win32')
     return path.join(r.home, 'AppData', 'Local', 'OTheater', 'bin', 'otheater.exe');
   return path.join(r.home, '.local', 'share', 'otheater', 'bin', 'otheater');
@@ -471,7 +492,7 @@ function opensslChecks(openssl: string): boolean {
   return `${help.stdout}${help.stderr}`.includes('rawin');
 }
 
-async function installBy(r: Run, version: string): Promise<string> {
+export async function installBy(r: Run, version: string): Promise<string> {
   if (r.platform === 'win32') {
     mkdirSync(path.dirname(r.installed), { recursive: true });
     copyFileSync(version === r.options.versionN ? r.options.exeN : r.options.exeN1, r.installed);
@@ -501,7 +522,7 @@ async function installBy(r: Run, version: string): Promise<string> {
   return 'install.sh, signature checked against the key of the run, service off';
 }
 
-async function versionOf(exe: string, env: NodeJS.ProcessEnv): Promise<string> {
+export async function versionOf(exe: string, env: NodeJS.ProcessEnv): Promise<string> {
   const ended = await run(exe, ['--version'], env, 30_000);
   return ended.stdout.trim();
 }
@@ -538,9 +559,9 @@ async function pythonHasPty(r: Run): Promise<boolean> {
 
 // ---- the steps ----------------------------------------------------------------------------------
 
-type StepBody = (r: Run) => Promise<string>;
+export type StepBody = (r: Run) => Promise<string>;
 
-const eventsOf = async (
+export const eventsOf = async (
   r: Run,
 ): Promise<{ phase: string; reason: string | null; version: string | null }[]> => {
   const all = await apiOf(r.data).events('daemon.update');
@@ -554,7 +575,7 @@ const eventsOf = async (
   });
 };
 
-async function checkUpdate(r: Run): Promise<unknown> {
+export async function checkUpdate(r: Run): Promise<unknown> {
   const answer = await apiOf(r.data).send('POST', '/v1/updates/check');
   if (answer.status !== 200)
     throw new Error(`POST /v1/updates/check answered ${String(answer.status)}`);
@@ -704,7 +725,7 @@ async function rollbackCase(r: Run): Promise<string> {
  * while a scan or a process that just ended still holds a file), from its log: `""` when nothing, else
  * `; file calls repeated: place staged EPERM x3`. A pass that needed it says so, and does not hide it.
  */
-function retriesNote(r: Run): string {
+export function retriesNote(r: Run): string {
   const text = tailOf(path.join(path.dirname(r.installed), 'update-apply.log'), 1_000_000);
   if (text === undefined) return '';
   const counts = new Map<string, number>();
@@ -723,7 +744,7 @@ function retriesNote(r: Run): string {
 }
 
 /** The end of a text file, or undefined when it cannot be read. */
-function tailOf(file: string, chars: number): string | undefined {
+export function tailOf(file: string, chars: number): string | undefined {
   try {
     const text = readFileSync(file, 'utf8');
     return text.length > chars ? `...${text.slice(-chars)}` : text;
@@ -737,7 +758,7 @@ function tailOf(file: string, chars: number): string | undefined {
  * executable, the end of each log there and in the data folder, and the end of the output of the daemon
  * child. A timeout alone says nothing of where the update stopped.
  */
-function diagnosticsOf(r: Run): string[] {
+export function diagnosticsOf(r: Run): string[] {
   const lines: string[] = [];
   const add = (title: string, text: string | undefined): void => {
     if (text === undefined || text.trim() === '') return;
@@ -774,7 +795,7 @@ function diagnosticsOf(r: Run): string[] {
   return lines;
 }
 
-async function runSteps(
+export async function runSteps(
   r: Run,
   steps: [string, StepBody][],
   log: (line: string) => void,
@@ -819,7 +840,11 @@ async function runSteps(
   return done;
 }
 
-export async function runAcceptance(options: AcceptanceOptions): Promise<AcceptanceResult> {
+/**
+ * The sandbox of a run: a temporary folder with the HOME, the data folder and the release server
+ * on the loopback. Nothing real is touched. `closeRun` ends what it started.
+ */
+export async function openRun(options: AcceptanceOptions): Promise<Run> {
   const platform = options.platform ?? process.platform;
   const target = hostTarget();
   if (target === undefined) throw new Error('this machine is not a target of the release');
@@ -843,6 +868,30 @@ export async function runAcceptance(options: AcceptanceOptions): Promise<Accepta
     daemonOutput: () => '',
   };
   r.installed = installedPath(r);
+  return r;
+}
+
+/** Stops the daemon, closes the release server and removes the temporary folder (unless `keep`). */
+export async function closeRun(r: Run): Promise<void> {
+  const { options, server, root } = r;
+  const log = options.log;
+  await stopDaemon(r).catch(() => undefined);
+  await server.close();
+  if (options.keep !== true) {
+    // Windows keeps a file locked for a moment after its process ended: the folder is temporary,
+    // so a cleanup that still fails is a warning, never the verdict of the acceptance.
+    await sleep(1000);
+    try {
+      rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 500 });
+    } catch (error) {
+      log(`  warn  the temporary folder was not removed: ${(error as Error).message}`);
+    }
+  }
+}
+
+export async function runAcceptance(options: AcceptanceOptions): Promise<AcceptanceResult> {
+  const r = await openRun(options);
+  const { platform, target, root } = r;
   const { versionN, versionN1, exeN, exeN1 } = options;
   const otherKey = generateEphemeralKey().privatePem;
   const log = options.log;
@@ -1052,17 +1101,6 @@ export async function runAcceptance(options: AcceptanceOptions): Promise<Accepta
     const done = await runSteps(r, steps, log);
     return { ok: done.every((step) => step.ok), steps: done, daemonPath: 'child' };
   } finally {
-    await stopDaemon(r).catch(() => undefined);
-    await server.close();
-    if (options.keep !== true) {
-      // Windows keeps a file locked for a moment after its process ended: the folder is temporary,
-      // so a cleanup that still fails is a warning, never the verdict of the acceptance.
-      await sleep(1000);
-      try {
-        rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 500 });
-      } catch (error) {
-        log(`  warn  the temporary folder was not removed: ${(error as Error).message}`);
-      }
-    }
+    await closeRun(r);
   }
 }
