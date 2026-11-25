@@ -116,6 +116,14 @@ export interface SettingsTabOptions {
 export const LOGIN_OPEN_KEY = 'Ctrl+O';
 export const LOGIN_COPY_KEY = 'Ctrl+Y';
 
+/** The keys that add an account, as the keymap has them, for the texts of an empty list (N324). */
+function addKeysOf(keymap: Parameters<typeof keyLabel>[0]): { add: string; assistant: string } {
+  return {
+    add: keyLabel(keymap, 'settings.add') ?? 'A',
+    assistant: keyLabel(keymap, 'settings.assistantAccount') ?? 'W',
+  };
+}
+
 /** The id that ties the rows of one address into one hyperlink (OSC 8). */
 const LOGIN_LINK_ID = 'otheater-login';
 
@@ -721,7 +729,13 @@ function SettingsTab({ content, options }: TabProps): ReactNode {
     if (section === 'settings.subscriptions') {
       const profile = data.profiles[at];
       if (profile === undefined) {
-        say(t('settings.result.nothing'), 'warn');
+        // An empty list says which keys add an account (N324), not "nothing under the cursor".
+        say(
+          data.profiles.length === 0
+            ? t('settings.result.noAccounts', addKeysOf(keymap))
+            : t('settings.result.nothing'),
+          'warn',
+        );
         return;
       }
       if (name === 'login') {
@@ -820,7 +834,12 @@ function SettingsTab({ content, options }: TabProps): ReactNode {
       right: String(loaded.profiles.length),
     });
     if (loaded.profiles.length === 0) {
-      lines.push({ key: 'e.subs', kind: 'row', text: t('settings.empty.profiles'), dim: true });
+      lines.push({
+        key: 'e.subs',
+        kind: 'row',
+        text: t('settings.empty.profiles', addKeysOf(keymap)),
+        dim: true,
+      });
     }
     loaded.profiles.forEach((entry, index) => {
       const id = entry.profile.id;

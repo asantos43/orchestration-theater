@@ -229,6 +229,11 @@
       "edit": "Teto",
       "cancel": "Cancelar",
       "install": "Instalar adaptador"
+    },
+    "settings": {
+      "add": "Adicionar conta",
+      "login": "Login",
+      "assistant": "Assistente"
     }
   },
   "keymap": {
@@ -664,7 +669,7 @@
     "loading": "Lendo as configurações...",
     "loadFailed": "Não foi possível ler as configurações: {{message}}",
     "empty": {
-      "profiles": "Nenhuma conta ainda. Adicione uma.",
+      "profiles": "Nenhuma conta ainda. {{add}} adiciona uma; {{assistant}} abre o assistente.",
       "executors": "Nenhum Executor.",
       "roles": "Nenhum papel.",
       "overrides": "Este projeto não sobrepõe nenhuma chave."
@@ -764,6 +769,7 @@
       "badDuration": "{{key}} pede uma duração como 30m, 2h ou 45s.",
       "badAdd": "Escreva <cliente> <nome> <token_plan|api> <provedor>.",
       "nothing": "Nada sob o cursor.",
+      "noAccounts": "Nenhuma conta ainda: {{add}} adiciona uma; {{assistant}} abre o assistente.",
       "noLogin": "Só uma conta de assinatura entra por login.",
       "noAssistant": "O assistente precisa do daemon."
     }
