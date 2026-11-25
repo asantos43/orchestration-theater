@@ -77,9 +77,9 @@ describe('the plan of the assistant', () => {
     expect(plan.notes).toContainEqual(
       expect.objectContaining({ code: 'no_account', role: 'author', head: 'codex-sol-high' }),
     );
-    expect(plan.notes.filter((note) => note.code !== 'no_account').every((n) => !('head' in n))).toBe(
-      true,
-    );
+    expect(
+      plan.notes.filter((note) => note.code !== 'no_account').every((n) => !('head' in n)),
+    ).toBe(true);
   });
 
   it('proposes the suggested cap for an API account with no cap, and not when the file has one', () => {
