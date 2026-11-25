@@ -63,7 +63,7 @@ Depois, `ot --version` mostra a versão, `ot service status` mostra o serviço e
 
 ### 3.1. Os arquivos `.tmp` que sobram de uma gravação interrompida
 
-O daemon e o cliente gravam arquivo por "um temporário na mesma pasta, depois um `rename`". Um processo morto (`SIGKILL`, queda de energia) entre os dois deixa `<arquivo>.<pid>[.<hex>].tmp` na pasta **[V]** (`packages/client/src/node/temporaries.ts`). A limpeza apaga **só** o nome exato do arquivo que acabou de ser gravado (nunca por curinga: um arquivo fora do padrão, ou o temporário de outro arquivo, não é tocado) e roda depois de cada gravação com sucesso e, no daemon, ao subir. Uma falha ao apagar é aviso no log e o evento `daemon.notice` com `kind: temporary_cleanup_failed`; a gravação e o início seguem. O comportamento é a seção `temporaries` do `config.yaml` **[proposta: o nome, os modos e os padrões]**:
+O daemon e o cliente gravam arquivo por "um temporário na mesma pasta, depois um `rename`". Um processo morto (`SIGKILL`, queda de energia) entre os dois deixa `<arquivo>.<pid>[.<hex>].tmp` na pasta **[V]** (`packages/client/src/node/temporaries.ts`). A limpeza apaga **só** o nome exato do arquivo que acabou de ser gravado (nunca por curinga: um arquivo fora do padrão, ou o temporário de outro arquivo, não é tocado) e roda depois de cada gravação com sucesso e, no daemon, ao subir. Uma falha ao apagar é aviso no log e o evento `daemon.notice` com `kind: temporary_cleanup_failed`; a gravação e o início seguem. O comportamento é a seção `temporaries` do `config.yaml` (nome, modos e padrões aceitos pelo dono em 2026-11-24, N306):
 
 | Chave (`temporaries.*`) | Valores | Padrão | O que faz |
 |---|---|---|---|
