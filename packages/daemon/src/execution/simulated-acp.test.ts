@@ -2,15 +2,17 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { EventEnvelope, RolePolicy } from '@otheater/core';
+import type { EventEnvelope } from '@otheater/core';
+import { sessionModeOf } from '@otheater/adapter-client-claude-code';
 import { FakeClientAdapter, FakeClock, InMemorySecretVault } from '@otheater/core/testing';
 import { disposeTestGitIsolation, testGit } from '@otheater/sdk';
-import { afterAll, beforeAll, describe, expect } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { defaultLauncher, productionClients } from '../compose.js';
 import { parseConfig } from '../config.js';
 import { startDaemon } from '../daemon.js';
 import { createSilentLogger } from '../logger.js';
 import { makeTempDataDir, NO_CLIENTS, TEST_PROFILE } from '../test-helpers.js';
+import { ASKING_WRITER, refusedEditsOf, WRITER } from './acceptance-policy-fixture.js';
 import { makeRepo } from './attempt-fixture.js';
 import type { AttemptSpec } from './attempt-runner.js';
 import { itWithLauncher } from '../launcher-fixture.js';
@@ -23,8 +25,12 @@ import { itWithLauncher } from '../launcher-fixture.js';
  *
  * - `write-file`: the agent writes with no permission request (a client whose mode already allows
  *   the edit), so the edit completes and an edit-batch checkpoint commits it.
- * - `edit-file`: the agent asks, and the policy (`onAsk: 'reject'`, architecture 5.8 [V]) always
- *   rejects: the tool call fails, nothing is written and nothing is checkpointed.
+ * - `edit-file` under {@link ASKING_WRITER} (no `editInWorktree`): the agent asks, and the policy
+ *   (`onAsk: 'reject'`, architecture 5.8 [V]) always rejects: the tool call fails, nothing is
+ *   written and nothing is checkpointed.
+ * - `edit-file` under {@link WRITER}, the policy of the drafts of the real clients: the agent asks
+ *   (as Claude Code does when its mode does not spare the request), and layer 2 allows the edit
+ *   inside the worktree (`editInWorktree: allow`, N182), so the file lands and is checkpointed.
  */
 
 const FAKE_AGENT_CLI = fileURLToPath(new URL('../../../fake-agent/dist/cli.js', import.meta.url));
@@ -39,17 +45,6 @@ resume:
   checkpoint_every: 5m
 `);
 
-const WRITING: RolePolicy = {
-  nativeTools: ['read', 'search', 'edit', 'write'],
-  nativeShell: 'none',
-  mcpServers: [],
-  mcpTools: {},
-  onAsk: 'reject',
-  bypass: 'forbidden',
-  writeScope: 'worktree',
-  network: { allow: [] },
-};
-
 beforeAll(() => {
   if (!existsSync(FAKE_AGENT_CLI)) {
     throw new Error(`${FAKE_AGENT_CLI} does not exist: run "pnpm build" before the tests`);
@@ -63,7 +58,7 @@ function ofAttempt(events: readonly EventEnvelope[], attemptId: string): readonl
 
 describe('simulated attempts over the real ACP stdio transport', () => {
   itWithLauncher(
-    'write-file completes and is checkpointed; edit-file is refused, with no file and no checkpoint',
+    'write-file completes; edit-file is refused when the role asks and allowed inside the worktree when it writes',
     async () => {
       const tmp = await makeTempDataDir();
       const real = defaultLauncher();
@@ -88,7 +83,11 @@ describe('simulated attempts over the real ACP stdio transport', () => {
       try {
         const runner = daemon.execution?.runner;
         if (runner === undefined) throw new Error('the daemon has no execution');
-        const spec = (demandId: string, prompt: string): AttemptSpec => ({
+        const spec = (
+          demandId: string,
+          prompt: string,
+          policy: AttemptSpec['policy'] = ASKING_WRITER,
+        ): AttemptSpec => ({
           playId: 'play-sim',
           demandId,
           attempt: 1,
@@ -96,10 +95,10 @@ describe('simulated attempts over the real ACP stdio transport', () => {
           base: 'main',
           profile: TEST_PROFILE,
           executor: { model: 'fake-model' },
-          policy: WRITING,
+          policy,
           prompt,
         });
-        const [written, refused] = await Promise.all([
+        const [written, refused, allowed] = await Promise.all([
           runner.run(
             spec(
               'sim-edit',
@@ -110,6 +109,13 @@ describe('simulated attempts over the real ACP stdio transport', () => {
             spec(
               'sim-refused',
               '#script:edit-file {"path":"sim.txt","content":"simulated\\n"}\nedit',
+            ),
+          ),
+          runner.run(
+            spec(
+              'sim-allowed',
+              '#script:edit-file {"path":"draft.txt","content":"draft\\n"}\nedit',
+              WRITER,
             ),
           ),
         ]);
@@ -135,8 +141,20 @@ describe('simulated attempts over the real ACP stdio transport', () => {
           ),
         ).toBe(true);
         expect(existsSync(join(refused.worktree, 'sim.txt'))).toBe(false);
+        expect(refusedEditsOf(events, refused.attemptId)).toMatchObject([
+          { answer: 'reject', paths: [join(refused.worktree, 'sim.txt')] },
+        ]);
 
-        expect(written.worktree).not.toBe(refused.worktree);
+        // edit-file under the policy of the real drafts: the ask is allowed inside the worktree.
+        expect(allowed).toMatchObject({ state: 'completed', stopReason: 'end_turn' });
+        expect(refusedEditsOf(events, allowed.attemptId)).toEqual([]);
+        const allowedEvents = ofAttempt(events, allowed.attemptId);
+        expect(allowedEvents.map((event) => event.type)).toContain('attempt.checkpoint');
+        expect(await testGit(allowed.worktree, 'show', 'HEAD:draft.txt')).toBe('draft');
+
+        expect(new Set([written, refused, allowed].map((outcome) => outcome.worktree)).size).toBe(
+          3,
+        );
       } finally {
         await dispose();
         await daemon.stop();
@@ -145,4 +163,13 @@ describe('simulated attempts over the real ACP stdio transport', () => {
     },
     60_000,
   );
+});
+
+describe('the policies of the real acceptance', () => {
+  // The defect of 2026-11-25 [V]: the drafts of the real clients ran under a policy with no
+  // `editInWorktree`, so Claude Code opened in `default` and asked for every `Write`.
+  it('opens Claude Code in acceptEdits for the drafts and in default for the asking writer', () => {
+    expect(sessionModeOf(WRITER)).toBe('acceptEdits');
+    expect(sessionModeOf(ASKING_WRITER)).toBe('default');
+  });
 });

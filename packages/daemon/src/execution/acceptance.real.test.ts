@@ -11,7 +11,6 @@ import type {
   LaunchOptions,
   Profile,
   ProcessLauncher,
-  RolePolicy,
 } from '@otheater/core';
 import { FakeClientAdapter, FakeClock, InMemorySecretVault } from '@otheater/core/testing';
 import { disposeTestGitIsolation, realClientFlags, testGit } from '@otheater/sdk';
@@ -23,6 +22,13 @@ import { startDaemon, type DaemonHandle } from '../daemon.js';
 import { createSilentLogger } from '../logger.js';
 import { dataPaths } from '../paths.js';
 import { makeTempDataDir, TEST_PROFILE } from '../test-helpers.js';
+import {
+  ASKING_WRITER,
+  READ_ONLY,
+  refusedEditsOf,
+  WRITER,
+  type RefusedEdit,
+} from './acceptance-policy-fixture.js';
 import { makeRepo } from './attempt-fixture.js';
 import type { AttemptOutcome, AttemptSpec } from './attempt-runner.js';
 
@@ -112,18 +118,6 @@ const EMPTY_PROFILE_OUTCOME: Readonly<Record<ClientId, 'session' | 'auth_require
   codex: 'auth_required',
   opencode: 'session',
 };
-
-const READ_ONLY: RolePolicy = {
-  nativeTools: ['read', 'search'],
-  nativeShell: 'none',
-  mcpServers: [],
-  mcpTools: {},
-  onAsk: 'reject',
-  bypass: 'forbidden',
-  writeScope: 'worktree',
-  network: { allow: [] },
-};
-const WRITING: RolePolicy = { ...READ_ONLY, nativeTools: ['read', 'search', 'edit', 'write'] };
 
 afterAll(disposeTestGitIsolation);
 
@@ -242,6 +236,26 @@ async function waitFor(
   throw new Error(`timed out waiting for ${what}`);
 }
 
+/**
+ * [proposta] How many refused edits of a draft end the wait at once. One is not enough: a model may
+ * try a path outside the worktree first (refused by design) and then the right one.
+ */
+const REFUSED_EDITS_LIMIT = 3;
+
+/** Why a draft will not come: the attempt ended, or the edits layer 2 refused (tool, rule, paths). */
+function draftFailure(demand: string, ended: boolean, refused: readonly RefusedEdit[]): string {
+  const cause = ended
+    ? 'the attempt ended before draft.txt was written'
+    : `layer 2 refused ${String(refused.length)} edits`;
+  const shown = refused
+    .slice(0, REFUSED_EDITS_LIMIT)
+    .map(
+      (edit) =>
+        `${edit.tool} ${edit.answer} (${edit.rule}: ${edit.reason}) ${edit.paths.join(', ')}`,
+    );
+  return [`${demand}: ${cause}`, ...shown].join('\n  ');
+}
+
 async function exists(path: string): Promise<boolean> {
   try {
     await stat(path);
@@ -354,7 +368,7 @@ describe.skipIf(!flags.clients || !flags.prompts || !supported)(
             base: 'main',
             profile,
             executor: { model: 'fake-model' },
-            policy: WRITING,
+            policy: ASKING_WRITER,
             prompt,
             ...options,
           });
@@ -402,9 +416,12 @@ describe.skipIf(!flags.clients || !flags.prompts || !supported)(
               ),
             ),
           }));
+          // The drafts write the way the Actor does by default (`WRITER`, N182): Claude Code opens
+          // in `acceptEdits`, and an edit that still asks is allowed inside the worktree.
           const drafts = ready.map((selection) => ({
             selection,
             demand: `draft-${selection.id}`,
+            ended: false,
             done: runner.run(
               realSpec(
                 selection,
@@ -414,10 +431,15 @@ describe.skipIf(!flags.clients || !flags.prompts || !supported)(
                   'Then, without stopping, create the files f1.txt to f300.txt, one tool call each,',
                   'with the number of the file as its content. Do not answer before you finish.',
                 ].join(' '),
-                { timeoutMs: TIMEOUT_MS },
+                { policy: WRITER, timeoutMs: TIMEOUT_MS },
               ),
             ),
           }));
+          for (const draft of drafts) {
+            void draft.done.finally(() => {
+              draft.ended = true;
+            });
+          }
           // `write-file` writes with no permission request (a client whose mode already allows the
           // edit); `edit-file` asks, and the policy rejects every ask (`onAsk: 'reject'`, 5.8).
           const edited = runner.run(
@@ -434,10 +456,23 @@ describe.skipIf(!flags.clients || !flags.prompts || !supported)(
           );
           const hung = runner.run(simulated('sim-hang', '#script:hang', TIMEOUT_MS));
           await hanging('play-real/sim-hang/1');
-          for (const { demand } of drafts) {
+          for (const draft of drafts) {
+            const attemptId = `play-real/${draft.demand}/1`;
             await waitFor(
-              () => exists(join(worktreeOf(demand), 'draft.txt')),
-              `${demand} to write draft.txt`,
+              async () => {
+                if (await exists(join(worktreeOf(draft.demand), 'draft.txt'))) return true;
+                // [proposta] Fail fast instead of waiting the 10 minutes: an attempt that ended,
+                // or whose edits layer 2 refused again and again, will not write the draft.
+                const refused = refusedEditsOf(
+                  await rig.daemon.store.events.readFrom(0, 100_000),
+                  attemptId,
+                );
+                if (refused.length >= REFUSED_EDITS_LIMIT || draft.ended) {
+                  throw new Error(draftFailure(draft.demand, draft.ended, refused));
+                }
+                return false;
+              },
+              `${draft.demand} to write draft.txt`,
               10 * MINUTE,
             );
           }
