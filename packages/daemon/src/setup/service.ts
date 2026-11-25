@@ -33,6 +33,7 @@ import {
   type SetupFlowStatus,
   type SetupNote,
   type SetupOverview,
+  type SetupRedetectResult,
   type SetupPrompt,
   type SetupResult,
   type SetupRunView,
@@ -41,6 +42,7 @@ import {
 } from '@otheater/protocol';
 import { redactTree, treeAt } from '../api/routes/redact.js';
 import { editConfigFile } from '../config-edit.js';
+import type { ClientRedetectTrigger } from '../client-redetect.js';
 import type { ConfigReload } from '../config-reload.js';
 import { loadConfig, type DaemonConfig } from '../config.js';
 import { executorConfigEntry, type ExecutorService } from '../executors/service.js';
@@ -52,6 +54,7 @@ import {
   detectClients,
   detectedProfileOf,
   detectProfiles,
+  type ClientReasons,
   type InstalledClients,
 } from './detect.js';
 import { discoverForPreset } from './discover.js';
@@ -88,6 +91,14 @@ export interface SetupServiceOptions {
   readonly catalogs: (client: string) => ModelCatalog | undefined;
   /** The clients that can run on this machine. */
   readonly installedClients: InstalledClients;
+  /** Why each client is on or off (P18, N321); absent, the steps carry no reason. */
+  readonly clientReasons?: ClientReasons | undefined;
+  /**
+   * Looks for the clients again (P18, N321) and gives the ones it added: `open` before the
+   * assistant shows them (each time it opens and starts a run; it never throws), `asked` when the
+   * Producer asks ({@link SetupService.redetect}).
+   */
+  readonly redetect?: ((trigger: ClientRedetectTrigger) => Promise<readonly string[]>) | undefined;
   /**
    * Takes the confirmed write into the running daemon (P23, N208 item 3): the same reload as
    * `PUT /v1/config`. Absent (a test, a tool with no daemon), the file is read at the next start.
@@ -247,6 +258,7 @@ export class SetupService {
   /** Whether a first run is needed, and the run to resume in each flow. */
   async overview(): Promise<SetupOverview> {
     const { store } = this.#o;
+    await this.#o.redetect?.('open');
     const config = await loadConfig(this.#o.configPath);
     const runs = await store.setupRuns.list();
     const confirmedFirstRun = runs.some(
@@ -280,6 +292,18 @@ export class SetupService {
     };
   }
 
+  /**
+   * Looks for the clients again now (P18, N321; the R key of the assistant), whatever
+   * `clients.detection.redetect` says, and gives what changed and the clients as they are.
+   */
+  async redetect(): Promise<SetupRedetectResult> {
+    const added = (await this.#o.redetect?.('asked')) ?? [];
+    return {
+      added: [...added],
+      clients: detectClients(this.#o.installedClients, this.#o.clientReasons),
+    };
+  }
+
   async get(runId: string): Promise<SetupRunView> {
     const run = await this.#run(runId);
     return this.#view(run, await loadConfig(this.#o.configPath));
@@ -289,6 +313,7 @@ export class SetupService {
 
   async start(flow: SetupFlow): Promise<SetupRunView> {
     const { store } = this.#o;
+    await this.#o.redetect?.('open');
     let run: SetupRunRecord;
     try {
       run = await store.setupRuns.create({ flow, step: firstStepOf(flow) });
@@ -471,7 +496,7 @@ export class SetupService {
       case 'detect':
         return {
           step,
-          clients: detectClients(this.#o.installedClients),
+          clients: detectClients(this.#o.installedClients, this.#o.clientReasons),
           profiles: await detectProfiles(this.#o.profiles, { checkLogin: true }),
         };
       case 'account':
@@ -511,7 +536,7 @@ export class SetupService {
         const input = SetupDetectInputSchema.parse(body.input);
         const profiles = await detectProfiles(this.#o.profiles, { checkLogin: true });
         return {
-          clients: detectClients(this.#o.installedClients),
+          clients: detectClients(this.#o.installedClients, this.#o.clientReasons),
           profiles,
           accounts: confirmAccounts(profiles, input.accounts),
         };

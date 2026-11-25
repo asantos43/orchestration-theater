@@ -19115,6 +19115,20 @@
               },
               "installed": {
                 "type": "boolean"
+              },
+              "reason": {
+                "type": "string",
+                "enum": [
+                  "disabled",
+                  "command_configured",
+                  "found_in_path",
+                  "adapter_configured",
+                  "managed_installed",
+                  "managed_pending",
+                  "adapter_missing",
+                  "not_found",
+                  "forced_not_found"
+                ]
               }
             },
             "required": [
@@ -20070,6 +20084,20 @@
               },
               "installed": {
                 "type": "boolean"
+              },
+              "reason": {
+                "type": "string",
+                "enum": [
+                  "disabled",
+                  "command_configured",
+                  "found_in_path",
+                  "adapter_configured",
+                  "managed_installed",
+                  "managed_pending",
+                  "adapter_missing",
+                  "not_found",
+                  "forced_not_found"
+                ]
               }
             },
             "required": [
@@ -21060,6 +21088,20 @@
               },
               "installed": {
                 "type": "boolean"
+              },
+              "reason": {
+                "type": "string",
+                "enum": [
+                  "disabled",
+                  "command_configured",
+                  "found_in_path",
+                  "adapter_configured",
+                  "managed_installed",
+                  "managed_pending",
+                  "adapter_missing",
+                  "not_found",
+                  "forced_not_found"
+                ]
               }
             },
             "required": [
@@ -22049,6 +22091,20 @@
               },
               "installed": {
                 "type": "boolean"
+              },
+              "reason": {
+                "type": "string",
+                "enum": [
+                  "disabled",
+                  "command_configured",
+                  "found_in_path",
+                  "adapter_configured",
+                  "managed_installed",
+                  "managed_pending",
+                  "adapter_missing",
+                  "not_found",
+                  "forced_not_found"
+                ]
               }
             },
             "required": [
@@ -23038,6 +23094,20 @@
               },
               "installed": {
                 "type": "boolean"
+              },
+              "reason": {
+                "type": "string",
+                "enum": [
+                  "disabled",
+                  "command_configured",
+                  "found_in_path",
+                  "adapter_configured",
+                  "managed_installed",
+                  "managed_pending",
+                  "adapter_missing",
+                  "not_found",
+                  "forced_not_found"
+                ]
               }
             },
             "required": [
@@ -24027,6 +24097,20 @@
               },
               "installed": {
                 "type": "boolean"
+              },
+              "reason": {
+                "type": "string",
+                "enum": [
+                  "disabled",
+                  "command_configured",
+                  "found_in_path",
+                  "adapter_configured",
+                  "managed_installed",
+                  "managed_pending",
+                  "adapter_missing",
+                  "not_found",
+                  "forced_not_found"
+                ]
               }
             },
             "required": [
@@ -24600,6 +24684,91 @@
             "additionalProperties": false
           }
         }
+      }
+    },
+    {
+      "id": "redetectSetupClients",
+      "method": "POST",
+      "path": "/v1/setup/redetect",
+      "kind": "json",
+      "summary": "Looks for the clients again without a restart (on Windows also in the Path of the registry); a client found enters the pool",
+      "pathParams": [],
+      "response": {
+        "type": "object",
+        "properties": {
+          "added": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "clients": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "client": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "installed": {
+                  "type": "boolean"
+                },
+                "reason": {
+                  "type": "string",
+                  "enum": [
+                    "disabled",
+                    "command_configured",
+                    "found_in_path",
+                    "adapter_configured",
+                    "managed_installed",
+                    "managed_pending",
+                    "adapter_missing",
+                    "not_found",
+                    "forced_not_found"
+                  ]
+                }
+              },
+              "required": [
+                "client",
+                "installed"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "added",
+          "clients"
+        ],
+        "additionalProperties": false
+      },
+      "errors": {
+        "400": [
+          "invalid_input"
+        ],
+        "401": [
+          "unauthorized"
+        ],
+        "403": [
+          "forbidden"
+        ],
+        "500": [
+          "internal"
+        ]
+      },
+      "headers": {
+        "type": "object",
+        "properties": {
+          "idempotency-key": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255,
+            "pattern": "^[\\x21-\\x7e]+$"
+          }
+        },
+        "additionalProperties": {}
       }
     },
     {

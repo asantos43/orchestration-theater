@@ -278,7 +278,7 @@ export async function runProfileExec(
 
     const mode = config.profiles.exec.env_inherit;
     const clientSettings = (
-      config.clients as Omit<typeof config.clients, 'adapters'> as Readonly<
+      config.clients as Omit<typeof config.clients, 'adapters' | 'detection'> as Readonly<
         Record<string, ClientEnvSettings>
       >
     )[record.client];

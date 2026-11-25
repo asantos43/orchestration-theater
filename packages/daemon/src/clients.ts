@@ -43,6 +43,17 @@ export interface ClientFactoryParts {
    * also written, as `daemon.notice`. Absent: only the log (tests).
    */
   readonly situations?: SituationSink;
+  /**
+   * P18 (N321): the clients the pool already has, when the daemon looks for the clients again. The
+   * factory neither chooses nor builds them (no log line, no install of their adapter again). A
+   * factory that does not read it builds them anyway, and the daemon drops what the pool has.
+   */
+  readonly skip?: ReadonlySet<ClientId>;
+  /**
+   * P18 (N321): told once per build with the choice of each client it looked at, so the setup
+   * assistant can say why a client was not found. A test factory may leave it uncalled.
+   */
+  readonly report?: (selections: readonly ClientSelection[]) => void;
 }
 
 /** What a client adapter takes of layer 3 (`ClientAdapterOptions.sandbox` and `.launchWrapper`). */
