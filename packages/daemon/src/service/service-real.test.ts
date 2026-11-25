@@ -80,6 +80,8 @@ describe.skipIf(!ENABLED)(
         }
         const installed = await manager.status();
         expect(installed.installed).toBe(true);
+        // N323 (5): on Windows "starts at logon" comes from the XML that the real schtasks prints.
+        if (manager.kind === 'task') expect(installed.enabled).toBe(true);
         if (installed.note === 'no_session') {
           console.warn('no user session on this runner: the install is checked, the start is not');
         } else {
