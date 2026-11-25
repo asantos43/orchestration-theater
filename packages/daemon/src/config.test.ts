@@ -76,6 +76,7 @@ describe('parseConfig', () => {
       clock: 'system',
       prompts: 'files',
       code_host: 'auto', // Phase 11, P13 (N289)
+      issue_tracker: 'same_as_code_host', // Phase 11b, P7 (N313)
     });
     expect(config.backup).toEqual({
       when: 'daily_after',

@@ -25,6 +25,21 @@ export interface CodeHostHarness extends Disposable {
    * merging `head` into the base conflicts. Nothing is pushed.
    */
   readonly conflict: (head: string) => Promise<void>;
+  /**
+   * Puts a completed CI run on the commit `sha` (the head of a pull request), as the host would
+   * after running a workflow (port 0.2.0, `fetchCiLog`). The runs of a commit are read back in the
+   * order they were put.
+   */
+  readonly seedCiRun: (sha: string, run: CiRunSeed) => Promise<void>;
+}
+
+/** A completed CI run the suite puts on a commit. */
+export interface CiRunSeed {
+  readonly name: string;
+  /** `success`, `failure`... */
+  readonly conclusion: string;
+  /** The log of its failed steps (read only when it failed). */
+  readonly log: string;
 }
 
 function codeOf(error: unknown): string | undefined {
@@ -314,6 +329,114 @@ export function describeCodeHostConformance(
           const { codeHost, repo, baseBranch } = harness();
           expect(await codeHost.isBranchMerged({ repo, head: baseBranch, base: baseBranch })).toBe(
             true,
+          );
+        },
+        TEST_TIMEOUT_MS,
+      );
+    });
+    describe('fetchPullRequest and fetchCiLog (0.2.0)', () => {
+      const opened = async (): Promise<{ number: number; headSha: string }> => {
+        const { codeHost, repo, baseBranch } = harness();
+        const headSha = await pushed('feature');
+        const pull = await codeHost.openPullRequest({
+          repo,
+          head: 'feature',
+          base: baseBranch,
+          title: 'The feature',
+          body: 'What it does.',
+        });
+        return { number: pull.number, headSha };
+      };
+
+      it(
+        'fetchPullRequest returns the PR with its body, author, head sha and labels',
+        async () => {
+          const { codeHost, repo, baseBranch } = harness();
+          const { number, headSha } = await opened();
+          const details = await codeHost.fetchPullRequest({ repo, number });
+          expect(details.number).toBe(number);
+          expect(details.title).toBe('The feature');
+          expect(details.body).toBe('What it does.');
+          expect(details.state).toBe('open');
+          expect(details.headBranch).toBe('feature');
+          expect(details.baseBranch).toBe(baseBranch);
+          expect(details.headSha).toBe(headSha);
+          expect(details.author).not.toBe('');
+          expect(details.labels).toEqual([]);
+        },
+        TEST_TIMEOUT_MS,
+      );
+
+      it(
+        'fetchPullRequest of a number that is not a PR is NotFound; a bad number is InvalidInput',
+        async () => {
+          const { codeHost, repo } = harness();
+          expect(codeOf(await rejectionOf(codeHost.fetchPullRequest({ repo, number: 999 })))).toBe(
+            'NOT_FOUND',
+          );
+          expect(codeOf(await rejectionOf(codeHost.fetchPullRequest({ repo, number: 0 })))).toBe(
+            'INVALID_INPUT',
+          );
+        },
+        TEST_TIMEOUT_MS,
+      );
+
+      it(
+        'fetchCiLog of a head with no runs has no runs and an empty log',
+        async () => {
+          const { codeHost, repo } = harness();
+          const { number, headSha } = await opened();
+          expect(await codeHost.fetchCiLog({ repo, number })).toEqual({
+            headSha,
+            runs: [],
+            log: '',
+            truncated: false,
+          });
+        },
+        TEST_TIMEOUT_MS,
+      );
+
+      it(
+        'fetchCiLog lists every run and keeps the log of the failed ones only',
+        async () => {
+          const { codeHost, repo, seedCiRun } = harness();
+          const { number, headSha } = await opened();
+          await seedCiRun(headSha, { name: 'lint', conclusion: 'success', log: 'lint is fine' });
+          await seedCiRun(headSha, { name: 'test', conclusion: 'failure', log: 'boom at line 3' });
+          const ci = await codeHost.fetchCiLog({ repo, number });
+          expect(ci.headSha).toBe(headSha);
+          expect(ci.runs.map((run) => [run.name, run.status, run.conclusion])).toEqual([
+            ['lint', 'completed', 'success'],
+            ['test', 'completed', 'failure'],
+          ]);
+          const failed = ci.runs[1];
+          expect(ci.log).toContain(`== test (${failed?.id ?? ''}) ==`);
+          expect(ci.log).toContain('boom at line 3');
+          expect(ci.log).not.toContain('lint is fine');
+          expect(ci.truncated).toBe(false);
+        },
+        TEST_TIMEOUT_MS,
+      );
+
+      it(
+        'fetchCiLog keeps the end of a long log, and a bad maxChars is InvalidInput',
+        async () => {
+          const { codeHost, repo, seedCiRun } = harness();
+          const { number, headSha } = await opened();
+          await seedCiRun(headSha, {
+            name: 'test',
+            conclusion: 'failure',
+            log: `${'x'.repeat(500)}\nthe error`,
+          });
+          const ci = await codeHost.fetchCiLog({ repo, number, maxChars: 40 });
+          expect(ci.truncated).toBe(true);
+          expect(ci.log.length).toBeLessThanOrEqual(40);
+          expect(ci.log).toContain('the error');
+          expect(
+            codeOf(await rejectionOf(codeHost.fetchCiLog({ repo, number, maxChars: 0 }))),
+          ).toBe('INVALID_INPUT');
+          expect(codeOf(await rejectionOf(codeHost.fetchCiLog({ repo, number: 999 })))).toBe(
+            'NOT_FOUND',
           );
         },
         TEST_TIMEOUT_MS,

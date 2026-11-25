@@ -93,7 +93,7 @@ O `@otheater/workflows` é pacote novo do monorepo, não dependência de fora. E
 | P4 | Versão de nascimento e migração em ponto seguro (N295), com a 2.0 → 2.1 de teste e o caos sobre workflows gerados | P3 | P10, P12 | a fazer |
 | P5 | Biblioteca e vínculos (N296): tabelas, `workflows.default` e `allowed`, estados do vínculo, prazo, orçamento por período, concorrência | P1 | P2, P14 | a fazer |
 | P6 | Gatilhos: laço de sondagem mínimo (D3), eventos internos, eventos de plugin declarados (D6), filtro de autor | P5 | P3, P8, P9 | a fazer |
-| P7 | Porta `IssueTracker` (D4), adaptador GitHub, falso, conformidade; `fetchPullRequest` e `fetchCiLog` na `CodeHost` | P0 | P1, P13 | a fazer |
+| P7 | Porta `IssueTracker` (D4), adaptador GitHub, falso, conformidade; `fetchPullRequest` e `fetchCiLog` na `CodeHost` | P0 | P1, P13 | em PR |
 | P8 | Tipos de passo do code host (`fetch_issue`, `fetch_pr`, `fetch_ci_log`, `comment`, `label`), aprovação antes de push e comentário, texto externo marcado | P2, P7 | P3, P6, P9 | a fazer |
 | P9 | Pacotes de workflow (N298): arquivo ou git com ref fixa, permissões na instalação, SSHSIG e chaves confiáveis (D5) | P1, P5 | P3, P6, P8 | a fazer |
 | P10 | API e CLI: validar, simular com o `fake-agent`, salvar, ativar, diff, listar, instalar (`ot flow ...`) | P4, P5, P9 | P12 | a fazer |
@@ -102,12 +102,13 @@ O `@otheater/workflows` é pacote novo do monorepo, não dependência de fora. E
 | P13 | Mural de recados da peça (N308, opção 1): `post_note`, `read_notes` | P0 | P1, P7 | em PR |
 | P14 | Supervisão do Diretor (N309): sinais, `warn` e `redirect`, o canal pela resposta MCP (D8) e os três extras | P13 | P2, P5 | a fazer |
 | P15 | `ask_director` (N308, opção 2): o `blocked` que não encerra, com espera, prazo e o modo `relay` pelo canal do P14 | P14 | P3 a P12 | a fazer |
-| P16 | Aceite da fase | P1 a P15 | nada | a fazer |
+| P16 | Aceite da fase | P1 a P15, P17 | nada | a fazer |
+| P17 | Testes da TUI num terminal real com o `@microsoft/tui-test` (N320) | P1, P7, P13 | os da onda 2 | a fazer |
 
 Ondas **[proposta, forma decidida na D9]**:
 
 - onda 1, logo depois do merge deste plano: **P1, P7 e P13**, em paralelo (três agentes);
-- onda 2: **P2, P5 e P14**;
+- onda 2: **P2, P5 e P14**, e o **P17** (N320, acrescentado em 2026-11-25), que mexe só nos testes da TUI e na CI;
 - onda 3: **P3, P8 e P9**, e depois **P6** e **P15**, assim que uma vaga abrir;
 - onda 4: **P4, P10 e P12**;
 - onda 5: **P11** e **P16**.
@@ -307,7 +308,23 @@ Todos **[proposta]** quanto ao nome. Cada um entra no catálogo do protocolo e n
 - **[proposta]** O log de CI e os dados do PR ficam na `CodeHost`, que é onde o GitHub os serve; só issue, comentário e rótulo vão para a porta nova.
 - **Aceite próprio:** a suíte de conformidade passa no falso e no adaptador GitHub (este com o `gh` falso dos testes de hoje); o guia do docs/25 ganha a porta.
 
-**Como ficou:** a preencher.
+**Como ficou** (2026-11-25, [V] com os testes locais de core, sdk, adaptador GitHub, protocol e daemon):
+
+- Porta `IssueTracker` 0.1.0 em `core/src/ports/issue-tracker.ts`. Ela busca e lista issues (filtro de estado, de todos os rótulos, de autor e de data, `limit` de 1 a 100), comenta em issue e em PR, e põe e tira rótulo. Os erros são `NotFound` para número ausente ou do outro tipo e `InvalidInput` para entrada ruim. O falso tem diário e fica em `core/testing`.
+- Na `CodeHost` (contrato `0.2.0`): `fetchPullRequest` (corpo, autor, rótulos e sha da cabeça) e `fetchCiLog` (as rodadas do sha, com o log das que falharam, cortado no tamanho pedido). O `LocalCodeHost` responde pelo PR gravado, com autor `local` e CI vazia.
+- Adaptador GitHub (`GithubIssueTracker`): `gh api` sobre a API REST, com a autenticação do próprio `gh`, as mesmas opções do code host e o `gh` falso dos testes. A lista pula os PRs que a API mistura nas issues e lê no máximo 5 páginas.
+- Suítes `describeIssueTrackerConformance` e as novas da `describeCodeHostConformance`, no falso e no adaptador GitHub.
+- No daemon: a chave `adapters.issue_tracker` (`same_as_code_host`, o padrão; `github`; `none`). Com o code host `auto`, o tracker segue o code host de cada repositório. O code host e o tracker do GitHub saem de uma montagem só, que lê o token uma vez. Quando o tracker `github` não pode ser montado, há aviso e o evento `daemon.notice` `issue_tracker_unavailable`, e as chamadas caem em `AdapterUnavailable` com o motivo.
+- Escolhas [proposta], que vão ao dono:
+  - o log de CI e os dados do PR ficam na `CodeHost`;
+  - o mapeamento `queued`;
+  - os limites de página (`MAX_LIST_PAGES = 5`) e de lista;
+  - `ghost` para conta apagada e `local` como autor do code host local;
+  - sem tracker quando o code host é `none` ou `fake`;
+  - REST pelo `gh api`, com as mesmas opções do code host;
+  - o `remote` das opções, que o `gh` não usa;
+  - o evento `issue_tracker_unavailable`;
+  - o padrão `same_as_code_host`.
 
 ### P8. Tipos de passo do code host e a aprovação
 
@@ -429,6 +446,19 @@ Todos **[proposta]** quanto ao nome. Cada um entra no catálogo do protocolo e n
   - a pergunta direta a outro Ator (N308, opção 3) fica para depois da 10b;
   - o editor visual fica para a Fase 12;
   - a Fase 9b completa continua fase própria.
+
+**Como ficou:** a preencher.
+
+### P17. Testes da TUI num terminal real (N320)
+
+**Arquivos:** `packages/tui/package.json` (o `@microsoft/tui-test` fixado em `0.1.1`, só como dependência de desenvolvimento), `packages/tui/src/terminal.test-support.ts` (novo), `packages/tui/src/pty.focus.test.ts` (refeito em cima dele), `packages/tui/src/tui-terminal.e2e.test.ts` (novo) e o job da CI que roda esses testes nos três sistemas.
+
+- O suporte abre o `ot tui` compilado contra o daemon do fake-agent (`startChatDaemon`), num terminal emulado, com HOME e pastas temporárias, e fecha tudo no fim.
+- O terminal vem da chave `OT_TUI_TEST_BACKEND`: `alacritty` (o padrão), `xtermjs`, `ghostty` ou `all`, que roda cada teste nos três.
+- O e2e cobre o que o `ink-testing-library` não vê: as cores do tema, o link OSC 8, o clique do mouse por área, o redimensionamento, o Ctrl+C e a saída limpa do binário real.
+- Na falha, o trace (`trace.md`) e o texto da tela vão como artefato da CI, para leitura sem rodar de novo.
+- Onde falta o build ou o binário da plataforma, o teste é pulado; com `OT_REQUIRE_PTY=1`, o pulo vira falha, como hoje.
+- **Aceite próprio:** os testes passam na CI de Linux, macOS e Windows. Um tema com a cor trocada faz o teste de cor falhar.
 
 **Como ficou:** a preencher.
 

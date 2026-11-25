@@ -1,28 +1,45 @@
 // SPDX-License-Identifier: MPL-2.0
-import { isAbsolute } from 'node:path';
 import {
   AdapterUnavailable,
   assertBranchName,
+  assertItemNumber,
   assertNonEmptyText,
+  ciLogMaxChars,
   CODE_HOST_PORT_VERSION,
   DEFAULT_REMOTE,
-  InvalidInput,
+  isFailedCiRun,
+  joinCiLogs,
   NotFound,
   PULL_REQUEST_STATES,
   type Adapter,
   type BranchTarget,
+  type CiLog,
+  type CiRun,
   type CodeHost,
+  type FetchCiLogOptions,
+  type FetchPullRequestOptions,
   type FindPullRequestOptions,
   type MergeBranchOptions,
   type MergeBranchResult,
   type OpenPullRequestOptions,
   type ProcessLauncher,
   type PullRequest,
+  type PullRequestDetails,
 } from '@otheater/core';
 import { z } from 'zod';
 import type { GithubCodeHostConfigInput } from './config.js';
 import { GithubCodeHostConfigSchema } from './config.js';
 import { classifyPushFailure, classifyToolFailure } from './failure.js';
+import {
+  assertAbsolutePath,
+  GhApi,
+  ghTime,
+  labelNames,
+  LabelsJsonSchema,
+  loginOf,
+  notFoundAs,
+  UserJsonSchema,
+} from './gh-api.js';
 import { ToolRunner, type ToolResult } from './runner.js';
 
 /** Identity of this adapter for the composition point (architecture 5.18). */
@@ -58,6 +75,39 @@ const PULL_REQUEST_LIMIT = '100';
 
 const SHA = /^[0-9a-f]{40}([0-9a-f]{24})?$/;
 
+/** What `GET repos/{owner}/{repo}/pulls/N` returns, for the fields this adapter reads. */
+const PullJsonSchema = z.object({
+  number: z.number().int().positive(),
+  html_url: z.string().min(1),
+  state: z.string(),
+  merged_at: z.string().nullable().optional(),
+  draft: z.boolean().optional(),
+  title: z.string(),
+  body: z.string().nullable().optional(),
+  created_at: z.string(),
+  user: UserJsonSchema,
+  labels: LabelsJsonSchema,
+  head: z.object({ ref: z.string(), sha: z.string() }),
+  base: z.object({ ref: z.string() }),
+});
+
+/** What `GET repos/{owner}/{repo}/actions/runs` returns, for the fields this adapter reads. */
+const RunsJsonSchema = z.object({
+  workflow_runs: z.array(
+    z.object({
+      id: z.number().int(),
+      name: z.string().nullable().optional(),
+      status: z.string().nullable(),
+      conclusion: z.string().nullable(),
+      html_url: z.string(),
+      created_at: z.string(),
+    }),
+  ),
+});
+
+/** Runs of one commit `fetchCiLog` reads (one page of the API). [proposta] */
+const CI_RUNS_PAGE = '100';
+
 /**
  * The `CodeHost` port over the GitHub CLI (architecture 5.5, 5.18). Pull requests and the direct
  * merge go through `gh` (its own authentication, no token of ours); the push and the question "is
@@ -74,6 +124,7 @@ export class GithubCodeHost implements CodeHost {
   readonly #runner: ToolRunner;
   readonly #gh: string;
   readonly #git: string;
+  readonly #api: GhApi;
 
   constructor(options: GithubCodeHostOptions) {
     const config = GithubCodeHostConfigSchema.parse(options.config ?? {});
@@ -86,6 +137,7 @@ export class GithubCodeHost implements CodeHost {
       env: config.env,
       ...(options.parentEnv === undefined ? {} : { parentEnv: options.parentEnv }),
     });
+    this.#api = new GhApi(this.#runner, this.#gh);
   }
 
   async pushRef(target: BranchTarget): Promise<string> {
@@ -236,6 +288,55 @@ export class GithubCodeHost implements CodeHost {
     throw new AdapterUnavailable(`gh api compare answered an unknown status: ${status}`);
   }
 
+  async fetchPullRequest(opts: FetchPullRequestOptions): Promise<PullRequestDetails> {
+    assertAbsolutePath(opts.repo);
+    assertItemNumber('pull request number', opts.number);
+    let raw: z.output<typeof PullJsonSchema>;
+    try {
+      raw = await this.#api.json(
+        opts.repo,
+        'GET',
+        `repos/{owner}/{repo}/pulls/${String(opts.number)}`,
+        PullJsonSchema,
+      );
+    } catch (error) {
+      throw notFoundAs(`pull request #${String(opts.number)}`, error);
+    }
+    return pullDetails(raw);
+  }
+
+  /**
+   * The runs of the head of the pull request (one page of the API, oldest first) and, for each
+   * failed one, `gh run view <id> --log-failed`, joined and cut by `joinCiLogs`. [proposta]
+   */
+  async fetchCiLog(opts: FetchCiLogOptions): Promise<CiLog> {
+    const maxChars = ciLogMaxChars(opts.maxChars);
+    const pull = await this.fetchPullRequest(opts);
+    const answer = await this.#api.json(
+      opts.repo,
+      'GET',
+      'repos/{owner}/{repo}/actions/runs',
+      RunsJsonSchema,
+      [
+        ['head_sha', pull.headSha],
+        ['per_page', CI_RUNS_PAGE],
+      ],
+    );
+    const runs = parseRuns(answer);
+    const parts: { run: CiRun; text: string }[] = [];
+    for (const run of runs.filter(isFailedCiRun)) {
+      const text = await this.#api.run(opts.repo, 'gh run view', [
+        'run',
+        'view',
+        run.id,
+        '--log-failed',
+      ]);
+      parts.push({ run, text });
+    }
+    const { log, truncated } = joinCiLogs(parts, maxChars);
+    return { headSha: pull.headSha, runs, log, truncated };
+  }
+
   async #localSha(repo: string, branch: string): Promise<string> {
     const result = await this.#runner.run(
       this.#git,
@@ -267,10 +368,47 @@ function checkedTarget(target: BranchTarget): { repo: string; branch: string; re
   return { repo: target.repo, branch: target.branch, remote };
 }
 
-function assertAbsolutePath(path: string): void {
-  if (path === '' || path.includes('\0') || !isAbsolute(path)) {
-    throw new InvalidInput(`repo must be an absolute path: ${JSON.stringify(path)}`);
+/** The pull request of `GET pulls/N`, in the terms of the port. */
+export function pullDetails(raw: z.output<typeof PullJsonSchema>): PullRequestDetails {
+  const state = raw.merged_at != null ? 'merged' : raw.state.toLowerCase();
+  if (!isPullRequestState(state)) {
+    throw new AdapterUnavailable(`gh api pulls printed an unknown state: ${raw.state}`);
   }
+  return {
+    number: raw.number,
+    url: raw.html_url,
+    state,
+    headBranch: raw.head.ref,
+    baseBranch: raw.base.ref,
+    title: raw.title,
+    draft: raw.draft ?? false,
+    createdAt: ghTime('gh api pulls', raw.created_at),
+    body: raw.body ?? '',
+    author: loginOf(raw.user),
+    headSha: raw.head.sha,
+    labels: labelNames(raw.labels),
+  };
+}
+
+/**
+ * The runs of `GET actions/runs`, oldest first. A status other than `in_progress` or `completed`
+ * (`queued`, `waiting`, `requested`, `pending`) is `queued`. [proposta]
+ */
+export function parseRuns(answer: z.output<typeof RunsJsonSchema>): CiRun[] {
+  return answer.workflow_runs
+    .map((run) => ({ run, at: ghTime('gh api actions/runs', run.created_at) }))
+    .sort((a, b) => a.at - b.at || a.run.id - b.run.id)
+    .map(({ run }) => {
+      const status =
+        run.status === 'completed' || run.status === 'in_progress' ? run.status : 'queued';
+      return {
+        id: String(run.id),
+        name: run.name ?? `run ${String(run.id)}`,
+        status,
+        conclusion: status === 'completed' ? run.conclusion : null,
+        url: run.html_url,
+      };
+    });
 }
 
 /** The sha of exactly `refs/heads/<branch>` in `git ls-remote` output (a tail match is not it). */

@@ -15,5 +15,6 @@ export * from './fake-session-transport.js';
 export * from './fake-client-adapter.js';
 export * from './fake-login-flow.js';
 export * from './fake-code-host.js';
+export * from './fake-issue-tracker.js';
 export * from './fake-browser-session.js';
 export * from './in-memory-prompt-source.js';

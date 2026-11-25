@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: MPL-2.0
-import { AdapterUnavailable, Conflict, NotFound, type Vcs } from '@otheater/core';
+import { AdapterUnavailable, Conflict, InvalidInput, NotFound, type Vcs } from '@otheater/core';
 import { describe, expect, it } from 'vitest';
 import {
   AutoCodeHost,
   isGithubUrl,
+  LOCAL_AUTHOR,
   LocalCodeHost,
   type CodeHostNotice,
   type GithubProbe,
@@ -106,6 +107,41 @@ describe('LocalCodeHost, fake', () => {
     });
     expect(host.pullRequests()[0]?.state).toBe('merged');
     expect(await host.isBranchMerged({ repo: REPO, head: PR.head, base: 'main' })).toBe(true);
+  });
+});
+
+describe('LocalCodeHost, the details of a recorded pull request (Phase 11b, P7)', () => {
+  it('reads back the body, the local author and the head, with no labels and no CI', async () => {
+    for (const id of ['none', 'fake'] as const) {
+      const host = local(id);
+      await host.pushRef({ repo: REPO, branch: PR.head });
+      const pull = await host.openPullRequest(PR);
+      expect(await host.fetchPullRequest({ repo: REPO, number: pull.number })).toMatchObject({
+        number: pull.number,
+        body: 'body',
+        author: LOCAL_AUTHOR,
+        labels: [],
+        headSha: HEAD,
+      });
+      expect(await host.fetchCiLog({ repo: REPO, number: pull.number })).toEqual({
+        headSha: HEAD,
+        runs: [],
+        log: '',
+        truncated: false,
+      });
+    }
+  });
+
+  it('an unknown number is NotFound, a bad one or a bad maxChars is InvalidInput', async () => {
+    const host = local('fake');
+    await expect(host.fetchPullRequest({ repo: REPO, number: 9 })).rejects.toBeInstanceOf(NotFound);
+    await expect(host.fetchPullRequest({ repo: REPO, number: 0 })).rejects.toBeInstanceOf(
+      InvalidInput,
+    );
+    await host.openPullRequest(PR);
+    await expect(host.fetchCiLog({ repo: REPO, number: 1, maxChars: 0 })).rejects.toBeInstanceOf(
+      InvalidInput,
+    );
   });
 });
 

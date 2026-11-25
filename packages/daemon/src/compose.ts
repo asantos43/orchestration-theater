@@ -29,6 +29,7 @@ import { SystemClock, systemClockAdapter } from '@otheater/adapter-clock-system'
 import {
   GithubCodeHost,
   GithubCodeHostConfigSchema,
+  GithubIssueTracker,
   ToolRunner,
 } from '@otheater/adapter-codehost-github';
 import {
@@ -80,6 +81,7 @@ import {
   BROWSER_SESSION_PORT_VERSION,
   CLOCK_PORT_VERSION,
   CODE_HOST_PORT_VERSION,
+  ISSUE_TRACKER_PORT_VERSION,
   MEMORY_PROBE_PORT_VERSION,
   InvalidInput,
   isLockableSecretVault,
@@ -98,6 +100,7 @@ import {
   type ClientAdapterWarning,
   type Clock,
   type CodeHost,
+  type IssueTracker,
   type MinLayers,
   type MemoryProbe,
   type ProcessLauncher,
@@ -136,6 +139,7 @@ import { resolveClientVersioning, type ClientVersioning } from './client-version
 import { sessionConfigReader } from './catalog-reader.js';
 import { clientWarningLog, type ClientWarningLog } from './client-warnings.js';
 import { AutoCodeHost, LocalCodeHost, type CodeHostNotice, type GithubProbe } from './code-host.js';
+import { NoIssueTracker, SameHostIssueTracker } from './issue-tracker.js';
 import { SituationLog, situationSubject, situationText, type SituationSink } from './situations.js';
 import {
   describeZodError,
@@ -167,7 +171,8 @@ export type PortName =
   | 'MemoryProbe'
   | 'UsageSource'
   | 'TelemetryStore'
-  | 'CodeHost';
+  | 'CodeHost'
+  | 'IssueTracker';
 
 /** What `daemon.started` and the status report about one adapter. */
 export interface AdapterRecord {
@@ -229,6 +234,11 @@ export interface ComposeOverrides {
    * `adapters.code_host` names (P13, N289; `auto` by default); tests hand in a fake.
    */
   readonly codeHost?: CodeHost;
+  /**
+   * The issue tracker of the workflows (Phase 11b, P7, N313). Without it the composition builds
+   * the one `adapters.issue_tracker` names (`same_as_code_host` by default); tests hand in a fake.
+   */
+  readonly issueTracker?: IssueTracker;
 }
 
 export interface ComposeOptions {
@@ -289,6 +299,11 @@ export interface Composition {
    * without one (a test that builds the parts of the daemon by hand).
    */
   readonly codeHost: CodeHost | undefined;
+  /**
+   * The issue tracker of the workflows (Phase 11b, P7, N313): the one `adapters.issue_tracker`
+   * names, or the override. `compose` always sets it; `undefined` as for `codeHost`.
+   */
+  readonly issueTracker: IssueTracker | undefined;
   /**
    * The `ccusage` source (P12, N118): set only when `usage.ccusage.enabled` and the adapter could
    * be built. Whether it works (the version) is checked when the daemon starts the audit.
@@ -766,6 +781,14 @@ interface CodeHostParts {
   readonly clock: Clock;
   readonly logger: Logger;
   readonly situations: SituationSink;
+  /** The GitHub adapters, built once for the code host and the issue tracker. */
+  readonly github: () => Promise<GithubAdapters | undefined>;
+}
+
+interface GithubAdapters {
+  readonly host: GithubCodeHost;
+  readonly probe: GithubProbe;
+  readonly tracker: GithubIssueTracker;
 }
 
 /**
@@ -807,7 +830,7 @@ async function composeCodeHost(parts: CodeHostParts): Promise<CodeHost> {
     return local;
   }
 
-  const github = await buildGithubCodeHost(parts);
+  const github = await parts.github();
   if (mode === 'github') {
     if (github === undefined) {
       const detail = 'adapters.code_host is github but the process launcher is missing';
@@ -843,9 +866,9 @@ const NO_PROBE: GithubProbe = {
 /** Shortest wait of the probes of `auto` (git remote, gh auth status); a deadline keeps a delivery from hanging. */
 const PROBE_TIMEOUT_MS = 20_000;
 
-async function buildGithubCodeHost(
-  parts: CodeHostParts,
-): Promise<{ readonly host: GithubCodeHost; readonly probe: GithubProbe } | undefined> {
+async function buildGithubAdapters(
+  parts: Omit<CodeHostParts, 'github'>,
+): Promise<GithubAdapters | undefined> {
   const { config, launcher, vault, logger } = parts;
   if (launcher === undefined) return undefined;
   const { token_secret: tokenSecret, ...rest } = config.code_host;
@@ -862,6 +885,7 @@ async function buildGithubCodeHost(
   }
   const env = token === undefined ? section.env : { ...section.env, GH_TOKEN: token };
   const host = new GithubCodeHost({ launcher, config: { ...section, env } });
+  const tracker = new GithubIssueTracker({ launcher, config: { ...section, env } });
   const runner = new ToolRunner({
     launcher,
     timeoutMs: Math.min(section.timeoutMs, PROBE_TIMEOUT_MS),
@@ -887,7 +911,66 @@ async function buildGithubCodeHost(
       }
     },
   };
-  return { host, probe };
+  return { host, probe, tracker };
+}
+
+/**
+ * The issue tracker of the workflows (Phase 11b, P7, N313), by `adapters.issue_tracker`:
+ * - `github`: the `gh` adapter, with the launcher, the `code_host` section and the token of the
+ *   code host. If it cannot be built (no launcher), no tracker, with a warning and the event
+ *   `issue_tracker_unavailable`;
+ * - `none`: no tracker; every call is `AdapterUnavailable`;
+ * - `same_as_code_host` (default): GitHub where the code host is (per repository under
+ *   `adapters.code_host: auto`), no tracker otherwise; an overridden code host has no tracker.
+ * The instance of `overrides.issueTracker` replaces all of it. [proposta]
+ */
+async function composeIssueTracker(
+  parts: CodeHostParts,
+  codeHost: CodeHost,
+): Promise<IssueTracker> {
+  const { config, overrides, adapters, logger, situations } = parts;
+  const record = (tracker: IssueTracker): IssueTracker => {
+    adapters.push(checkAdapterRange(tracker, 'IssueTracker', ISSUE_TRACKER_PORT_VERSION));
+    return tracker;
+  };
+  if (overrides.issueTracker !== undefined) {
+    adapters.push(overrideRecord('IssueTracker', ISSUE_TRACKER_PORT_VERSION));
+    return overrides.issueTracker;
+  }
+  const mode = config.adapters.issue_tracker;
+  if (mode === 'none') return record(new NoIssueTracker());
+  if (mode === 'github') {
+    const github = await parts.github();
+    if (github !== undefined) return record(github.tracker);
+    const detail = 'adapters.issue_tracker is github but the process launcher is missing';
+    logger.warn({ adapter: 'github' }, `${detail}: there is no issue tracker`);
+    situations.record('daemon.notice', {
+      kind: 'issue_tracker_unavailable',
+      subject: 'github',
+      detail,
+    });
+    return record(new NoIssueTracker(() => detail));
+  }
+  if (overrides.codeHost !== undefined) {
+    return record(new NoIssueTracker(() => 'the code host is an override'));
+  }
+  const codeHostMode = config.adapters.code_host;
+  if (codeHostMode === 'none' || codeHostMode === 'fake') {
+    return record(new NoIssueTracker(() => `adapters.code_host is ${codeHostMode}`));
+  }
+  const github = await parts.github();
+  if (codeHost instanceof AutoCodeHost) {
+    return record(
+      new SameHostIssueTracker({
+        hostFor: (repo, remote) => codeHost.hostFor(repo, remote),
+        githubHost: github?.host,
+        github: github?.tracker,
+        none: new NoIssueTracker(() => 'the code host of the repository is not GitHub'),
+      }),
+    );
+  }
+  if (github?.host === codeHost) return record(github.tracker);
+  return record(new NoIssueTracker(() => 'the GitHub code host could not be built'));
 }
 
 function overrideRecord(port: PortName, portVersion: string): AdapterRecord {
@@ -1115,7 +1198,7 @@ export async function compose(config: DaemonConfig, options: ComposeOptions): Pr
       overrides.browser ?? defaultBrowser(config, paths.profiles, launcher, logger, situations);
 
     const usageSource = composeUsageSource(config, paths, overrides, adapters, logger, situations);
-    const codeHost = await composeCodeHost({
+    const hostBase = {
       config,
       overrides,
       adapters,
@@ -1125,7 +1208,14 @@ export async function compose(config: DaemonConfig, options: ComposeOptions): Pr
       clock,
       logger,
       situations,
-    });
+    };
+    let githubAdapters: Promise<GithubAdapters | undefined> | undefined;
+    const hostParts: CodeHostParts = {
+      ...hostBase,
+      github: () => (githubAdapters ??= buildGithubAdapters(hostBase)),
+    };
+    const codeHost = await composeCodeHost(hostParts);
+    const issueTracker = await composeIssueTracker(hostParts, codeHost);
 
     // Phase 8, P1 (N54): the telemetry base opens after the situations, which it reports to. It
     // never stops the daemon: a bad file is recreated, and a base that cannot be had is `no_base`.
@@ -1199,6 +1289,7 @@ export async function compose(config: DaemonConfig, options: ComposeOptions): Pr
       sandbox,
       browser,
       codeHost,
+      issueTracker,
       usageSource,
       situations,
       disk,
