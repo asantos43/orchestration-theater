@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 import { mkdir, rename, rm, writeFile } from 'node:fs/promises';
 import { isAbsolute, join, relative } from 'node:path';
+import { sweepTemporaries, temporaryPathOf } from '@otheater/client/node';
 import {
   NotFound,
   type Clock,
@@ -39,6 +40,27 @@ const SCAN_BLOCK = 1000;
 /** The events of the play the export reads besides the trajectory ones. */
 function isExportEvent(type: string): boolean {
   return isTrajectoryEvent(type) || type === 'chat.director_reply' || type.startsWith('decision.');
+}
+
+/** The shape of the temporary of an export: `<file>.<pid>.tmp`. */
+const ATIF_TEMPORARY_SHAPE = { hexLength: 0 } as const;
+
+/**
+ * Writes one file of an export atomically (a temporary, then a rename) and removes the orphans a
+ * killed process left (N306).
+ */
+export async function writeExportFile(dir: string, path: string, text: string): Promise<void> {
+  const temporary = temporaryPathOf(path, ATIF_TEMPORARY_SHAPE);
+  try {
+    await mkdir(dir, { recursive: true });
+    await writeFile(temporary, text, { encoding: 'utf8', mode: 0o600 });
+    await rename(temporary, path);
+  } catch (error) {
+    await rm(temporary, { force: true }).catch(() => undefined);
+    throw new AtifExportError('write_failed', failureDetail(error));
+  }
+  // N306: a process killed between the write and the rename leaves `<file>.<pid>.tmp`.
+  await sweepTemporaries(path, ATIF_TEMPORARY_SHAPE);
 }
 
 /** An export that did not produce what was asked; `reason` is the one of `atif.export_failed`. */
@@ -158,7 +180,7 @@ export class AtifExporter {
       ): Promise<void> => {
         const text = `${JSON.stringify(this.#checked(trajectory), null, 2)}\n`;
         const path = join(dir, name);
-        await this.#write(dir, path, text);
+        await writeExportFile(dir, path, text);
         const file: AtifExportedFile = {
           unit: kind,
           attemptId,
@@ -292,18 +314,6 @@ export class AtifExporter {
     const issue = parsed.error.issues[0];
     const where = issue === undefined ? '' : `${issue.path.join('.')} (${issue.code})`;
     throw new AtifExportError('invalid_trajectory', where.slice(0, 500));
-  }
-
-  async #write(dir: string, path: string, text: string): Promise<void> {
-    const temporary = `${path}.${String(process.pid)}.tmp`;
-    try {
-      await mkdir(dir, { recursive: true });
-      await writeFile(temporary, text, { encoding: 'utf8', mode: 0o600 });
-      await rename(temporary, path);
-    } catch (error) {
-      await rm(temporary, { force: true }).catch(() => undefined);
-      throw new AtifExportError('write_failed', failureDetail(error));
-    }
   }
 
   /** Relative to the data folder when the file is inside it, else absolute. */

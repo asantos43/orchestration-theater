@@ -52,6 +52,12 @@ import {
 } from '@otheater/protocol';
 import { parse as parseYaml, YAMLParseError } from 'yaml';
 import { z } from 'zod';
+import {
+  DEFAULT_TEMPORARY_CLEANUP_MODE,
+  TEMPORARY_CLEANUP_MODES,
+  TEMPORARY_MAX_AGE_MAX_MS,
+  TEMPORARY_MAX_AGE_MIN_MS,
+} from '@otheater/client/node';
 import { PLUGIN_INSTALL_SOURCES } from './plugins/install-sources.js';
 import {
   FS_RETRY_MODES,
@@ -3293,6 +3299,25 @@ export const DaemonConfigSchema = z
           .prefault(DEFAULT_DISK_MIN_FREE),
         notify: z.enum(DISK_NOTIFY_MODES).default('once'),
         check_every: DurationSchema.prefault(DEFAULT_DISK_CHECK_EVERY),
+      })
+      .prefault({}),
+    /**
+     * The orphan temporaries of the atomic writes (Phase 11, N306, continuation; [proposta] the whole
+     * block). A process killed between the write of `<file>.<pid>.<hex>.tmp` and its rename leaves it.
+     * - `cleanup` (default `pid`): `pid` removes a temporary whose pid is not a live process; `age`
+     *   removes one older than `max_age`, whatever its pid says (for a folder that processes of other
+     *   machines or containers write, where a pid means nothing); `off` removes nothing.
+     * - `max_age` (default `1h`; from `1m` to `30d`): the age of `age`. Ignored by the other modes.
+     * Only the names of the daemon's own files, in their exact shape, are ever touched. The key is read
+     * when the daemon starts; the applier, the CLI and the TUI use the default.
+     */
+    temporaries: z
+      .strictObject({
+        cleanup: z.enum(TEMPORARY_CLEANUP_MODES).default(DEFAULT_TEMPORARY_CLEANUP_MODE),
+        max_age: DurationSchema.refine(
+          (value) => value >= TEMPORARY_MAX_AGE_MIN_MS && value <= TEMPORARY_MAX_AGE_MAX_MS,
+          { message: 'temporaries.max_age must be between 1m and 30d' },
+        ).prefault('1h'),
       })
       .prefault({}),
   })

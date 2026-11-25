@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 import { spawnSync } from 'node:child_process';
 import { access, mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { API_VERSION, type ApiStatus } from '@otheater/protocol';
 import { FakeClock, InMemorySecretVault, InMemoryStore } from '@otheater/core/testing';
 import { describe, expect, it } from 'vitest';
@@ -107,6 +107,62 @@ describe('startDaemon, the HTTP API', () => {
         subject: stuck,
         detail: expect.any(String) as string,
       });
+      await daemon.stop('shutdown');
+    } finally {
+      await tmp.dispose();
+    }
+  });
+
+  it('also cleans config.yaml and plugins.json, by the policy of the temporaries key, and warns of a failure (N306)', async () => {
+    const tmp = await makeTempDataDir();
+    try {
+      const hex = '01234567';
+      const dead = String(deadPid());
+      const paths = dataPaths(tmp.dir);
+      const config = basename(paths.config);
+      const orphans = [`${config}.${dead}.${hex}.tmp`, `plugins.json.${dead}.${hex}.tmp`];
+      const stuck = `${config}.${String(2_000_000_000)}.${hex}.tmp`;
+      const keep = [`${config}.${dead}.tmp`, `plugins.json.${dead}.bak`];
+      for (const name of [...orphans, ...keep]) await writeFile(join(tmp.dir, name), 'x');
+      await mkdir(join(tmp.dir, stuck));
+      const store = memoryStore();
+      const daemon = await start(tmp.dir, AUTO, store);
+      const left = (await readdir(tmp.dir)).filter(
+        (name) => name.includes('.tmp') || name.endsWith('.bak'),
+      );
+      expect(left.sort()).toEqual([...keep, stuck].sort());
+      let notices: Awaited<ReturnType<typeof store.events.readFrom>> = [];
+      for (let tries = 0; tries < 100 && notices.length === 0; tries += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        notices = (await store.events.readFrom(0, 200)).filter(
+          (event) => event.type === 'daemon.notice',
+        );
+      }
+      expect(notices.map((event) => event.payload)).toContainEqual({
+        kind: 'temporary_cleanup_failed',
+        subject: stuck,
+        detail: expect.any(String) as string,
+      });
+      await daemon.stop('shutdown');
+    } finally {
+      await tmp.dispose();
+    }
+  });
+
+  it('with temporaries.cleanup: off the daemon removes no temporary at start (N306)', async () => {
+    const tmp = await makeTempDataDir();
+    try {
+      const orphan = `plugins.json.${String(deadPid())}.01234567.tmp`;
+      const apiOrphan = `daemon-id.${String(deadPid())}.0123456789abcdef.tmp`;
+      await writeFile(join(tmp.dir, orphan), 'x');
+      await writeFile(join(tmp.dir, apiOrphan), 'x');
+      const daemon = await start(
+        tmp.dir,
+        parseConfig('backup:\n  when: manual\ntemporaries:\n  cleanup: off\n'),
+      );
+      const left = await readdir(tmp.dir);
+      expect(left).toContain(orphan);
+      expect(left).toContain(apiOrphan);
       await daemon.stop('shutdown');
     } finally {
       await tmp.dispose();

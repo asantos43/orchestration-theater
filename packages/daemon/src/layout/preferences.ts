@@ -9,7 +9,7 @@ import {
   type LayoutReading,
   type LayoutPreferences,
 } from '@otheater/protocol';
-import { writePrivateFile } from '../api/files.js';
+import { sweepOrphanTemporaries, writePrivateFile } from '../api/files.js';
 import type { Logger } from '../logger.js';
 import type { SituationSink } from '../situations.js';
 
@@ -77,6 +77,8 @@ export class LayoutPreferencesStore {
 
   async #load(which: LayoutInterface, options: LayoutPreferencesOptions): Promise<void> {
     const path = fileOf(this.#dir, which);
+    // N306 (continuation): a daemon killed between a write and its rename left `<file>.<pid>.<hex>.tmp`.
+    await sweepOrphanTemporaries(path, { includeOwnPid: true });
     let text: string;
     try {
       text = await readFile(path, 'utf8');

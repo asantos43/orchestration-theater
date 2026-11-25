@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 import { readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { sweepTemporaries, temporaryPathOf } from '@otheater/client/node';
 import { Conflict } from '@otheater/core';
 import { z } from 'zod';
 
@@ -13,6 +14,9 @@ export type InstanceLockInfo = z.infer<typeof InstanceLockInfoSchema>;
 
 /** Lock files held by this process: a second acquire in the same process must fail by itself. */
 const heldHere = new Set<string>();
+
+/** The shape of the temporary of the info file: `<file>.<pid>.tmp`. */
+const INFO_TEMPORARY_SHAPE = { hexLength: 0 } as const;
 
 /**
  * One daemon per data directory (architecture 5.1). [proposta] The lock is an exclusive SQLite
@@ -81,9 +85,11 @@ export class InstanceLock {
   async publish(info: InstanceLockInfo): Promise<void> {
     if (this.#db === undefined) return;
     const parsed = InstanceLockInfoSchema.parse(info);
-    const temporary = `${this.#infoPath}.${String(parsed.pid)}.tmp`;
+    const temporary = temporaryPathOf(this.#infoPath, INFO_TEMPORARY_SHAPE);
     await writeFile(temporary, `${JSON.stringify(parsed)}\n`, { mode: 0o600 });
     await rename(temporary, this.#infoPath);
+    // N306: a daemon killed between the write and the rename leaves `<file>.<pid>.tmp`.
+    await sweepTemporaries(this.#infoPath, INFO_TEMPORARY_SHAPE);
   }
 
   /** Frees the lock. Idempotent. The info file goes first, while the lock still protects it. */

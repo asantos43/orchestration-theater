@@ -5,7 +5,7 @@ import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { basename, isAbsolute, join, resolve } from 'node:path';
 import { PlaywrightBrowserSession } from '@otheater/adapter-browser-playwright';
-import { onSeaNativeSweepFailure } from '@otheater/client/node';
+import { configureTemporaryCleanup, onTemporarySweepFailure } from '@otheater/client/node';
 import {
   CLAUDE_CODE_ACP_PACKAGES,
   CLAUDE_CODE_ADAPTER_VERSION,
@@ -967,8 +967,15 @@ export async function compose(config: DaemonConfig, options: ComposeOptions): Pr
   let store: Store | undefined;
   let vault: SecretVault | undefined;
   let daemonLogger: DaemonLogger | undefined;
+  let stopTemporaryPolicy: (() => void) | undefined;
 
   try {
+    // Phase 11 (N306): what counts as an orphan temporary (`temporaries`) is in force before the store
+    // opens, because opening it can extract the native addon (SEA) and clean the ones a killed daemon left.
+    stopTemporaryPolicy = configureTemporaryCleanup({
+      mode: config.temporaries.cleanup,
+      maxAgeMs: config.temporaries.max_age,
+    });
     // Clock first: the log stamps its lines with it.
     let clock: Clock;
     if (overrides.clock !== undefined) {
@@ -1063,12 +1070,13 @@ export async function compose(config: DaemonConfig, options: ComposeOptions): Pr
       });
     };
     for (const error of rotateErrors.splice(0)) rotate.notice(error);
-    // Phase 11 (N306): an orphan temporary of an extracted native addon (SEA) that could not be removed
-    // is a log warning and an event; the store extracted its addon before the situations existed.
-    const stopNativeSweepNotices = onSeaNativeSweepFailure(({ name, error }) => {
+    // Phase 11 (N306): an orphan temporary (of an atomic write, or of an extracted native addon in a SEA)
+    // that could not be removed is a log warning and an event; the store extracted its addon before the
+    // situations existed, so a failure that came first waits for this sink.
+    const stopNativeSweepNotices = onTemporarySweepFailure(({ name, error }) => {
       logger.warn(
         { err: situationText(error, 200), file: name },
-        'an orphan temporary file of a native addon could not be removed',
+        'an orphan temporary file could not be removed',
       );
       situations.record('daemon.notice', {
         kind: 'temporary_cleanup_failed',
@@ -1173,6 +1181,7 @@ export async function compose(config: DaemonConfig, options: ComposeOptions): Pr
       eventHub,
       telemetry,
       stopNativeSweepNotices,
+      stopTemporaryPolicy,
     };
     let closing: Promise<void> | undefined;
     return {
@@ -1204,6 +1213,7 @@ export async function compose(config: DaemonConfig, options: ComposeOptions): Pr
       close: () => (closing ??= closeParts(opened, daemonLogger, logger)),
     };
   } catch (error) {
+    stopTemporaryPolicy?.();
     await closeParts({ store, vault, sandbox: undefined }, daemonLogger, undefined).catch(
       () => undefined,
     );
@@ -1221,12 +1231,14 @@ async function closeParts(
     eventHub?: EventHub | undefined;
     telemetry?: TelemetryStore | undefined;
     stopNativeSweepNotices?: (() => void) | undefined;
+    stopTemporaryPolicy?: (() => void) | undefined;
   },
   daemonLogger: DaemonLogger | undefined,
   logger: Logger | undefined,
 ): Promise<void> {
   const failures: unknown[] = [];
   parts.stopNativeSweepNotices?.();
+  parts.stopTemporaryPolicy?.();
   try {
     await parts.browser?.close();
   } catch (error) {
