@@ -6,43 +6,43 @@ export const ADAPTER_LOCK_DATA: readonly unknown[] = [
     "schema": 1,
     "id": "claude-agent-acp",
     "package": "@agentclientprotocol/claude-agent-acp",
-    "version": "0.107.0",
+    "version": "0.112.0",
     "entry": "dist/index.js",
     "entries": [
       {
         "path": "node_modules/@agentclientprotocol/claude-agent-acp",
         "name": "@agentclientprotocol/claude-agent-acp",
-        "version": "0.107.0",
-        "resolved": "https://registry.npmjs.org/@agentclientprotocol/claude-agent-acp/-/claude-agent-acp-0.107.0.tgz",
-        "integrity": "sha512-yOEYkKkomupue/lmkjlLy4C8ADlZ8ZZXX1ry3Ka6VTjtWHXowyoQ6+awjrfAc1Xkq3f37GA5fpTz9URyIfcb4g=="
+        "version": "0.112.0",
+        "resolved": "https://registry.npmjs.org/@agentclientprotocol/claude-agent-acp/-/claude-agent-acp-0.112.0.tgz",
+        "integrity": "sha512-T9FrKGd9eDKHNmZE/EfEf01v49UHKeKyGcu91O8sdVc7a9eMEDOGWT/0moWirGHJdBqJ9qPVfqu07IBegJuniA=="
       },
       {
         "path": "node_modules/@agentclientprotocol/claude-agent-acp/node_modules/@agentclientprotocol/sdk",
         "name": "@agentclientprotocol/sdk",
-        "version": "2.6.0",
-        "resolved": "https://registry.npmjs.org/@agentclientprotocol/sdk/-/sdk-2.6.0.tgz",
-        "integrity": "sha512-3FtL6MkAV5F9qxg0FQV8wmBszIm2xuVPoDWOILIFSDQ+Vq3Twdh7Cw6Hk2GOPUbevgrTUpUAqZXQy7Geaj79mw=="
+        "version": "2.12.0",
+        "resolved": "https://registry.npmjs.org/@agentclientprotocol/sdk/-/sdk-2.12.0.tgz",
+        "integrity": "sha512-nSkamfY4Lw9/AVBU5G5V9p82ScXhANDMBybQwcPH/9+euUtZm04/VFUMaLj4gLFEXxQEy+QP1VQiKgSRbYVIPg=="
       },
       {
         "path": "node_modules/@anthropic-ai/claude-agent-sdk",
         "name": "@anthropic-ai/claude-agent-sdk",
-        "version": "0.3.323",
-        "resolved": "https://registry.npmjs.org/@anthropic-ai/claude-agent-sdk/-/claude-agent-sdk-0.3.323.tgz",
-        "integrity": "sha512-GXIczMzzceNWB+bIImK59hWOQoBWZtSw+AESPc/qbAWmmHM8Wrqb5KvTwWZ07CmjyC/KcPC47nOLxxyHlWqKPA=="
+        "version": "0.3.331",
+        "resolved": "https://registry.npmjs.org/@anthropic-ai/claude-agent-sdk/-/claude-agent-sdk-0.3.331.tgz",
+        "integrity": "sha512-ml/MPqgO95tG5zcApBFxEyoDk57d9htP09R8AtPbKPUCHpsobf84IjkN4zhGvQgk8zsA9dXoeMGrQcCc8gQE/w=="
       },
       {
         "path": "node_modules/@anthropic-ai/sdk",
         "name": "@anthropic-ai/sdk",
-        "version": "1.8.0",
-        "resolved": "https://registry.npmjs.org/@anthropic-ai/sdk/-/sdk-1.8.0.tgz",
-        "integrity": "sha512-yDOArk2+Qpd/djEKmZjrv7JZ+pn5iBHARJ9PAdvfhGf4H5wNqTgY/2K0/yDKdQdm8G8hrNQchMlBAHpPK7yBfg=="
+        "version": "1.14.0",
+        "resolved": "https://registry.npmjs.org/@anthropic-ai/sdk/-/sdk-1.14.0.tgz",
+        "integrity": "sha512-nADYXUd5fn9Zgw2nHi1iKyt/kb1UUt1cN3RbdxEI6XjTDTxbx4LLG4GnMrxWyS9GgXQllFOyAKSiFM3joDNK9A=="
       },
       {
         "path": "node_modules/@babel/runtime",
         "name": "@babel/runtime",
-        "version": "7.29.14",
-        "resolved": "https://registry.npmjs.org/@babel/runtime/-/runtime-7.29.14.tgz",
-        "integrity": "sha512-Y5tqevQaUAZhhj82BpYMNC1ssvLQTVAfwKdm8iy8qwmhvC2/CpcAu8OC+QEtjM7pMk7knx83u1Qj8gzkicyelw=="
+        "version": "7.29.15",
+        "resolved": "https://registry.npmjs.org/@babel/runtime/-/runtime-7.29.15.tgz",
+        "integrity": "sha512-304gsbbGVmQc+cNGHzwHBlqepYdWLKj3VXCQBGt/EGcV7PUPfKI7kAUNW1FZEOCwlQiLvQjg1JEaAlRQ616h+Q=="
       },
       {
         "path": "node_modules/@hono/node-server",
@@ -677,9 +677,9 @@ export const ADAPTER_LOCK_DATA: readonly unknown[] = [
       {
         "path": "node_modules/standardwebhooks",
         "name": "standardwebhooks",
-        "version": "1.1.1",
-        "resolved": "https://registry.npmjs.org/standardwebhooks/-/standardwebhooks-1.1.1.tgz",
-        "integrity": "sha512-bCbX9ZEyFkWPsRz7Bl3NuQUJohmwGSev/yhr7vhaGPlc4AfIrspIRa6cPTBuI1ItmrTDJ4d/S2hCsfe4+vQGnQ=="
+        "version": "1.3.0",
+        "resolved": "https://registry.npmjs.org/standardwebhooks/-/standardwebhooks-1.3.0.tgz",
+        "integrity": "sha512-5W9skHjqAm2dlA9wWvglTP+oX47JX4lFXVk1aJV7+TG1snvTR4QXaVgPscEzvOw9GRreeavMwbqEeL+MGhZHCg=="
       },
       {
         "path": "node_modules/statuses",
@@ -764,15 +764,15 @@ export const ADAPTER_LOCK_DATA: readonly unknown[] = [
     "schema": 1,
     "id": "codex-acp",
     "package": "@agentclientprotocol/codex-acp",
-    "version": "2.6.0",
+    "version": "2.12.0",
     "entry": "dist/index.js",
     "entries": [
       {
         "path": "node_modules/@agentclientprotocol/codex-acp",
         "name": "@agentclientprotocol/codex-acp",
-        "version": "2.6.0",
-        "resolved": "https://registry.npmjs.org/@agentclientprotocol/codex-acp/-/codex-acp-2.6.0.tgz",
-        "integrity": "sha512-/PBsd0H6URy4bhXhAeXqwb7RqctbXfNceRihAh6nDmn5HJ873uzoHvHxF45YmeWfgOKKRrNRLZjYsket2a7EsQ=="
+        "version": "2.12.0",
+        "resolved": "https://registry.npmjs.org/@agentclientprotocol/codex-acp/-/codex-acp-2.12.0.tgz",
+        "integrity": "sha512-UYZwEZoDUdzre4VG/ECGlAVVWlB4tSuy40WiGGiNcA/t3qx0i2Iz9i1BRgzrFHhq2QgEsxH8c7FFEdRwgLUBvg=="
       }
     ]
   }
