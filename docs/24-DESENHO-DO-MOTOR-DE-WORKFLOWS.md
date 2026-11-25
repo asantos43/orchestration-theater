@@ -1,6 +1,6 @@
 # 24 — Desenho do motor de workflows
 
-> Estado: **desenho aprovado, implementação depois da Fase 11** (decisões do dono em 2026-11-23, por múltipla escolha, N291 a N298 do [docs/13](13-DECISOES-EM-ABERTO.md)). Este documento é a base do plano da fase nova (Fase 11b na [arquitetura](framework-ideas/arquitetura.md), §10). Quando o plano for escrito, ele detalha os passos e traz as perguntas que ficam abertas na seção "O que fica para o plano".
+> Estado: **desenho aprovado, implementação depois da Fase 11** (decisões do dono em 2026-11-23, por múltipla escolha, N291 a N298 do [docs/13](13-DECISOES-EM-ABERTO.md)). Este documento é a base do plano da fase nova (Fase 11b na [arquitetura](framework-ideas/arquitetura.md), §10). O plano é o [docs/26](26-PLANO-DA-FASE-11B.md) (2026-11-25), e as perguntas da seção 14 foram decididas nele (N310 a N319). Onde este desenho e o plano divergem, vale o plano.
 >
 > Marcas: **[V]** verificado localmente no código em 2026-11-23; **[proposta]** desenho a implementar; **[N]** não confirmado.
 
@@ -129,7 +129,7 @@ A mesma validação roda em quatro lugares: na subida do daemon, na API (`valida
 - **Efeitos:** continuam fora da máquina, pelo journal de efeitos. Cada tipo de passo declara os efeitos e a chave de idempotência dele. A reconciliação na subida não muda.
 - **Snapshot:** cada execução guarda `{id, version, hash}` da definição. Na subida, o daemon recompila a definição pelo hash guardado no store (as versões antigas não são apagadas enquanto houver execução viva nelas).
 - **Os invariantes da Fase 11 (I1 a I8) valem para qualquer workflow.** O harness de caos ganha um gerador de definições pequenas e roda os mesmos cenários sobre elas, além da peça.
-- **Migração da peça atual:** a peça vira a definição `play` 2.x, com os mesmos estados. Os snapshots da peça 1.x (a máquina escrita à mão) são lidos por um mapeamento fixo e testado. A máquina antiga fica no código por uma versão, só para retomar o que estava em curso.
+- **Troca da peça atual (revista em 2026-11-25, N311):** a peça vira a definição `play` 2.0, com os mesmos estados, e substitui de uma vez a máquina escrita à mão, que sai do código. Não há migração dos snapshots 1.x: como nunca houve release, eles só existem em desenvolvimento e são recusados com aviso e evento (`workflows.legacy_snapshot`). O mecanismo da N295 é testado com uma 2.0 → 2.1 de teste.
 
 ### Troca de versão com a peça em curso (N295)
 
@@ -234,11 +234,11 @@ Os três novos também servem de teste do motor: cada um tem uma simulação com
 
 ## 14. O que fica para o plano da fase
 
-Estes pontos não foram decididos e vão ao dono por múltipla escolha quando o plano for escrito:
+Todos foram decididos pelo dono em 2026-11-25, ao escrever o plano ([docs/26](26-PLANO-DA-FASE-11B.md)):
 
-1. A v1 sai antes ou depois desta fase.
-2. A ordem com a Fase 9b (agendador): antes, junto ou só o mínimo para os gatilhos por consulta.
-3. Métodos de issue na porta `CodeHost` ou uma porta `IssueTracker` própria.
-4. O formato e a chave de assinatura dos pacotes (por exemplo, SSHSIG como no `install.sh`, N288), e se há lista de chaves confiadas por usuário.
-5. Como ficam os eventos de plugin como gatilho (só os de plugins instalados e ativos, ou também por padrão).
-6. A divisão em passos e ondas, e o critério de aceite da fase.
+1. A v1 fica depois da 11c e antes da 10b (N310).
+2. Da Fase 9b, só o laço de sondagem mínimo (N312).
+3. Uma porta `IssueTracker` própria (N313).
+4. SSHSIG, como no `install.sh`, com `workflows.packages.trusted_keys` por usuário (N314).
+5. Eventos de plugin só de plugin ativo, declarados no manifesto e pedidos pelo vínculo (N315).
+6. 17 passos em 5 ondas, o pacote `@otheater/workflows` e o aceite em três partes (N316 a N318).

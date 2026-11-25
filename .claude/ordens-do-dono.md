@@ -15,7 +15,7 @@ A `.claude/` é versionada de forma seletiva (dono, 2026-11-25). Ficam fora do g
 - Cada passo tem uma branch e um PR, sempre a partir da main e com arquivos próprios, sem branch sobre branch. Commit e push na branch são livres.
 - Nunca use `git add -A`: adicione os arquivos por nome. Não faça force push nem rebase, e não crie repositório remoto.
 - **Só um PR roda a CI por vez.** Disparar um workflow por `workflow_dispatch` também ocupa a vez. Os outros PRs fazem commit e esperam antes do push.
-- **Com a CI verde, o merge é feito sem pedir** (Fase 11 autorizada; a Fase 12 em diante ainda precisa de nova autorização), sempre por squash, e a branch é apagada depois.
+- **Com a CI verde, o merge é feito sem pedir** (Fases 11, 11b e 11c autorizadas, N319; a Fase 12 em diante ainda precisa de nova autorização), sempre por squash, e a branch é apagada depois.
 - O repositório não tem proteção de branch, então `gh pr merge --auto` mescla na hora: confira antes `gh pr checks N`.
 - Uma CI verde vale para outro commit com a mesma árvore.
 - Na máquina do dono, o merge passa por `nota-de-passagem/merge-pr.sh` e `ci-tree.sh`. Esses scripts não estão no git e têm caminhos fixos daquela máquina. Em outra máquina, use `gh pr merge N --squash --delete-branch` depois de conferir os checks.
