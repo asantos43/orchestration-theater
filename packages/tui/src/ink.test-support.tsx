@@ -136,9 +136,10 @@ const SETTLE_MS = 20;
 /** Mounts the app over `ink-testing-library`. */
 export async function renderApp(options: RenderAppOptions): Promise<RenderedApp> {
   const settings = options.settings ?? TEST_UI_SETTINGS;
+  // The runtime reports no locale here, so `LANG` alone decides, whatever system runs the tests.
   const env: SystemLocaleEnv = { LANG: options.systemLocale ?? 'en_US.UTF-8' };
-  const i18n = await createTuiI18n(resolveLocale(settings.locale, env), loadTuiCatalogs());
-  const locale = new LocaleController(i18n, settings.locale, env);
+  const i18n = await createTuiI18n(resolveLocale(settings.locale, env, ''), loadTuiCatalogs());
+  const locale = new LocaleController(i18n, settings.locale, env, '');
   let flushes = 0;
   const tree: ReactNode = (
     <App
