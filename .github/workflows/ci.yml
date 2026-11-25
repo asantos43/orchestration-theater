@@ -40,11 +40,13 @@ jobs:
       # `pnpm verify` reads the crates of native/ offline: the sources must be in the cache first.
       - run: cargo fetch --locked
         working-directory: native/job-launcher
-      # The typed lint (`eslint .`) passed the default ~2 GB heap of Node on a runner (PR #55).
+      # The typed lint (`eslint .`) passed the default ~2 GB heap of Node on a runner (PR #55), and
+      # then 6 GB (PR #354, 2026-11-25: about 6.6 GB of RSS measured locally). [proposta] The repository
+      # variable OT_LINT_HEAP_MB picks the heap of this step in MB: 8192 by default (the runner has 16 GB).
       # `pnpm check` in steps: the tests run in the job `linux-tests` (OT_TEST_CI, OT_TEST_SHARDS).
       - run: pnpm build && pnpm lint && pnpm format:check
         env:
-          NODE_OPTIONS: --max-old-space-size=6144
+          NODE_OPTIONS: --max-old-space-size=${{ vars.OT_LINT_HEAP_MB || '8192' }}
       - run: pnpm verify
       - run: cargo fmt --check
         working-directory: native/job-launcher
@@ -153,6 +155,7 @@ jobs:
           TEST_SHARDS: ${{ vars.OT_TEST_SHARDS || '4' }}
           CROSS_SHARDS: ${{ vars.OT_CROSS_SHARDS || '4' }}
           SHARD_MODE: ${{ vars.OT_TEST_SHARD_MODE || 'duration' }}
+          LINT_HEAP: ${{ vars.OT_LINT_HEAP_MB || '8192' }}
         run: |
           changed=$(git diff --name-only HEAD^1 HEAD)
           echo "$changed"
@@ -195,6 +198,10 @@ jobs:
             duration | hash) ;;
             *) echo "::error::OT_TEST_SHARD_MODE=$SHARD_MODE: use duration or hash"; exit 1 ;;
           esac
+          # OT_LINT_HEAP_MB is read by the job `linux`: a whole number of MB from 2048 to 14336.
+          if ! [[ "$LINT_HEAP" =~ ^[0-9]+$ ]] || [ "$LINT_HEAP" -lt 2048 ] || [ "$LINT_HEAP" -gt 14336 ]; then
+            echo "::error::OT_LINT_HEAP_MB=$LINT_HEAP: use a number of MB from 2048 to 14336"; exit 1
+          fi
           if printf '%s\n' "$changed" | grep -qE '^(packages/protocol/src/atif/|packages/daemon/src/atif/|packages/daemon/src/phase8-acceptance\.e2e\.test\.ts|tools/atif-validate/)'; then
             atif=true
           else
