@@ -329,17 +329,7 @@ async function playActor(host: RolePlayHost, demandId: string): Promise<void> {
   if (hang !== undefined && (hang.attempt ?? attempt) === attempt) {
     if ((await countOf(`actor-hang-${demandId}-${String(attempt)}`)) === 0) {
       await host.say(`fake agent: ${demandId} is working and does not end by itself`);
-      await new Promise<void>((done) => {
-        if (host.signal.aborted) done();
-        else
-          host.signal.addEventListener(
-            'abort',
-            () => {
-              done();
-            },
-            { once: true },
-          );
-      });
+      await untilAborted(host.signal);
       return;
     }
   }
@@ -447,9 +437,39 @@ async function playCritic(host: RolePlayHost, playId: string, outcome: Outcome):
   await submit(host, 'submit_critique', { approved: true });
 }
 
+/** Resolves when the session is cancelled or its process ends. */
+function untilAborted(signal: AbortSignal): Promise<void> {
+  return new Promise<void>((done) => {
+    if (signal.aborted) done();
+    else
+      signal.addEventListener(
+        'abort',
+        () => {
+          done();
+        },
+        { once: true },
+      );
+  });
+}
+
+/**
+ * `#stage-hang:<STAGE>` in the need makes the first turn of that stage write nothing and wait for
+ * the cancel, as a session still working when the daemon stops (N307). The count is kept in the
+ * state directory, so the native resume of the stage goes on with the work.
+ */
+async function stageHangs(text: string, stage: string): Promise<boolean> {
+  if (!new RegExp(`#stage-hang:${stage}(?=\\s|$)`).test(text)) return false;
+  return (await countOf(`stage-hang-${stage}`)) === 0;
+}
+
 async function playStage(host: RolePlayHost, stage: string): Promise<void> {
   await mkdir(stateDir(), { recursive: true });
   await writeFile(stageMemoryFile(host.cwd), host.text);
+  if (await stageHangs(host.text, stage)) {
+    await host.say(`fake agent: the stage ${stage} is working and does not end by itself`);
+    await untilAborted(host.signal);
+    return;
+  }
   const playId = markerOf(host.text, '#ot-play:') ?? 'unknown';
   const outcome = outcomeOf(host.text);
   switch (stage) {

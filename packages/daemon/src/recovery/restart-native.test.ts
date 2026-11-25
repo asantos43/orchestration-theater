@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: MPL-2.0
+import { existsSync } from 'node:fs';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, expect, it } from 'vitest';
-import type { PlayRecord, Store } from '@otheater/core';
+import type { EventEnvelope, PlayRecord, Store } from '@otheater/core';
 import {
   FakeClientAdapter,
   FakeClock,
@@ -27,11 +28,12 @@ import { makeWorkspaceRig } from '../workspace/workspace-fixture.js';
 import { describeWithLauncher } from '../launcher-fixture.js';
 
 /**
- * `resume.on_restart` (architecture 5.21): a daemon stopped while the Actor of `alpha/1` works, and
- * started again on the same data folder. With `native` (the default) the play resumes that attempt
- * in its own session (`session/load`) and no `alpha/2` is opened; with `handoff` the attempt is
- * parked and the play opens `alpha/2`. The fake agent replays the first prompt after the load
- * (`FAKE_AGENT_HISTORY=1`), as a client that keeps its conversation.
+ * `resume.on_restart` (architecture 5.21): a daemon stopped while an attempt works (the Actor of
+ * `alpha/1`, or the planning stage), and started again on the same data folder. With `native` (the
+ * default) the play resumes that attempt in its own session (`session/load`) and opens no second
+ * one; with `handoff` the attempt is parked and the play opens the second. The fake agent keeps
+ * the prompt of the attempt per folder and plays it again at the continue prompt (role-play.ts), as
+ * a client that keeps its conversation.
  */
 
 beforeAll(assertFakeAgentBuilt);
@@ -57,7 +59,25 @@ async function attemptsOf(store: Store, playId: string, demandId: string) {
     .sort((a, b) => a.attempt - b.attempt);
 }
 
-async function restartWhileAlphaWorks(extra: string) {
+/** What hangs until the stop: the demand, the marker in the need and the count of the fake agent. */
+interface Hang {
+  readonly demandId: string;
+  readonly marker: string;
+  readonly count: string;
+}
+
+const ALPHA: Hang = {
+  demandId: 'alpha',
+  marker: '#actor-hang:alpha@1',
+  count: 'actor-hang-alpha-1.count',
+};
+const PLANNING: Hang = {
+  demandId: 'stage-planning',
+  marker: '#stage-hang:PLANNING',
+  count: 'stage-hang-PLANNING.count',
+};
+
+async function restartWhileItWorks(hang: Hang, extra: string) {
   const tmp = await makeTempDataDir();
   const stateDir = await mkdtemp(join(tmpdir(), 'otheater-restart-native-'));
   const clock = new FakeClock();
@@ -99,19 +119,16 @@ async function restartWhileAlphaWorks(extra: string) {
     const { scenarioId } = await producer.openChat({ repo: rig.repo });
     await producer.send(
       scenarioId,
-      '#ot-play write alpha and beta #actor-hang:alpha@1 #outcome:approved',
+      `#ot-play write alpha and beta ${hang.marker} #outcome:approved`,
     );
     const play: PlayRecord = await waitFor('the play to exist', async () => {
       return (await first.store.plays.list({ scenarioId }))[0];
     });
-    await waitFor('the Actor of alpha/1 to be working', async () => {
-      const [one] = await attemptsOf(first.store, play.id, 'alpha');
+    await waitFor(`${hang.demandId}/1 to be working`, async () => {
+      const [one] = await attemptsOf(first.store, play.id, hang.demandId);
       if (one?.state !== 'executing' || one.sessionId === null) return false;
-      // the fake agent counts the hang when its turn reaches it (role-play.ts, `#actor-hang`)
-      return (
-        (await readFile(join(stateDir, 'actor-hang-alpha-1.count'), 'utf8').catch(() => '0')) !==
-        '0'
-      );
+      // the fake agent counts the hang when its turn reaches it (role-play.ts)
+      return (await readFile(join(stateDir, hang.count), 'utf8').catch(() => '0')) !== '0';
     });
     await first.stop();
 
@@ -125,7 +142,7 @@ async function restartWhileAlphaWorks(extra: string) {
     return {
       play,
       events,
-      alpha: await attemptsOf(second.store, play.id, 'alpha'),
+      attempts: await attemptsOf(second.store, play.id, hang.demandId),
       pullRequests: fake.pullRequests().length,
     };
   } finally {
@@ -137,42 +154,63 @@ async function restartWhileAlphaWorks(extra: string) {
 }
 
 describeWithLauncher('resume.on_restart', { timeout: 180_000 }, () => {
-  it('native (default): the play resumes alpha/1 in its session and opens no alpha/2', async () => {
-    const { play, events, alpha, pullRequests } = await restartWhileAlphaWorks('');
-    expect(alpha.map((a) => [a.attempt, a.state])).toEqual([[1, 'completed']]);
-    const [one] = alpha;
-    const resumed = events.filter(
+  const resumedOf = (events: readonly EventEnvelope[], attemptId: string | undefined) =>
+    events.filter(
       (event) =>
         event.type === 'session.resumed' &&
-        (event.payload as { attemptId?: string }).attemptId === one?.attemptId,
+        (event.payload as { attemptId?: string }).attemptId === attemptId,
     );
-    expect(resumed.map((event) => event.payload)).toEqual([
+  const deliveries = (events: readonly EventEnvelope[], playId: string) =>
+    events.filter((event) => event.type === 'delivery.completed' && event.playId === playId);
+
+  it('native (default): the play resumes alpha/1 in its session and opens no alpha/2', async () => {
+    const { play, events, attempts, pullRequests } = await restartWhileItWorks(ALPHA, '');
+    expect(attempts.map((a) => [a.attempt, a.state])).toEqual([[1, 'completed']]);
+    expect(resumedOf(events, attempts[0]?.attemptId).map((event) => event.payload)).toEqual([
       expect.objectContaining({ form: 'native', cause: 'daemon_restart' }),
     ]);
-    expect(
-      events.filter((event) => event.type === 'delivery.completed' && event.playId === play.id),
-    ).toHaveLength(1);
+    expect(deliveries(events, play.id)).toHaveLength(1);
     expect(pullRequests).toBe(1);
   });
 
   it('handoff: alpha/1 is parked at the start and the play opens alpha/2', async () => {
-    const { play, events, alpha, pullRequests } = await restartWhileAlphaWorks(
+    const { play, events, attempts, pullRequests } = await restartWhileItWorks(
+      ALPHA,
       'resume:\n  on_restart: handoff\n',
     );
-    expect(alpha.map((a) => [a.attempt, a.state])).toEqual([
+    expect(attempts.map((a) => [a.attempt, a.state])).toEqual([
       [1, 'interrupted'],
       [2, 'completed'],
     ]);
-    expect(
-      events.filter(
-        (event) =>
-          event.type === 'session.resumed' &&
-          (event.payload as { attemptId?: string }).attemptId === alpha[0]?.attemptId,
-      ),
-    ).toEqual([]);
-    expect(
-      events.filter((event) => event.type === 'delivery.completed' && event.playId === play.id),
-    ).toHaveLength(1);
+    expect(resumedOf(events, attempts[0]?.attemptId)).toEqual([]);
+    expect(deliveries(events, play.id)).toHaveLength(1);
     expect(pullRequests).toBe(1);
+  });
+
+  // The stop of the daemon left the worktree of the stage in place: the resume goes on there.
+  it('native: the planning stage is resumed in its own worktree after the stop', async () => {
+    const { play, events, attempts, pullRequests } = await restartWhileItWorks(PLANNING, '');
+    expect(attempts.map((a) => [a.attempt, a.state])).toEqual([[1, 'completed']]);
+    expect(resumedOf(events, attempts[0]?.attemptId).map((event) => event.payload)).toEqual([
+      expect.objectContaining({ form: 'native', cause: 'daemon_restart' }),
+    ]);
+    expect(deliveries(events, play.id)).toHaveLength(1);
+    expect(pullRequests).toBe(1);
+    // a stage's worktree is scratch: it goes once the attempt ends
+    expect(existsSync(attempts[0]?.worktree ?? '')).toBe(false);
+  });
+
+  it('handoff: the planning stage runs again and the worktree of the first attempt goes', async () => {
+    const { play, events, attempts, pullRequests } = await restartWhileItWorks(
+      PLANNING,
+      'resume:\n  on_restart: handoff\n',
+    );
+    expect(attempts.map((a) => [a.attempt, a.state])).toEqual([
+      [1, 'interrupted'],
+      [2, 'completed'],
+    ]);
+    expect(deliveries(events, play.id)).toHaveLength(1);
+    expect(pullRequests).toBe(1);
+    expect(attempts.map((a) => existsSync(a.worktree))).toEqual([false, false]);
   });
 });

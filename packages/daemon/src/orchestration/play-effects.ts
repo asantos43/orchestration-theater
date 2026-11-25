@@ -41,6 +41,7 @@ import { buildDaemonEvent, type PlayNoticeKind } from '@otheater/protocol';
 import { z } from 'zod';
 import type { DaemonConfig, PlayLimits } from '../config.js';
 import { isDiskFull } from '../disk/guard.js';
+import type { AttemptOutcome } from '../execution/attempt-runner.js';
 import type { Execution } from '../execution/service.js';
 import type { Logger } from '../logger.js';
 import type { DataPaths } from '../paths.js';
@@ -211,6 +212,11 @@ interface Wanted {
   ids: Set<string>;
   feedback: string | null;
   submitRetries: number;
+}
+
+/** The attempt ended because the daemon stopped: it waits for the restart (N307). */
+function stoppedByTheDaemon(outcome: AttemptOutcome): boolean {
+  return outcome.state === 'interrupted' && outcome.cause === 'daemon_restart';
 }
 
 /**
@@ -673,6 +679,21 @@ export class OrchestrationEffects implements PlayEffects {
     return all.filter((a) => a.playId === playId && a.demandId === demandId);
   }
 
+  /**
+   * Removes the worktrees the earlier attempts of a stage left (an attempt kept for a resume that
+   * was not resumed: parked by the restart, or given back), before a new attempt starts.
+   */
+  async #dropStageWorktrees(repo: string, playId: string, demandId: string): Promise<void> {
+    const { vcs } = this.#options;
+    const earlier = new Set((await this.#attemptsOf(playId, demandId)).map((a) => a.worktree));
+    const left = await vcs.listWorktrees(repo).catch(() => []);
+    for (const entry of left) {
+      if (earlier.has(entry.path)) {
+        await vcs.removeWorktree(entry.path, { force: true }).catch(() => undefined);
+      }
+    }
+  }
+
   async #nextAttempt(playId: string, demandId: string): Promise<number> {
     const attempts = await this.#attemptsOf(playId, demandId);
     return attempts.reduce((max, a) => Math.max(max, a.attempt), 0) + 1;
@@ -698,7 +719,8 @@ export class OrchestrationEffects implements PlayEffects {
     picked: Extract<Acquired, { kind: 'selected' }>,
   ): Promise<AttemptRecord | undefined> {
     if (kept === undefined) return undefined;
-    if (picked.profile.client === kept.client && picked.profile.profile === kept.profile) return kept;
+    if (picked.profile.client === kept.client && picked.profile.profile === kept.profile)
+      return kept;
     await this.#options.execution.releaseDeferred(kept, 'resume:other_profile');
     return undefined;
   }
@@ -895,6 +917,7 @@ export class OrchestrationEffects implements PlayEffects {
     });
     const prompt = `${await this.#prefix(effect.role)}\n${body}`;
     const { profile, settings } = picked;
+    if (resumable === undefined) await this.#dropStageWorktrees(repo.path, playId, demandId);
     // A resumed attempt may have submitted before the daemon stopped: its events are read whole.
     const mark = resumable === undefined ? await store.events.lastId() : 0;
     const outcome =
@@ -918,8 +941,12 @@ export class OrchestrationEffects implements PlayEffects {
             executor: settings,
             policy,
           });
-    // The worktree of a stage is a scratch place; the branch (and its history) stays.
-    await vcs.removeWorktree(outcome.worktree, { force: true }).catch(() => undefined);
+    // The worktree of a stage is a scratch place; the branch (and its history) stays. An attempt
+    // the stop of the daemon left waiting keeps it: the native resume of the restart goes on there,
+    // and a new attempt removes it otherwise (N307).
+    if (!stoppedByTheDaemon(outcome)) {
+      await vcs.removeWorktree(outcome.worktree, { force: true }).catch(() => undefined);
+    }
     if (outcome.state !== 'completed') {
       return `The ${effect.role} session ${outcome.state}${outcome.cause === undefined ? '' : `: ${outcome.cause}`}.`;
     }
@@ -1330,7 +1357,8 @@ export class OrchestrationEffects implements PlayEffects {
       return;
     }
     if (picked.kind === 'unavailable') await this.#letGo(kept, 'resume:unavailable');
-    const resumable = picked.kind === 'unavailable' ? undefined : await this.#resumable(kept, picked);
+    const resumable =
+      picked.kind === 'unavailable' ? undefined : await this.#resumable(kept, picked);
     if (kept !== undefined && resumable === undefined) {
       attempt = await this.#nextAttempt(playId, demand.id);
     }

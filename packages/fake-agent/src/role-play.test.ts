@@ -670,4 +670,18 @@ describe('the tokens of the Actor (P23)', () => {
     await playRolePlay(resumed.host);
     expect(resumed.calls.map((call) => call.tool)).toEqual(['submit_plan']);
   });
+
+  it('hangs the first turn of a stage until the cancel, and submits at its resume (N307)', async () => {
+    const controller = new AbortController();
+    const first = host(stagePrompt('PLANNING', 'go #stage-hang:PLANNING'), {}, controller.signal);
+    const turn = playRolePlay(first.host);
+    await new Promise((done) => setTimeout(done, 50));
+    expect(first.calls).toEqual([]);
+    controller.abort();
+    await turn;
+    expect(first.calls).toEqual([]);
+    const resumed = host('Continue the task from where you stopped. Do not start over.');
+    await playRolePlay(resumed.host);
+    expect(resumed.calls.map((call) => call.tool)).toEqual(['submit_plan']);
+  });
 });
