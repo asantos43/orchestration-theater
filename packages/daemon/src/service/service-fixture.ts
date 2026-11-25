@@ -49,6 +49,8 @@ export class FakeServiceManager implements ServiceManager {
   spec: ServiceSpec | undefined;
   installed = false;
   active = false;
+  /** Answers `active: undefined`, as the Task Scheduler of Windows does (N323 (5)). */
+  activeUnknown = false;
   readonly calls: string[] = [];
   /** What `start` does besides setting `active` (tests start an in-process daemon here). */
   onStart: (() => Promise<void> | void) | undefined;
@@ -75,7 +77,9 @@ export class FakeServiceManager implements ServiceManager {
     return Promise.resolve({
       installed: this.installed,
       location: `fake:${this.spec?.id ?? 'none'}`,
-      ...(this.installed ? { enabled: true, active: this.active } : {}),
+      ...(this.installed
+        ? { enabled: true, active: this.activeUnknown ? undefined : this.active }
+        : {}),
     });
   }
 

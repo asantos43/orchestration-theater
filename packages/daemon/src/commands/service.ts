@@ -175,12 +175,23 @@ export async function runServiceCommand(
       case 'status': {
         const status = await service.status();
         const reading = await readDiscovery(discoveryFile, deps.alive);
+        // A daemon that holds the lock but has not published its API yet (it is starting, or
+        // waiting for the master password) is running all the same (N323 (5)).
+        const held = reading.kind === 'live' ? true : await lockHeld(dataPaths(context.dataDir));
         const daemon =
           reading.kind === 'live'
             ? { running: true, pid: reading.info.pid, url: reading.info.url }
-            : { running: false };
+            : { running: held };
+        // N323 (5): a manager that cannot tell whether the service runs (the Task Scheduler of
+        // Windows) is answered by the daemon of this data folder: its lock and its `api.json`.
+        // [proposta] It does not tell the service's daemon from one started by hand.
+        const fromDaemon =
+          status.installed && status.active === undefined && status.note !== 'no_session';
+        const shown = fromDaemon
+          ? { ...status, active: held, activeFrom: 'daemon' as const }
+          : status;
         if (options.json) {
-          context.out(JSON.stringify({ service: { kind: service.kind, ...status }, daemon }));
+          context.out(JSON.stringify({ service: { kind: service.kind, ...shown }, daemon }));
           return EXIT_OK;
         }
         if (!status.installed) {
@@ -190,13 +201,17 @@ export async function runServiceCommand(
           if (status.note === 'no_session') context.out(t('service.noSession'));
           else {
             context.out(t('service.statusEnabled', { value: yesNo(t, status.enabled) }));
-            context.out(t('service.statusActive', { value: yesNo(t, status.active) }));
+            context.out(
+              t(fromDaemon ? 'service.statusActiveFromDaemon' : 'service.statusActive', {
+                value: yesNo(t, shown.active),
+              }),
+            );
           }
         }
         context.out(
-          daemon.running
-            ? t('service.statusDaemonRunning', { pid: daemon.pid, url: daemon.url })
-            : t('service.statusDaemonStopped'),
+          reading.kind === 'live'
+            ? t('service.statusDaemonRunning', { pid: reading.info.pid, url: reading.info.url })
+            : t(held ? 'service.statusDaemonNoApi' : 'service.statusDaemonStopped'),
         );
         if (deps.platform === 'linux' && status.installed) context.out(t('service.lingerNote'));
         return EXIT_OK;

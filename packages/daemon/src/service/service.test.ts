@@ -22,6 +22,7 @@ import {
   quoteWindowsArg,
   renderTaskXml,
   taskAction,
+  taskStartsAtLogon,
 } from './windows-task.js';
 
 const reference = (name: string): Promise<string> =>
@@ -392,13 +393,36 @@ describe('the Windows task: the calls it makes, in order, with a fake runner', (
     expect(none.lines).toEqual(['schtasks.exe /Query /TN otheater-daemon']);
   });
 
-  it('status says installed or not, and leaves the state to the discovery file', async () => {
-    expect(await make(new FakeCommandRunner()).status()).toEqual({
+  it('status reads "starts at logon" from the XML of the task, and leaves "running" to the command', async () => {
+    const atLogon = new FakeCommandRunner().on('/XML', { stdout: renderTaskXml(WINDOWS_SPEC) });
+    expect(await make(atLogon).status()).toEqual({
       installed: true,
       location: 'otheater-daemon',
+      enabled: true,
     });
+    expect(atLogon.lines).toEqual(['schtasks.exe /Query /TN otheater-daemon /XML']);
+    const manual = renderTaskXml({ ...WINDOWS_SPEC, autostart: 'manual' });
+    const byHand = new FakeCommandRunner().on('/XML', { stdout: manual });
+    expect(await make(byHand).status()).toMatchObject({ installed: true, enabled: false });
     const none = new FakeCommandRunner().on('/Query', { code: 1 });
     expect(await make(none).status()).toMatchObject({ installed: false });
+    expect((await make(none).status()).enabled).toBeUndefined();
+  });
+
+  it('taskStartsAtLogon: the task and its logon trigger must both be enabled', () => {
+    // Windows prints the XML its own way: other spacing, a self-closing trigger, no <Enabled>.
+    const task = (triggers: string, settings: string): string =>
+      `<?xml version="1.0" encoding="UTF-16"?>\r\n<Task version="1.4"><Triggers>${triggers}</Triggers><Settings>${settings}</Settings></Task>`;
+    expect(taskStartsAtLogon(task('<LogonTrigger />', ''))).toBe(true);
+    expect(taskStartsAtLogon(task('<LogonTrigger><UserId>D\\u</UserId></LogonTrigger>', ''))).toBe(
+      true,
+    );
+    expect(
+      taskStartsAtLogon(task('<LogonTrigger><Enabled>false</Enabled></LogonTrigger>', '')),
+    ).toBe(false);
+    expect(taskStartsAtLogon(task('<LogonTrigger />', '<Enabled>false</Enabled>'))).toBe(false);
+    expect(taskStartsAtLogon(task('<BootTrigger />', ''))).toBe(false);
+    expect(taskStartsAtLogon('ERROR: The system cannot find the file specified.')).toBeUndefined();
   });
 
   it('start runs the task, stop ends it; both need the task', async () => {
