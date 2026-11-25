@@ -53,9 +53,9 @@ function textColumns(rows: readonly string[]): number[] {
 }
 
 const translators = async (): Promise<[string, TFunction][]> =>
-  Promise.all(LOCALES.map(async (locale) => [locale, await createTranslator(locale)] as const)).then(
-    (pairs) => pairs.map(([locale, t]) => [locale, t]),
-  );
+  Promise.all(
+    LOCALES.map(async (locale) => [locale, await createTranslator(locale)] as const),
+  ).then((pairs) => pairs.map(([locale, t]) => [locale, t]));
 
 describe('the help of ot (N325)', () => {
   it('has every command of the parser, once, and no other', () => {
@@ -71,10 +71,16 @@ describe('the help of ot (N325)', () => {
       // `secret` takes `set`: the help shows the whole words.
       const covered = (action: string): boolean =>
         help.some((shown) => shown === action || shown.startsWith(`${action} `));
-      expect(parser.filter((action) => !covered(action)), command.name).toEqual([]);
+      expect(
+        parser.filter((action) => !covered(action)),
+        command.name,
+      ).toEqual([]);
       const known = (shown: string): boolean =>
         parser.some((action) => shown === action || shown.startsWith(`${action} `));
-      expect(help.filter((shown) => !known(shown)), command.name).toEqual([]);
+      expect(
+        help.filter((shown) => !known(shown)),
+        command.name,
+      ).toEqual([]);
     }
   });
 
@@ -115,10 +121,13 @@ describe('the help of ot (N325)', () => {
         ];
         for (const page of pages) {
           for (const line of page.split('\n'))
-            expect(line.length, `${locale} ${width}: ${line}`).toBeLessThanOrEqual(width);
+            expect(line.length, `${locale} ${String(width)}: ${line}`).toBeLessThanOrEqual(width);
           for (const title of ['Actions:', 'Options:', 'Ações:', 'Opções:']) {
             const columns = textColumns(section(page, title));
-            expect(new Set(columns).size, `${locale} ${width} ${title}`).toBeLessThanOrEqual(1);
+            expect(
+              new Set(columns).size,
+              `${locale} ${String(width)} ${title}`,
+            ).toBeLessThanOrEqual(1);
           }
         }
       }
@@ -154,14 +163,18 @@ describe('the help of ot (N325)', () => {
         ['short', 'one two three four five six seven eight nine ten'],
         ['a-left-part-wider-than-the-limit-of-the-column', 'below'],
       ],
-      40,
+      60,
     );
+    // The widest left part counts up to 28: the text starts at column 2 + 28 + 2.
+    const pad = ' '.repeat(32);
     expect(lines).toEqual([
-      '  short    one two three four five six',
-      '           seven eight nine ten',
+      `${'  short'.padEnd(32)}one two three four five six`,
+      `${pad}seven eight nine ten`,
       '  a-left-part-wider-than-the-limit-of-the-column',
-      '           below',
+      `${pad}below`,
     ]);
+    // Too narrow for the two columns: the text goes below every left part.
+    expect(table([['short', 'one two']], 40, 40)).toEqual(['  short', '      one two']);
     expect(wrap('a b\n\nc', 10)).toEqual(['a b', '', 'c']);
   });
 

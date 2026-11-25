@@ -400,7 +400,7 @@ suite(
         const screen = await tmux.screen();
         expect(screen).toContain('SCENARIOS');
         expect(screen).toContain('─ Chat ─');
-        expect(screen).not.toContain('Usage: ot');
+        expect(screen).not.toContain('ot <command>');
         // `ot` runs the TUI in a process of its own: both are in the pane, and both must end.
         expect((await tmux.processTree()).length).toBeGreaterThan(1);
         await tmux.keys('C-q');

@@ -1513,6 +1513,7 @@ O patch fica, com a versão do Ink travada em 8.0.0: se a versão mudar, o patch
 | `ui.runtime.maxSemiSpaceMB` | 2 | inteiro maior ou igual a 1 |
 | `ui.runtime.maxOldSpaceMB` | sem teto | inteiro maior ou igual a 1 (proposta de 256, acima) |
 | `ui.bare_command` | `tui` | `tui`, `help` (N195) |
+| `ui.help_width` | `readable` | `readable` (a largura do terminal, até 100 colunas), `terminal` (a largura toda) ou um número de 40 a 1000 (N325) **[proposta]** |
 | `ui.setup.open` **[proposta]** | `auto` | `auto` (a TUI entra no assistente quando `GET /v1/setup` diz `firstRunNeeded`), `never` (PR #227 [S]) |
 | `ui.setup.readTimeoutMs` **[proposta]** | 5000 | inteiro de 100 a 60000: quanto a TUI espera o daemon dizer se precisa de primeira execução; passado o prazo, segue sem o assistente e avisa |
 | `ui.setup.reviewNotes` **[proposta]** | `grouped` | `grouped` ou `all` (N324): na Revisão do assistente, `grouped` junta as notas de "nenhuma conta tem o modelo" numa linha por família de modelos (o que vem antes do primeiro `-` do head do preset) e os papéis sem Executor numa linha; a tecla D **[proposta]** mostra cada nota. `all` mostra todas, uma por linha |
