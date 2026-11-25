@@ -17,7 +17,6 @@ import {
   InMemorySecretVault,
   InMemoryStore,
 } from '@otheater/core/testing';
-import type { KeyringBackend } from '@otheater/adapter-vault-keyring';
 import { describe, expect, it, vi } from 'vitest';
 import { LocalCodeHost } from './code-host.js';
 import {
@@ -27,6 +26,7 @@ import {
   compose,
   composeClock,
   composeVault,
+  type ComposeOverrides,
   type LauncherChoiceDeps,
 } from './compose.js';
 import { parseConfig } from './config.js';
@@ -110,6 +110,9 @@ describe('the guard against the real keyring under the test runner (item 64)', (
 });
 
 /** A keyring backend in memory; `fail` makes every call throw that message, as the native one does. */
+/** The backend of the keyring, named through compose.ts: only it may import the adapter (5.18). */
+type KeyringBackend = NonNullable<ComposeOverrides['keyringBackend']>;
+
 class FakeKeyring implements KeyringBackend {
   readonly entries = new Map<string, string>();
   calls = 0;
