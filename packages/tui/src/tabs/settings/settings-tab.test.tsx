@@ -262,6 +262,8 @@ async function open(
     mouseWrites?: string[];
     mouseClipboard?: RenderAppOptions['mouseClipboard'];
     clipboardCopy?: UiSettings['clipboardCopy'];
+    /** The text that says the tab is drawn (an account, by default). */
+    ready?: string;
   } = {},
 ): Promise<{ app: RenderedApp; online: FakeOnline; opener: FakeOpener }> {
   const online = fakeOnline();
@@ -289,7 +291,7 @@ async function open(
   });
   await app.waitForText('SCENARIOS');
   app.press('\x1b[15~');
-  await app.waitForText('claude-code/main');
+  await app.waitForText(options.ready ?? 'claude-code/main');
   return { app, online, opener };
 }
 
@@ -346,6 +348,21 @@ describe('the tab Settings', () => {
     expect(frame).toContain('opus-high@claude-code/main');
     expect(frame).toContain('author');
     expect(frame).toContain('attempts_per_demand');
+  });
+
+  it('says how to add an account when there is none: the bar has A, L and W, and L names them (N324)', async () => {
+    const api = new FakeSettingsApi();
+    api.accounts = [];
+    const { app } = await open(api, { ready: 'No account yet', columns: 260 });
+    const frame = await app.settle();
+    expect(flat(frame)).toContain('No account yet. A adds one; W opens the assistant.');
+    expect(frame).toContain('Add account');
+    expect(frame).toContain('Log in');
+    expect(frame).toContain('Assistant');
+    const after = await key(app, 'l');
+    expect(flat(after)).toContain('No account yet: A adds one; W opens the assistant.');
+    expect(after).not.toContain('Nothing under the cursor');
+    expect(api.loginsStarted).toEqual([]);
   });
 
   it('logs in through the panel: the address and the code on screen, the browser code sent, the end announced', async () => {

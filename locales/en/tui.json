@@ -229,6 +229,11 @@
       "edit": "Cap",
       "cancel": "Cancel run",
       "install": "Install adapter"
+    },
+    "settings": {
+      "add": "Add account",
+      "login": "Log in",
+      "assistant": "Assistant"
     }
   },
   "keymap": {
@@ -664,7 +669,7 @@
     "loading": "Reading the settings...",
     "loadFailed": "Could not read the settings: {{message}}",
     "empty": {
-      "profiles": "No account yet. Add one.",
+      "profiles": "No account yet. {{add}} adds one; {{assistant}} opens the assistant.",
       "executors": "No Executor.",
       "roles": "No role.",
       "overrides": "This project overrides no key."
@@ -764,6 +769,7 @@
       "badDuration": "{{key}} takes a duration such as 30m, 2h or 45s.",
       "badAdd": "Write <client> <name> <token_plan|api> <provider>.",
       "nothing": "Nothing under the cursor.",
+      "noAccounts": "No account yet: {{add}} adds one; {{assistant}} opens the assistant.",
       "noLogin": "Only a subscription account signs in.",
       "noAssistant": "The assistant needs the daemon."
     }
