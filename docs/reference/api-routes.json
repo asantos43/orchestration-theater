@@ -14079,6 +14079,9 @@
                     "null"
                   ]
                 },
+                "head": {
+                  "type": "string"
+                },
                 "message": {
                   "type": "string"
                 }

@@ -93,6 +93,8 @@ export const ApiRolesSchema = z.strictObject({
       code: z.enum(NOTE_CODES),
       role: z.enum(ROLE_IDS),
       executorId: z.string().nullable(),
+      /** The `<model>-<effort>` of the preset a `no_account` note is about (N324). */
+      head: z.string().optional(),
       message: z.string(),
     }),
   ),
