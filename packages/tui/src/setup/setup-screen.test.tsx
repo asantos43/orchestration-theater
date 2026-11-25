@@ -6,7 +6,7 @@ import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { plain, waitFor } from '../ink.test-support.js';
 import { buildTuiKeymap } from '../keys/use-keymap.js';
 import { createTuiI18n, loadTuiCatalogs } from '../locale.js';
-import type { SetupDetectedClient } from '@otheater/protocol';
+import type { SetupDetectedClient, SetupNote } from '@otheater/protocol';
 import type { SetupFlow } from './api.js';
 import {
   FakeSetupApi,
@@ -438,6 +438,76 @@ describe('the setup screen: the other flows', () => {
     await screen.press(ENTER);
     await screen.seen('Done.');
     expect(api.written[0]?.preset).toBe('economical');
+  });
+
+  it('folds the notes of the review by family, and D shows each one (N324)', async () => {
+    const api = new FakeSetupApi({ profiles: PROFILES, current: 'quality' });
+    const noAccount = (head: string, role: 'author' | 'reviewer'): SetupNote => ({
+      severity: 'info',
+      code: 'no_account',
+      role,
+      head,
+      message: `no account has ${head} for ${role}`,
+    });
+    api.notes = [
+      noAccount('claude-opus-high', 'author'),
+      noAccount('claude-opus-high', 'reviewer'),
+      noAccount('claude-sonnet-medium', 'author'),
+      noAccount('codex-sol-high', 'author'),
+      { severity: 'warning', code: 'empty_list', role: 'author', message: 'author is empty' },
+      { severity: 'info', code: 'other', role: null, message: 'a note of its own' },
+    ];
+    const screen = mount('change_preset', api);
+    await screen.seen('Pick the preset of the roles.');
+    await screen.press(ENTER);
+    const folded = await screen.seen('This is what will be written.');
+    expect(folded).toContain(
+      'claude: no account of this machine has claude-opus-high, claude-sonnet-medium; left out of 2 role(s)',
+    );
+    expect(folded).toContain('codex: no account of this machine has codex-sol-high');
+    expect(folded).toContain('No Executor left in 1 role(s): author');
+    expect(folded).toContain('a note of its own');
+    expect(folded).not.toContain('no account has claude-opus-high for reviewer');
+    expect(folded).toContain('D shows each note');
+    const all = await screen.press('d');
+    expect(all).toContain('no account has claude-opus-high for reviewer');
+    expect(all).toContain('author is empty');
+    expect(all).toContain('D folds the notes again');
+    expect(await screen.press('d')).not.toContain('no account has claude-opus-high for reviewer');
+  });
+
+  it('shows every note at once with ui.setup.reviewNotes all (N324)', async () => {
+    const api = new FakeSetupApi({ profiles: PROFILES, current: 'quality' });
+    api.notes = [
+      {
+        severity: 'info',
+        code: 'no_account',
+        role: 'author',
+        head: 'codex-sol-high',
+        message: 'one by one',
+      },
+    ];
+    const outcomes: SetupOutcome[] = [];
+    const view = render(
+      <I18nextProvider i18n={i18n}>
+        <SetupScreen
+          flow="change_preset"
+          api={api}
+          keymap={keymap}
+          reviewNotes="all"
+          onClose={(o) => outcomes.push(o)}
+        />
+      </I18nextProvider>,
+    );
+    const frame = (): string => plain(view.lastFrame() ?? '');
+    await waitFor(() => (frame().includes('Pick the preset') ? true : undefined), 'preset');
+    view.stdin.write(ENTER);
+    const review = await waitFor(
+      () => (frame().includes('This is what will be written.') ? frame() : undefined),
+      'review',
+    );
+    expect(review).toContain('one by one');
+    expect(review).not.toContain('no account of this machine has');
   });
 
   it('shows the preset as kept when the plan does not change it', async () => {

@@ -14079,6 +14079,9 @@
                     "null"
                   ]
                 },
+                "head": {
+                  "type": "string"
+                },
                 "message": {
                   "type": "string"
                 }
@@ -19314,6 +19317,10 @@
                   }
                 ]
               },
+              "head": {
+                "type": "string",
+                "minLength": 1
+              },
               "message": {
                 "type": "string"
               }
@@ -20282,6 +20289,10 @@
                     "type": "null"
                   }
                 ]
+              },
+              "head": {
+                "type": "string",
+                "minLength": 1
               },
               "message": {
                 "type": "string"
@@ -21287,6 +21298,10 @@
                   }
                 ]
               },
+              "head": {
+                "type": "string",
+                "minLength": 1
+              },
               "message": {
                 "type": "string"
               }
@@ -22289,6 +22304,10 @@
                     "type": "null"
                   }
                 ]
+              },
+              "head": {
+                "type": "string",
+                "minLength": 1
               },
               "message": {
                 "type": "string"
@@ -23293,6 +23312,10 @@
                   }
                 ]
               },
+              "head": {
+                "type": "string",
+                "minLength": 1
+              },
               "message": {
                 "type": "string"
               }
@@ -24295,6 +24318,10 @@
                     "type": "null"
                   }
                 ]
+              },
+              "head": {
+                "type": "string",
+                "minLength": 1
               },
               "message": {
                 "type": "string"

@@ -148,6 +148,7 @@ export function buildPlan(input: PlanInput): PlanResult {
       severity: note.severity,
       code: note.code,
       role: note.role,
+      ...(note.head === undefined ? {} : { head: note.head }),
       message: note.message,
     });
   }

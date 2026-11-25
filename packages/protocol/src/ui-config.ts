@@ -21,6 +21,8 @@ export const UI_CLIPBOARD_COPY_MODES = ['osc52', 'system', 'auto', 'off'] as con
 export const UI_MOUSE_MODES = ['full', 'wheel', 'off'] as const;
 export const UI_KEY_RENDER_MODES = ['flush', 'throttle'] as const;
 export const UI_SETUP_OPEN_MODES = ['auto', 'never'] as const;
+/** `ui.setup.reviewNotes` (N324): the notes of the review folded by family of models, or all of them. */
+export const UI_SETUP_REVIEW_NOTES_MODES = ['grouped', 'all'] as const;
 export const UI_INK_PATCHES = ['cache', 'grid'] as const;
 export const UI_SCROLL_STEPS = ['page', 'half', 'line'] as const;
 export const UI_DENSITIES = ['comfortable', 'compact'] as const;
@@ -386,10 +388,14 @@ export type UiTuiMouseConfig = z.output<typeof UiTuiMouseConfigSchema>;
  *   assistant to the tab Settings and to the person.
  * - `readTimeoutMs`: how long the TUI waits for that answer before it gives up and goes on with the
  *   normal screen (a daemon that does not answer must not hold the interface), in milliseconds.
+ * - `reviewNotes` (N324): `grouped` (default) folds the notes of the review that say no account has
+ *   a model of the preset into one line per family of models, and the roles left with no Executor
+ *   into one line; a key of the screen shows the detail. `all` shows every note, one per line.
  */
 export const UiSetupConfigSchema = z.strictObject({
   open: z.enum(UI_SETUP_OPEN_MODES).default('auto'),
   readTimeoutMs: z.int().min(100).max(60_000).default(5000),
+  reviewNotes: z.enum(UI_SETUP_REVIEW_NOTES_MODES).default('grouped'),
 });
 export type UiSetupConfig = z.output<typeof UiSetupConfigSchema>;
 
