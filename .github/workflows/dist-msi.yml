@@ -149,7 +149,32 @@ jobs:
           $extra = @{}
           if ($env:OT_RELEASE_VERSION) { $extra = @{ Version = $env:OT_RELEASE_VERSION } }
           ./installer/wix/build.ps1 @extra
+      # Probes of N322, each with its own time limit, before the full test: two runs of the test
+      # hung on 2026-11-25 until the runner was lost, with no log. The steps of the job (the API
+      # keeps their times even when the log is lost) say which part got through. [proposta] They
+      # go away once the cause is known.
+      - name: 'Probe: ot vault use and status, no msiexec'
+        timeout-minutes: 3
+        run: |
+          $exe = (Resolve-Path dist\sea\win32-x64\otheater.exe).Path
+          $data = Join-Path $env:RUNNER_TEMP 'ot-probe-data'
+          & $exe --data-dir $data vault use encrypted-file
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & $exe --data-dir $data vault status --json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Remove-Item -Recurse -Force $data
+      - name: 'Probe: msiexec with no action of ot (VAULT=keep, no service, no adapters)'
+        timeout-minutes: 6
+        env:
+          MSI: ${{ steps.build.outputs.msi }}
+        run: ./installer/wix/probe-msi.ps1 -Msi $env:MSI -Properties 'VAULT=keep', 'LOGON_SERVICE=0', 'PREFETCH_ADAPTERS=0'
+      - name: 'Probe: msiexec with ot vault use only (VAULT=encrypted-file)'
+        timeout-minutes: 6
+        env:
+          MSI: ${{ steps.build.outputs.msi }}
+        run: ./installer/wix/probe-msi.ps1 -Msi $env:MSI -Properties 'VAULT=encrypted-file', 'LOGON_SERVICE=0', 'PREFETCH_ADAPTERS=0'
       - name: Install, check, uninstall, check
+        timeout-minutes: 20
         env:
           MSI: ${{ steps.build.outputs.msi }}
           SEMVER: ${{ steps.build.outputs.semver }}
