@@ -234,10 +234,10 @@
 #            se vencer e o daemon perguntar, é falha); em park, a troca vem na hora, a parada limpa
 #            deixa a tentativa `awaiting_resume` (`session.interrupted` com a causa
 #            `daemon_restart`) e a peça segue: por `session.resumed` (forma `native`, ou seja
-#            `session/load`, ou `handoff`) ou, como o daemon do release hoje faz [V: fake-agent no
-#            SEA, 2026-11-24; o `resolveAttempt` não é passado], com uma tentativa nova da mesma
-#            demanda (`.../2`). OT_TEST_BUSY_RESUME_FORM=any (padrão) aceita as três; `native`
-#            exige o `session/load` e falha enquanto o daemon não o fizer. Nos dois:
+#            `session/load`, ou `handoff`) ou com uma tentativa nova da mesma demanda (`.../2`),
+#            como o daemon fazia antes da chave `resume.on_restart` [V: fake-agent no SEA,
+#            2026-11-24]. OT_TEST_BUSY_RESUME_FORM=native (padrão) exige o `session/load` (o
+#            padrão `resume.on_restart: native`); `any` aceita as três. Nos dois:
 #            o diário diz `committed`, os eventos `applying` e `applied` estão no log, o executável
 #            diz 1.0.1, a peça termina em DONE com `delivery.completed` (não se perdeu) e nenhum
 #            processo da rodada sobra. O prazo da peça é OT_TEST_PLAY_TIMEOUT_MS (25m) POR MODO e os
@@ -453,7 +453,7 @@ if [ "$level" = phase10-busy ]; then
   done
   busy_max_wait="${OT_TEST_BUSY_MAX_WAIT:-20m}"
   [[ "$busy_max_wait" =~ ^[0-9]+(ms|s|m|h|d)$ ]] || fail "OT_TEST_BUSY_MAX_WAIT deve ser uma duração como 90s ou 20m: $busy_max_wait"
-  busy_resume_form="${OT_TEST_BUSY_RESUME_FORM:-any}"
+  busy_resume_form="${OT_TEST_BUSY_RESUME_FORM:-native}"
   case "$busy_resume_form" in native|any) ;; *) fail "OT_TEST_BUSY_RESUME_FORM deve ser native ou any: $busy_resume_form" ;; esac
   busy_need="${OT_TEST_BUSY_NEED:-Create a file named fib.js that exports a function fib(n) (iterative, returns the n-th Fibonacci number), and a file fib.test.js with at least five cases using node:test. Run the tests with node --test and fix any failure. Keep it minimal.}"
   [ -n "$busy_need" ] || fail "OT_TEST_BUSY_NEED está vazia"

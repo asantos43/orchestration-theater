@@ -16,7 +16,7 @@ import { defaultVcs } from '../compose.js';
 import { editsPrompt, TEST_POLICY, TEST_PROFILE } from '../test-helpers.js';
 import { AttemptRunner } from './attempt-runner.js';
 import { eventsOf, makeRig, specOf, until, type Rig, type RigParts } from './attempt-fixture.js';
-import { reconcileAttempts, type AttemptResolver } from './reconcile.js';
+import { parkAttempt, reconcileAttempts, type AttemptResolver } from './reconcile.js';
 
 const TEST_TIMEOUT_MS = 30_000;
 
@@ -265,6 +265,85 @@ describe('reconcileAttempts', () => {
       expect(await r.store.interruptions.list()).toHaveLength(1);
       await r.runner.stop();
       await running;
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it(
+    'leaves a deferred attempt intact for its play, which resumes it in its session later',
+    async () => {
+      const { r, outcome, next } = await leftRunning();
+      const before = await r.store.attempts.get(outcome.attemptId);
+      const asked: string[] = [];
+      const report = await reconcileAttempts({
+        store: r.store,
+        runner: next,
+        resolver: undefined,
+        defer: (record) => {
+          asked.push(record.attemptId);
+          return true;
+        },
+        logger,
+      });
+      expect(asked).toEqual([outcome.attemptId]);
+      expect(report.deferred.map((record) => record.attemptId)).toEqual([outcome.attemptId]);
+      expect(report.parked).toEqual([]);
+      expect(report.resuming).toEqual([]);
+      expect(await report.done).toEqual([]);
+      expect(await r.store.attempts.get(outcome.attemptId)).toEqual(before);
+      expect(r.transport.loaded).toHaveLength(0);
+
+      // the play claims it and resumes it with what it knows (resume.on_restart: native)
+      const [kept] = report.deferred;
+      if (kept === undefined) throw new Error('nothing deferred');
+      const context = await RESOLVER(kept);
+      if (context === undefined) throw new Error('the resolver knows nothing');
+      const done = await next.resume(kept, context);
+      expect(done).toMatchObject({ state: 'completed', attemptId: outcome.attemptId });
+      expect(r.transport.loaded).toHaveLength(1);
+      expect((await eventsOf(r, 'session.resumed'))[0]?.payload).toMatchObject({
+        form: 'native',
+        cause: 'daemon_restart',
+      });
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it(
+    'parks what the deferral refuses, as before',
+    async () => {
+      const { r, outcome, next } = await leftRunning();
+      const report = await reconcileAttempts({
+        store: r.store,
+        runner: next,
+        resolver: undefined,
+        defer: async () => Promise.resolve(false),
+        logger,
+      });
+      expect(report.deferred).toEqual([]);
+      expect(report.parked).toEqual([outcome.attemptId]);
+      expect((await r.store.attempts.get(outcome.attemptId))?.state).toBe('interrupted');
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it(
+    'parkAttempt records the signal and the detail it is given',
+    async () => {
+      const { r, outcome } = await leftRunning();
+      const record = await r.store.attempts.get(outcome.attemptId);
+      if (record === undefined) throw new Error('no record');
+      await parkAttempt(r.store, record, {
+        signal: 'resume:other_profile',
+        detail: 'the attempt could not be resumed in its session',
+      });
+      expect((await r.store.attempts.get(outcome.attemptId))?.state).toBe('interrupted');
+      const rows = await r.store.interruptions.list({ sessionId: 'fake-session-1' });
+      expect(rows.at(-1)?.signals.slice(-2)).toEqual(['resume:other_profile', 'action:handoff']);
+      const interrupted = await eventsOf(r, 'session.interrupted');
+      expect(interrupted.at(-1)?.payload).toMatchObject({
+        detail: 'the attempt could not be resumed in its session',
+      });
     },
     TEST_TIMEOUT_MS,
   );

@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
+import { FINAL_PLAY_STATES } from '@otheater/protocol';
 import type {
+  AttemptRecord,
   ClientAdapter,
   Clock,
   MemoryProbe,
@@ -17,7 +19,12 @@ import type { ExhaustionPort } from './exhaustion.js';
 import type { HandoffPort } from './handoff.js';
 import { SessionPool } from './pool.js';
 import type { SessionTelemetry } from '../telemetry/client-telemetry.js';
-import { reconcileAttempts, type AttemptResolver, type ReconcileReport } from './reconcile.js';
+import {
+  parkAttempt,
+  reconcileAttempts,
+  type AttemptResolver,
+  type ReconcileReport,
+} from './reconcile.js';
 import type { ExecutionSettings } from './settings.js';
 
 export interface ExecutionOptions {
@@ -61,6 +68,8 @@ export class Execution {
   readonly runner: AttemptRunner;
   readonly #options: ExecutionOptions;
   #reconciled: ReconcileReport | undefined;
+  /** `resume.on_restart: native`: the attempts kept for their plays, by id, until claimed. */
+  readonly #deferred = new Map<string, AttemptRecord>();
 
   constructor(options: ExecutionOptions) {
     this.#options = options;
@@ -102,9 +111,70 @@ export class Execution {
       store: this.#options.store,
       runner: this.runner,
       resolver: this.#options.resolver,
+      ...(this.#options.settings.onRestart === 'native' ? { defer: (r) => this.#keeps(r) } : {}),
       logger: this.#options.logger,
     });
+    for (const record of this.#reconciled.deferred) this.#deferred.set(record.attemptId, record);
     return this.#reconciled;
+  }
+
+  /**
+   * `resume.on_restart: native`: an attempt that was running (or stopped for the restart) with a
+   * conversation, in a play that is still going, waits for its play. Waits for a reset (P19) and a
+   * removed profile (P21b) keep their own way.
+   */
+  async #keeps(record: AttemptRecord): Promise<boolean> {
+    if (record.sessionId === null) return false;
+    if (record.state === 'awaiting_resume' && record.cause !== 'daemon_restart') return false;
+    const play = await this.#options.store.plays.get(record.playId);
+    return play !== undefined && !(FINAL_PLAY_STATES as readonly string[]).includes(play.state);
+  }
+
+  /**
+   * The attempt of a demand of a play that the reconciliation kept for it (`resume.on_restart:
+   * native`), handed over once: the newest one. The caller resumes it (`runner.resume`) or gives
+   * it back with {@link releaseDeferred}.
+   */
+  claimDeferred(playId: string, demandId: string): AttemptRecord | undefined {
+    const mine = [...this.#deferred.values()]
+      .filter((record) => record.playId === playId && record.demandId === demandId)
+      .sort((a, b) => b.attempt - a.attempt);
+    const [newest, ...older] = mine;
+    if (newest === undefined) return undefined;
+    // Only the newest attempt of a demand can be running; older ones are left over: parked.
+    for (const record of [newest, ...older]) this.#deferred.delete(record.attemptId);
+    for (const record of older) void this.releaseDeferred(record, 'resume:superseded');
+    return newest;
+  }
+
+  /**
+   * Parks an attempt that was kept for its play and will not be resumed natively (another profile
+   * took the role, the play was aborted): the way on is the handoff, as without `native`.
+   */
+  async releaseDeferred(record: AttemptRecord, signal: string): Promise<void> {
+    this.#deferred.delete(record.attemptId);
+    try {
+      await parkAttempt(this.#options.store, record, {
+        signal,
+        detail: 'the daemon was not running and the attempt could not be resumed in its session',
+      });
+    } catch (error) {
+      this.#options.logger.error(
+        { err: error, attemptId: record.attemptId },
+        'parking a kept attempt failed',
+      );
+    }
+  }
+
+  /** Parks every attempt still kept for a play (`abort_work`). */
+  async releaseDeferredOf(playId: string, signal: string): Promise<void> {
+    const mine = [...this.#deferred.values()].filter((record) => record.playId === playId);
+    for (const record of mine) await this.releaseDeferred(record, signal);
+  }
+
+  /** The attempts still kept for their plays (the status and the tests read it). */
+  get deferred(): readonly AttemptRecord[] {
+    return [...this.#deferred.values()];
   }
 
   /** Stops the attempts the way a restart does, then ends every adapter process. */

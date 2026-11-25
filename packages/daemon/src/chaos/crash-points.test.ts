@@ -25,7 +25,10 @@ describe('the catalogue', () => {
     expect(new Set(CRASH_POINT_NAMES).size).toBe(CRASH_POINT_NAMES.length);
     for (const name of CRASH_POINT_NAMES) expect(name).toMatch(/^[a-z]+\.[a-z_]+$/);
     expect(CRASH_POINT_NAMES).toHaveLength(
-      CRASH_POINTS.effects.length + CRASH_POINTS.reconcile.length + CRASH_POINTS.store.length,
+      CRASH_POINTS.effects.length +
+        CRASH_POINTS.reconcile.length +
+        CRASH_POINTS.store.length +
+        CRASH_POINTS.attempt.length,
     );
   });
 });

@@ -116,6 +116,12 @@ export interface RoleSelectionRequest {
    * is not (the items before it come last). An id the list of the role does not have is ignored.
    */
   readonly startAt?: string | undefined;
+  /**
+   * The account the caller wants first when it does not name an Executor: the first Executor of the
+   * list in it goes first, as with `startAt`. It is how an attempt kept for its play at a restart
+   * (`resume.on_restart: native`) gets its own account back, where its conversation lives.
+   */
+  readonly startAtProfile?: { readonly client: string; readonly profile: string } | undefined;
 }
 
 /** What the caller runs the session with. */
@@ -548,10 +554,16 @@ export class RoleSelection {
       roundRobin,
       ...(earlier.length === 0 ? {} : { earlier }),
     });
+    const wanted = request.startAtProfile;
     const start =
-      request.startAt === undefined
-        ? -1
-        : executors.findIndex((item) => item.id === request.startAt);
+      request.startAt !== undefined
+        ? executors.findIndex((item) => item.id === request.startAt)
+        : wanted === undefined
+          ? -1
+          : executors.findIndex(
+              (item) =>
+                item.entry.client === wanted.client && item.entry.profile === wanted.profile,
+            );
     const pinned = start < 0 ? undefined : executors[start];
     if (pinned === undefined) return selectExecutorFromPorts(ports, input(executors));
     // P14: the Executor the Producer chose goes first; when it cannot take the session, the list

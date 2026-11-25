@@ -47,7 +47,7 @@ Commands:
   acceptance-busy --exe-n <file> --version-n <x.y.z> --exe-n1 <file> --version-n1 <x.y.z> --key <private.pem>
       --install-script <install.sh> --model <id> --need <text> --play-timeout-ms <n> --max-wait <dur>
       --limits <preset> [--modes idle,park] [--profile-dir <dir>] [--client-mode <mode>]
-      [--client-command <file>] [--daemon-path <PATH>] [--resume-form native|any (default any)] [--prefix <text>]
+      [--client-command <file>] [--daemon-path <PATH>] [--resume-form native|any (default native)] [--prefix <text>]
       [--work-dir <dir>] [--keep]
       The update with a piece in progress (Phase 10, N303 (2); level phase10-busy of
       tools/acceptance/real-acceptance.sh): a real piece starts, the next version is published while
@@ -240,7 +240,7 @@ export async function main(argv: readonly string[]): Promise<number> {
     for (const mode of modes) {
       if (!(BUSY_MODES as readonly string[]).includes(mode)) fail(`unknown mode "${mode}"`);
     }
-    const resumeForm = values['resume-form'] ?? 'any';
+    const resumeForm = values['resume-form'] ?? 'native';
     if (!(BUSY_RESUME_FORMS as readonly string[]).includes(resumeForm)) {
       fail(`--resume-form is one of ${BUSY_RESUME_FORMS.join(', ')}`);
     }

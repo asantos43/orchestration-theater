@@ -14,6 +14,7 @@ import {
   type AttemptRecord,
   type AttemptRecordInput,
   type Clock,
+  type EventEnvelope,
   type ExecutorConfig,
   type NormalizedUpdate,
   type PermissionOutcome,
@@ -36,6 +37,7 @@ import {
   type ScenarioHandoffNotice,
   type ScenarioResetWaitNotice,
 } from '@otheater/protocol';
+import { crashPoint } from '../chaos/crash-points.js';
 import { FRAMEWORK_MCP_NAME, type McpAccess, type McpGrant } from '../mcp/access.js';
 import { executorSelectedPayload } from '../orchestration/executor-selection.js';
 import { withPluginTools } from '../plugins/permissions.js';
@@ -44,6 +46,7 @@ import { CheckpointTracker } from './checkpoints.js';
 import {
   eventErrorText,
   gatherContinuationPackage,
+  readAttemptEvents,
   renderContinuationPackage,
 } from './continuation-package.js';
 import type { ExhaustionPort, ExhaustionRules } from './exhaustion.js';
@@ -104,6 +107,35 @@ export interface ResumeContext {
   readonly timeoutMs?: number;
   readonly whenExhausted?: WhenExhausted;
   readonly inFlight?: InFlightMode;
+  /**
+   * The task the attempt was given (`AttemptSpec.prompt`). A conversation that never started it
+   * (the daemon died between `session.opened` and the prompt) gets it again instead of the continue
+   * prompt (`resume.when_unstarted: prompt`); without it the continue prompt goes, as before.
+   */
+  readonly prompt?: string;
+}
+
+/**
+ * What in the log of an attempt shows the client worked on the task: a message, a thought, a plan
+ * or a tool call of its own, the output of a terminal, or a call of a framework tool. Other updates
+ * (`available_commands`, `usage`, `config_changed`...) come before any prompt, so they show nothing.
+ */
+const WORK_UPDATE_KINDS: ReadonlySet<string> = new Set([
+  'agent_message_chunk',
+  'agent_thought_chunk',
+  'tool_call',
+  'tool_call_update',
+  'plan',
+]);
+
+/** Whether the events of an attempt show any work of the client (see {@link WORK_UPDATE_KINDS}). */
+export function attemptStartedWork(events: readonly EventEnvelope[]): boolean {
+  return events.some((event) => {
+    if (event.type === 'tool.called' || event.type === 'terminal.output') return true;
+    if (event.type !== 'session.update') return false;
+    const kind = (event.payload as { update?: { kind?: unknown } }).update?.kind;
+    return typeof kind === 'string' && WORK_UPDATE_KINDS.has(kind);
+  });
 }
 
 export const ATTEMPT_RESULT_STATES = [
@@ -757,9 +789,25 @@ export class AttemptRunner {
     await context.journal.write(undefined, { state: 'resuming', cause: 'daemon_restart' });
     return this.#track(context, {
       resumeSessionId: record.sessionId ?? undefined,
-      prompt: this.#options.settings.continuePrompt,
+      prompt: await this.#restartPrompt(record, resolved),
       cause: 'daemon_restart',
     });
+  }
+
+  /**
+   * The prompt of the native resume after a restart: the continue prompt, or the task again when
+   * the conversation never started it (`resume.when_unstarted`, see {@link ResumeContext.prompt}).
+   */
+  async #restartPrompt(record: AttemptRecord, resolved: ResumeContext): Promise<string> {
+    const { continuePrompt, whenUnstarted } = this.#options.settings;
+    if (whenUnstarted !== 'prompt' || resolved.prompt === undefined) return continuePrompt;
+    const events = await readAttemptEvents(this.#options.store.events, record.attemptId);
+    if (attemptStartedWork(events)) return continuePrompt;
+    this.#options.logger.info(
+      { attemptId: record.attemptId },
+      'the reloaded conversation never started the task: the task is sent again',
+    );
+    return resolved.prompt;
   }
 
   /**
@@ -1467,6 +1515,9 @@ export class AttemptRunner {
       if (context.sessionOpen) this.#flushPending(context);
       return this.#classify(error, step.resumeSessionId !== undefined);
     }
+    // The session is in the record and the prompt has not gone: a kill here leaves a conversation
+    // that never started the task (`resume.when_unstarted`). `detail` is the role of the attempt.
+    await crashPoint('attempt.before_prompt', spec.role);
 
     const started = clock.now();
     context.tracker.startInterval(signal);

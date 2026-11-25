@@ -2,13 +2,16 @@
 import { join } from 'node:path';
 import { afterAll, afterEach, describe, expect, it } from 'vitest';
 import {
+  FakeClientAdapter,
   FakeClock,
   FakeCodeHost,
   FakeProcessLauncher,
+  FakeSessionTransport,
   InMemoryStore,
 } from '@otheater/core/testing';
 import { disposeTestGitIsolation } from '@otheater/sdk';
 import { openComposedStore } from '../compose.js';
+import { makeRig, specOf } from '../execution/attempt-fixture.js';
 import { createSilentLogger } from '../logger.js';
 import { reconcileBeforeResume } from '../recovery/reconcile.js';
 import { effectKey, runEffect, type EffectSpec } from '../workspace/effects.js';
@@ -231,6 +234,39 @@ describe('store.* (the commit of a transaction)', () => {
       }
     },
   );
+});
+
+describe('attempt.* (the run of an attempt)', () => {
+  it('attempt.before_prompt fires with the session in the record, with the role as detail', async () => {
+    const clock = new FakeClock();
+    const launcher = new FakeProcessLauncher();
+    const rig = await makeRig({
+      clock,
+      store: new InMemoryStore({ clock }),
+      launcher,
+      transport: new FakeSessionTransport(),
+      adapter: new FakeClientAdapter({
+        launcher,
+        baseEnv: {},
+        adapterVersion: '1.0.0',
+        command: { cmd: 'fake-client', args: [] },
+      }),
+    });
+    try {
+      const seen: unknown[] = [];
+      const infos = arm('attempt.before_prompt', undefined, async () => {
+        seen.push(await rig.store.attempts.get('play-1/demand-1/1'));
+      });
+      const outcome = await rig.runner.run(specOf(rig, '#script:echo', { role: 'actor' }));
+      expect(infos).toEqual([{ point: 'attempt.before_prompt', detail: 'actor', hit: 1 }]);
+      expect(seen).toEqual([
+        expect.objectContaining({ state: 'executing', sessionId: 'fake-session-1' }),
+      ]);
+      expect(outcome).toMatchObject({ state: 'completed' });
+    } finally {
+      await rig.dispose();
+    }
+  });
 });
 
 describe('the catalogue', () => {

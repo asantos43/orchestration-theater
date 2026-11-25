@@ -658,4 +658,30 @@ describe('the tokens of the Actor (P23)', () => {
     expect(nothing.said).toEqual(['fake agent: nothing to do']);
     await rm(stranger, { recursive: true, force: true });
   });
+
+  it('plays the prompt of a stage again only at the continue prompt, in the same folder (N307)', async () => {
+    const first = host(stagePrompt('PLANNING'));
+    await playRolePlay(first.host);
+    expect(first.calls.map((call) => call.tool)).toEqual(['submit_plan']);
+    const other = host('A notice with no marker.');
+    await playRolePlay(other.host);
+    expect(other.calls).toEqual([]);
+    const resumed = host('Continue the task from where you stopped. Do not start over.');
+    await playRolePlay(resumed.host);
+    expect(resumed.calls.map((call) => call.tool)).toEqual(['submit_plan']);
+  });
+
+  it('hangs the first turn of a stage until the cancel, and submits at its resume (N307)', async () => {
+    const controller = new AbortController();
+    const first = host(stagePrompt('PLANNING', 'go #stage-hang:PLANNING'), {}, controller.signal);
+    const turn = playRolePlay(first.host);
+    await new Promise((done) => setTimeout(done, 50));
+    expect(first.calls).toEqual([]);
+    controller.abort();
+    await turn;
+    expect(first.calls).toEqual([]);
+    const resumed = host('Continue the task from where you stopped. Do not start over.');
+    await playRolePlay(resumed.host);
+    expect(resumed.calls.map((call) => call.tool)).toEqual(['submit_plan']);
+  });
 });
