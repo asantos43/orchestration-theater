@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 import {
+  AdapterUnavailable,
   Conflict,
   DEFAULT_ROLE_PRESET,
   InvalidInput,
@@ -33,6 +34,8 @@ import {
   type SetupFlowStatus,
   type SetupNote,
   type SetupOverview,
+  type SetupAdapterClient,
+  type SetupAdapterInstallResult,
   type SetupRedetectResult,
   type SetupPrompt,
   type SetupResult,
@@ -100,10 +103,25 @@ export interface SetupServiceOptions {
    */
   readonly redetect?: ((trigger: ClientRedetectTrigger) => Promise<readonly string[]>) | undefined;
   /**
+   * Installs the ACP adapter of a client (P18, N321; the I key of the assistant): the pinned
+   * version, as `ot adapters install` does. It never throws for a failed download: it says why.
+   * Absent (a daemon with no execution, a test), the install is `unavailable`.
+   */
+  readonly installAdapter?:
+    ((client: SetupAdapterClient) => Promise<AdapterInstallOutcome>) | undefined;
+  /**
    * Takes the confirmed write into the running daemon (P23, N208 item 3): the same reload as
    * `PUT /v1/config`. Absent (a test, a tool with no daemon), the file is read at the next start.
    */
   readonly reload?: ConfigReload | undefined;
+}
+
+/** What an install of an adapter did, before the clients are looked for again. */
+export interface AdapterInstallOutcome {
+  readonly adapter: string;
+  readonly version: string;
+  readonly installed: boolean;
+  readonly failure: string | null;
 }
 
 /** What the answered steps of a run say. */
@@ -299,6 +317,29 @@ export class SetupService {
   async redetect(): Promise<SetupRedetectResult> {
     const added = (await this.#o.redetect?.('asked')) ?? [];
     return {
+      added: [...added],
+      clients: detectClients(this.#o.installedClients, this.#o.clientReasons),
+    };
+  }
+
+  /**
+   * Installs the ACP adapter of `client` (P18, N321; the I key) and, when it worked, looks for the
+   * clients again, so the client enters the pool without a restart. A failed download is the
+   * answer (`failure`), not an error; the notices `adapter_*` of the manager say it as well.
+   */
+  async installAdapter(client: SetupAdapterClient): Promise<SetupAdapterInstallResult> {
+    const install = this.#o.installAdapter;
+    if (install === undefined) {
+      throw new AdapterUnavailable('This daemon cannot install the ACP adapters');
+    }
+    const outcome = await install(client);
+    const added = outcome.installed ? ((await this.#o.redetect?.('asked')) ?? []) : [];
+    return {
+      client,
+      adapter: outcome.adapter,
+      version: outcome.version,
+      installed: outcome.installed,
+      failure: outcome.failure,
       added: [...added],
       clients: detectClients(this.#o.installedClients, this.#o.clientReasons),
     };

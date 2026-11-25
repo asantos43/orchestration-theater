@@ -1,5 +1,12 @@
 // SPDX-License-Identifier: MPL-2.0
-import { Conflict, InvalidInput, NotFound, type EventEnvelope, type Store } from '@otheater/core';
+import {
+  AdapterUnavailable,
+  Conflict,
+  InvalidInput,
+  NotFound,
+  type EventEnvelope,
+  type Store,
+} from '@otheater/core';
 import { FakeClock, InMemoryStore } from '@otheater/core/testing';
 import type { SetupRunView } from '@otheater/protocol';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -574,5 +581,66 @@ describe('SetupService looks for the clients again (P18, N321)', () => {
         { client: 'opencode', installed: false },
       ],
     });
+  });
+});
+
+describe('SetupService installs an adapter when asked (P18b, N321)', () => {
+  it('installs, then searches as asked, and gives the clients with why', async () => {
+    const rig = await rigOf({ installed: ['claude-code'] });
+    const triggers: string[] = [];
+    const service = rig.service({
+      installAdapter: (client) =>
+        Promise.resolve({
+          adapter: `${client}-acp`,
+          version: '1.0.0',
+          installed: true,
+          failure: null,
+        }),
+      redetect: (trigger) => {
+        triggers.push(trigger);
+        return Promise.resolve(['claude-code']);
+      },
+      clientReasons: (client) => (client === 'claude-code' ? 'managed_installed' : 'not_found'),
+    });
+    expect(await service.installAdapter('claude-code')).toEqual({
+      client: 'claude-code',
+      adapter: 'claude-code-acp',
+      version: '1.0.0',
+      installed: true,
+      failure: null,
+      added: ['claude-code'],
+      clients: [
+        { client: 'claude-code', installed: true, reason: 'managed_installed' },
+        { client: 'codex', installed: false, reason: 'not_found' },
+        { client: 'opencode', installed: false, reason: 'not_found' },
+      ],
+    });
+    expect(triggers).toEqual(['asked']);
+  });
+
+  it('a failed install does not search again and says why', async () => {
+    const rig = await rigOf();
+    const triggers: string[] = [];
+    const service = rig.service({
+      installAdapter: () =>
+        Promise.resolve({
+          adapter: 'codex-acp',
+          version: '1.0.0',
+          installed: false,
+          failure: 'offline',
+        }),
+      redetect: (trigger) => {
+        triggers.push(trigger);
+        return Promise.resolve([]);
+      },
+    });
+    const result = await service.installAdapter('codex');
+    expect(result).toMatchObject({ installed: false, failure: 'offline', added: [] });
+    expect(triggers).toEqual([]);
+  });
+
+  it('without the installer wired (no launcher), it is unavailable', async () => {
+    const rig = await rigOf();
+    await expect(rig.service().installAdapter('codex')).rejects.toBeInstanceOf(AdapterUnavailable);
   });
 });

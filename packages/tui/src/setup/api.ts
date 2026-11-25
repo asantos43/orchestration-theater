@@ -4,7 +4,10 @@ import {
   API_ROUTES,
   type AddProfileBody,
   type AddProfileResult,
+  type SetupAdapterClient,
+  type SetupAdapterInstallResult,
   type SetupOverview,
+  type SetupRedetectResult,
   type SetupRunView,
   type SetupStepSubmission,
   type StartProfileLoginResult,
@@ -47,6 +50,17 @@ export interface SetupApi {
   cancel(runId: string): Promise<SetupRunView>;
   /** The step that adds an account (first run only); without it the screen has no such step. */
   readonly accounts?: SetupAccounts | undefined;
+  /**
+   * Looks for the clients again (P18, N321; the R key). Optional: without it R only reads the step
+   * again.
+   */
+  readonly redetect?: (() => Promise<SetupRedetectResult>) | undefined;
+  /**
+   * Installs the ACP adapter of a client whose official program is there, then looks again
+   * (P18b, N321; the I key). Optional: without it I says the install is not offered here.
+   */
+  readonly installAdapter?:
+    ((client: SetupAdapterClient) => Promise<SetupAdapterInstallResult>) | undefined;
 }
 
 function key(): { readonly 'idempotency-key': string } {
@@ -69,5 +83,11 @@ export function setupApiOf(client: ApiClient): SetupApi {
     back: (runId) => client.call(API_ROUTES.backSetup, { params: { runId }, headers: key() }),
     confirm: (runId) => client.call(API_ROUTES.confirmSetup, { params: { runId }, headers: key() }),
     cancel: (runId) => client.call(API_ROUTES.cancelSetup, { params: { runId }, headers: key() }),
+    redetect: () => client.call(API_ROUTES.redetectSetupClients, { headers: key() }),
+    installAdapter: (adapterClient) =>
+      client.call(API_ROUTES.installSetupAdapter, {
+        params: { client: adapterClient },
+        headers: key(),
+      }),
   };
 }
