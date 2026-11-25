@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 import { spawnSync } from 'node:child_process';
-import { chmod, mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, readFile, readdir, stat, utimes, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { API_DISCOVERY_FILE, API_TOKEN_FILE, type DaemonId } from '@otheater/protocol';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -16,6 +16,7 @@ import {
 import {
   createNodeDaemonDirectory,
   FileDaemonListStore,
+  writePrivateFileAtomic,
   isPidAlive,
   readLocalDaemon,
 } from './index.js';
@@ -261,5 +262,60 @@ describe('createNodeDaemonDirectory with two real servers', () => {
     await writeDaemonFiles(root, local);
     expect((await stale.list()).map((e) => e.name)).toEqual(['local']);
     expect((await stale.connect('local')).status.daemonId).toBe(local.daemonId);
+  });
+});
+
+describe('writePrivateFileAtomic: orphan temporaries of a killed writer (N306)', () => {
+  const hex = '0123456789abcdef'.slice(0, 8);
+  const gone = (): number => spawnSync(process.execPath, ['-e', ''], { stdio: 'ignore' }).pid;
+
+  it('names the temporary with the pid and leaves nothing behind', async () => {
+    const dir = await tempDir();
+    const path = join(dir, 'client.json');
+    await writePrivateFileAtomic(path, 'one');
+    expect(await readdir(dir)).toEqual(['client.json']);
+    expect(await readFile(path, 'utf8')).toBe('one');
+  });
+
+  it('removes the temporary of a dead pid, keeps the one of a live pid and the ones outside the pattern', async () => {
+    const dir = await tempDir();
+    const path = join(dir, 'client.json');
+    const orphan = `client.json.${String(gone())}.${hex}.tmp`;
+    const live = `client.json.${String(process.ppid)}.${hex}.tmp`;
+    const outside = [
+      `client.json.${String(gone())}.tmp`,
+      `other.json.${String(gone())}.${hex}.tmp`,
+    ];
+    for (const name of [orphan, live, ...outside]) await writeFile(join(dir, name), 'x');
+    await writePrivateFileAtomic(path, 'two');
+    expect((await readdir(dir)).sort()).toEqual([live, ...outside, 'client.json'].sort());
+  });
+
+  it('in age mode removes the old one and keeps the new one', async () => {
+    const dir = await tempDir();
+    const path = join(dir, 'client.json');
+    const old = `client.json.${String(process.ppid)}.${hex}.tmp`;
+    const fresh = `client.json.${String(gone())}.${hex}.tmp`;
+    await writeFile(join(dir, old), 'old');
+    await writeFile(join(dir, fresh), 'new');
+    const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60_000);
+    await utimes(join(dir, old), twoHoursAgo, twoHoursAgo);
+    await writePrivateFileAtomic(path, 'three', {
+      sweep: { policy: { mode: 'age', maxAgeMs: 60 * 60_000 } },
+    });
+    expect((await readdir(dir)).sort()).toEqual([fresh, 'client.json'].sort());
+  });
+
+  it('a temporary it cannot remove is told to onError and the write still succeeds', async () => {
+    const dir = await tempDir();
+    const path = join(dir, 'client.json');
+    const stuck = `client.json.${String(gone())}.${hex}.tmp`;
+    await mkdir(join(dir, stuck));
+    const names: string[] = [];
+    await writePrivateFileAtomic(path, 'four', {
+      sweep: { onError: (_error, name) => names.push(name) },
+    });
+    expect(names).toEqual([stuck]);
+    expect(await readFile(path, 'utf8')).toBe('four');
   });
 });

@@ -123,6 +123,7 @@ import { ProfileLoginService } from './profiles/login.js';
 import { ProfileService, profileSettingsOf } from './profiles/service.js';
 import { defaultPromptSource } from './prompts.js';
 import { PluginRegistry } from './plugins/registry.js';
+import { sweepDaemonFileTemporaries } from './temporaries.js';
 import { pluginExtraEnv } from './plugins/secrets.js';
 import { buildDaemonRegistries, defaultRegistryEntries, RegistryHolder } from './registries.js';
 import { BackupService, type BackupOutcome } from './recovery/backup.js';
@@ -787,6 +788,8 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     logger,
     situations: composition.situations,
   });
+  // N306 (continuation): the same for `config.yaml` and `plugins.json`; a failure goes to the sink of `compose`.
+  await sweepDaemonFileTemporaries({ configPath: paths.config, dataDir: paths.dataDir });
   const daemonId = await loadOrCreateDaemonId(paths.daemonId, logger);
   const api = await ApiServer.start({
     port: config.api.port,

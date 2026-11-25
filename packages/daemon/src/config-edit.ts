@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
-import { randomBytes } from 'node:crypto';
 import { readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { sweepTemporaries, temporaryPathOf } from '@otheater/client/node';
 import { InvalidInput } from '@otheater/core';
 import { Document, isSeq, parseDocument, type YAMLSeq } from 'yaml';
 import { parseConfig, type DaemonConfig } from './config.js';
@@ -118,6 +118,9 @@ export function editConfigFile(
 /** The edits waiting or running, by file: the tail of each file's queue. */
 const queues = new Map<string, Promise<void>>();
 
+/** The shape of the temporary of a write of `config.yaml`: `<file>.<pid>.<8 hex>.tmp`. */
+export const CONFIG_TEMPORARY_SHAPE = { hexLength: 8 } as const;
+
 async function editNow(path: string, edit: (editor: ConfigEditor) => void): Promise<DaemonConfig> {
   const text = await readOrEmpty(path);
   const doc: Document = parseDocument(text, { keepSourceTokens: false });
@@ -128,7 +131,7 @@ async function editNow(path: string, edit: (editor: ConfigEditor) => void): Prom
   edit(editorOf(doc));
   const out = String(doc);
   const config = parseConfig(out, path);
-  const temporary = `${path}.${randomBytes(4).toString('hex')}.tmp`;
+  const temporary = temporaryPathOf(path, CONFIG_TEMPORARY_SHAPE);
   try {
     await writeFile(temporary, out, { encoding: 'utf8', mode: 0o600 });
     await rename(temporary, path);
@@ -136,5 +139,7 @@ async function editNow(path: string, edit: (editor: ConfigEditor) => void): Prom
     await rm(temporary, { force: true }).catch(() => undefined);
     throw error;
   }
+  // N306: a process killed between the write and the rename leaves `config.yaml.<pid>.<hex>.tmp`.
+  await sweepTemporaries(path, CONFIG_TEMPORARY_SHAPE);
   return config;
 }

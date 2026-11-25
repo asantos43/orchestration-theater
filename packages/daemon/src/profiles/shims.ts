@@ -2,6 +2,7 @@
 import { constants as fsConstants } from 'node:fs';
 import { access, chmod, mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { basename, dirname, join, resolve } from 'node:path';
+import { sweepTemporaries, temporaryPathOf } from '@otheater/client/node';
 import type { Env } from '../paths.js';
 
 /**
@@ -179,6 +180,9 @@ async function readOrUndefined(file: string): Promise<string | undefined> {
   }
 }
 
+/** The shape of the temporary of a shim: `.<shim>.<pid>.tmp`. */
+const SHIM_TEMPORARY_SHAPE = { hexLength: 0, hidden: true } as const;
+
 /**
  * Makes `binDir` hold exactly one script per profile: writes the missing or changed ones, removes
  * the scripts of this daemon that no profile has, and leaves alone any file without
@@ -208,10 +212,12 @@ export async function syncShims(input: ShimSyncInput): Promise<ShimSyncResult> {
       kept.push(name);
       continue;
     }
-    const temporary = join(dirname(file), `.${basename(file)}.${String(process.pid)}.tmp`);
+    const temporary = temporaryPathOf(file, SHIM_TEMPORARY_SHAPE);
     await writeFile(temporary, content, { mode: 0o700 });
     if (platform === 'posix') await chmod(temporary, 0o700);
     await rename(temporary, file);
+    // N306: a daemon killed between the write and the rename leaves `.<shim>.<pid>.tmp`.
+    await sweepTemporaries(file, SHIM_TEMPORARY_SHAPE);
     written.push(name);
   }
 
