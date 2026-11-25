@@ -4,7 +4,10 @@ dist-test/
 coverage/
 target/
 *.tsbuildinfo
-.claude/
+# .claude/ is versioned selectively (owner, 2026-11-25): only what is personal or local stays out.
+.claude/settings.local.json
+.claude/worktrees/
+.claude/launch.json
 *.log
 .DS_Store
 

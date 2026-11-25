@@ -25,4 +25,7 @@ Os antigos documentos 03 a 06 foram apagados em 2026-11-13. Eram a comparação 
 - Paralelismo como padrão (ordem do dono, 2026-11-16): o que puder ser feito em paralelo é feito em paralelo. Isso vale para chamadas de ferramenta independentes, para subagentes e para adiantar o que não depende de um trabalho em curso. Fica em série o que depende de outro resultado, o que mexe nos mesmos arquivos e o que espera decisão do dono. Dois subagentes que escrevem código não mexem nos mesmos arquivos; se puderem colidir, cada um usa um worktree próprio.
 - Fila de PRs (ordem do dono, 2026-11-21): cada passo parte da main e mexe em arquivos próprios, sem branch sobre branch; o passo que depende de outro só começa depois do merge dele. A CI verde vale para outro commit com a mesma árvore (por exemplo, depois de trazer a main sem mudar nada), e não precisa rodar de novo.
 - Mantenha as decisões em `docs/13-DECISOES-EM-ABERTO.md`: mude o estado da pergunta e registre a data e o motivo. Decisões da seção 12 da arquitetura são atualizadas nos dois lugares.
+- Ordens permanentes do dono (2026-11-25): estão em [.claude/ordens-do-dono.md](.claude/ordens-do-dono.md), importado abaixo. A `.claude/` é versionada de forma seletiva; `settings.local.json`, `worktrees/` e `launch.json` ficam fora do git.
 - Projetos relacionados na mesma pasta pai: `orchestration-kit` (o kit `okit` atual), `okit-plugin`, `folder-browser`.
+
+@.claude/ordens-do-dono.md
