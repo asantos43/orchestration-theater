@@ -61,6 +61,22 @@ export function renderTaskXml(spec: ServiceSpec): string {
   return body.replace(DEFINITION_MARK, `[def:${definitionFingerprint(body)}]`);
 }
 
+/**
+ * Whether the task in `xml` (as `schtasks /Query /XML` prints it) starts the daemon at logon: the
+ * task is enabled and has a logon trigger that is enabled. An `<Enabled>` left out means `true`
+ * (the default of the Task Scheduler schema). `undefined` when the text is not the XML of a task.
+ */
+export function taskStartsAtLogon(xml: string): boolean | undefined {
+  if (!/<Task\b/.test(xml)) return undefined;
+  const enabledIn = (block: string | undefined): boolean =>
+    block === undefined || !/<Enabled>\s*false\s*<\/Enabled>/i.test(block);
+  const settings = /<Settings>([\s\S]*?)<\/Settings>/.exec(xml)?.[1];
+  // The trigger may be written `<LogonTrigger/>` (no child) or with its children.
+  const trigger = /<LogonTrigger\b[^>]*?(?:\/>|>([\s\S]*?)<\/LogonTrigger>)/.exec(xml);
+  if (trigger === null) return false;
+  return enabledIn(settings) && enabledIn(trigger[1]);
+}
+
 /** The place, inside the description, of the fingerprint of the definition. */
 const DEFINITION_MARK = '[def:]';
 
@@ -194,10 +210,17 @@ export class WindowsTaskServiceManager implements ServiceManager {
   }
 
   async status(): Promise<ServiceStatus> {
-    const query = await this.#schtasks(['/Query', '/TN', this.#deps.id]);
-    // `Status` is printed in the language of Windows, so the state of the task is not read here:
-    // `active` stays unknown, and the command asks the daemon itself (`api.json`).
-    return { installed: query.code === 0, location: this.#deps.id };
+    // N323 (5): the XML of the task, not the table of `/Query`: its `Status` column is printed in
+    // the language of Windows, the XML is not. Whether the daemon runs is not read from the task
+    // (a daemon started by hand runs outside it): `active` stays unknown, and the command asks the
+    // data folder itself (the instance lock and `api.json`).
+    const query = await this.#schtasks(['/Query', '/TN', this.#deps.id, '/XML']);
+    if (query.code !== 0) return { installed: false, location: this.#deps.id };
+    return {
+      installed: true,
+      location: this.#deps.id,
+      enabled: taskStartsAtLogon(query.stdout),
+    };
   }
 
   async start(): Promise<void> {
