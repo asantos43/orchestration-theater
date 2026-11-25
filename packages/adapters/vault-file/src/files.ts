@@ -61,7 +61,12 @@ export async function writeFileAtomic(path: string, text: string): Promise<void>
 }
 
 /** The temporary of {@link writeFileAtomic}: `.<file>.<pid>.<16 hex>.tmp` (N306). */
-export const VAULT_TEMPORARY_SHAPE = { hexLength: 16, hidden: true } as const;
+export const VAULT_TEMPORARY_SHAPE = {
+  hexLength: 16,
+  hidden: true,
+  // Before N306 the name was `.<file>.<16 hex>.tmp`, without a pid: swept by age.
+  legacy: [{ suffix: 'hex', hexLength: 16, hidden: true }],
+} as const;
 
 /** fsync of a directory makes the rename durable. Platforms that cannot open one are skipped. */
 async function syncDirectory(directory: string): Promise<void> {

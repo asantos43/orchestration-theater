@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 import { spawnSync } from 'node:child_process';
-import { mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readdir, rm, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -31,5 +31,19 @@ describe('ensureProfileFiles and the orphan temporaries (N306)', () => {
     for (const name of [orphan, live, legacy]) await writeFile(join(folder, name), 'x');
     await ensureProfileFiles(dir);
     expect((await readdir(folder)).sort()).toEqual([file, legacy, live].sort());
+  });
+
+  it('removes a name of before N306, without a pid, once it is older than max_age (1h)', async () => {
+    await ensureProfileFiles(dir);
+    const target = profileLayout(dir).configFile;
+    const folder = dirname(target);
+    const file = basename(target);
+    const old = `${file}.3f1c2a9e-0000-4000-8000-000000000000.tmp`;
+    const fresh = `${file}.7d2e4b1a-1111-4111-9111-111111111111.tmp`;
+    for (const name of [old, fresh]) await writeFile(join(folder, name), 'x');
+    const then = new Date(Date.now() - 2 * 3_600_000);
+    await utimes(join(folder, old), then, then);
+    await ensureProfileFiles(dir);
+    expect((await readdir(folder)).sort()).toEqual([file, fresh].sort());
   });
 });

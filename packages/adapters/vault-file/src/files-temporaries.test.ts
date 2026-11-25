@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 import { spawnSync } from 'node:child_process';
-import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readdir, readFile, rm, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -37,5 +37,17 @@ describe('writeFileAtomic and the orphan temporaries (N306)', () => {
     await writeFileAtomic(target, 'one');
     await writeFileAtomic(target, 'two');
     expect(await readdir(dir)).toEqual(['vault.json']);
+  });
+
+  it('removes a name of before N306, without a pid, once it is older than max_age (1h)', async () => {
+    const target = join(dir, 'vault.json');
+    const old = '.vault.json.0123456789abcdef.tmp';
+    const fresh = '.vault.json.fedcba9876543210.tmp';
+    const visible = 'vault.json.0123456789abcdef.tmp';
+    for (const name of [old, fresh, visible]) await writeFile(join(dir, name), 'x');
+    const then = new Date(Date.now() - 2 * 3_600_000);
+    for (const name of [old, visible]) await utimes(join(dir, name), then, then);
+    await writeFileAtomic(target, 'one');
+    expect((await readdir(dir)).sort()).toEqual(['vault.json', fresh, visible].sort());
   });
 });

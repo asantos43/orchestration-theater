@@ -129,6 +129,32 @@ describe('sweepTemporaries (the copy of the adapters)', () => {
       new RegExp(`^\\.file\\.json\\.${String(process.pid)}\\.[0-9a-f]{16}\\.tmp$`, 'u'),
     );
   });
+
+  it('sweeps the legacy names: one with a pid by the policy, one without a pid by age', async () => {
+    const now = Date.now();
+    const legacy = [
+      { suffix: 'pid' },
+      { suffix: 'hex', hexLength: 12 },
+      { suffix: 'uuid' },
+      { suffix: 'hex', hexLength: 0 },
+    ] as const;
+    const gone = deadPid();
+    const pidDead = `file.json.${String(gone)}.tmp`;
+    const pidLive = `file.json.${String(process.ppid)}.tmp`;
+    const hexOld = 'file.json.0123456789ab.tmp';
+    const hexNew = 'file.json.ba9876543210.tmp';
+    const uuidOld = 'file.json.3f1c2a9e-0000-4000-8000-000000000000.tmp';
+    const hexShort = 'file.json.abcd.tmp';
+    const bare = 'file.json.tmp';
+    await put(pidDead, pidLive, hexOld, hexNew, uuidOld, hexShort, bare);
+    const then = new Date(now - 7_200_000);
+    for (const name of [hexOld, uuidOld, hexShort, bare]) await utimes(join(dir, name), then, then);
+    const off = await sweepTemporaries(target(), { ...shape, legacy, policy: { mode: 'off' } });
+    expect(off).toEqual([]);
+    const removed = await sweepTemporaries(target(), { ...shape, legacy, now: () => now });
+    expect(removed.sort()).toEqual([hexOld, pidDead, uuidOld].sort());
+    expect(await listing()).toEqual([bare, hexNew, hexShort, pidLive].sort());
+  });
 });
 
 describe('writeProfileSettings and the orphan temporaries (N306)', () => {
@@ -148,11 +174,13 @@ describe('writeProfileSettings and the orphan temporaries (N306)', () => {
     const settingsOrphan = `${PROFILE_SETTINGS_FILE}.${String(gone)}.0123abcd.tmp`;
     const quotaOrphan = `${STATUSLINE_QUOTA_FILE}.${String(gone)}.tmp`;
     const quotaLive = `${STATUSLINE_QUOTA_FILE}.${String(process.ppid)}.tmp`;
-    await put(settingsOrphan, quotaOrphan, quotaLive, 'credentials.json');
+    const settingsLegacy = `${PROFILE_SETTINGS_FILE}.${String(gone)}.tmp`;
+    await put(settingsOrphan, settingsLegacy, quotaOrphan, quotaLive, 'credentials.json');
     const profile: Profile = { client: 'claude-code', profile: 'p', id: 'claude-code/p', dir };
     await writeProfileSettings(profile, policy);
     const after = await listing();
     expect(after).not.toContain(settingsOrphan);
+    expect(after).not.toContain(settingsLegacy);
     expect(after).not.toContain(quotaOrphan);
     expect(after).toContain(quotaLive);
     expect(after).toContain('credentials.json');
