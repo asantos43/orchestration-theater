@@ -97,6 +97,13 @@ export interface FrameworkMcpOptions {
   readonly askApproval?: AskApproval;
   /** Where the notices of a plugin tool the permissions refused go besides the log (P8 binds it). */
   readonly onPluginNotice?: PluginNoticeSink;
+  /**
+   * The tools of the registry the server leaves out of every listing (P13 of Phase 11b: the notes
+   * board under `collab.notes.mode: off`). A getter, read at each session, so a change of the
+   * configuration holds for the sessions opened after it. A hidden tool that is called anyway
+   * still reaches its handler, which refuses it.
+   */
+  readonly hiddenTools?: () => ReadonlySet<string>;
 }
 
 /**
@@ -413,8 +420,10 @@ export class FrameworkMcpServer implements McpAccess {
         const record = context.authInfo?.extra?.record as GrantRecord | undefined;
         const server = new McpServer({ name: 'otheater', version });
         if (record === undefined) return server;
+        const hidden = this.#options.hiddenTools?.() ?? new Set<string>();
         for (const tool of this.#options.registries.tools.list()) {
           if (!tool.roles.includes(record.input.role)) continue;
+          if (hidden.has(tool.name)) continue;
           if (record.input.tools !== undefined && !record.input.tools.includes(tool.name)) continue;
           server.registerTool(
             tool.name,

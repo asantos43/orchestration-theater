@@ -85,6 +85,7 @@ import {
   ScenarioNoticePayloadSchema,
 } from './notice-events.js';
 import { AtifExportFailedPayloadSchema, AtifExportedPayloadSchema } from './atif-events.js';
+import { CollabLimitReachedPayloadSchema, NotePostedPayloadSchema } from './collab-events.js';
 import {
   TelemetryBatchRejectedPayloadSchema,
   TelemetryExportFailedPayloadSchema,
@@ -929,6 +930,16 @@ export const DAEMON_EVENT_DEFINITIONS = [
     payload: AtifExportFailedPayloadSchema,
   }),
   defineEventType({
+    type: 'note.posted',
+    schemaVersion: 1,
+    payload: NotePostedPayloadSchema,
+  }),
+  defineEventType({
+    type: 'collab.limit_reached',
+    schemaVersion: 1,
+    payload: CollabLimitReachedPayloadSchema,
+  }),
+  defineEventType({
     type: 'plugin.installed',
     schemaVersion: 1,
     payload: PluginInstalledPayloadSchema,
@@ -1114,6 +1125,8 @@ export type QuotaSignalDroppedPayload = DaemonEventPayloads['quota.signal_droppe
 export type UsageNoticePayload = DaemonEventPayloads['usage.notice'];
 export type AtifExportedPayload = DaemonEventPayloads['atif.exported'];
 export type AtifExportFailedPayload = DaemonEventPayloads['atif.export_failed'];
+export type NotePostedPayload = DaemonEventPayloads['note.posted'];
+export type CollabLimitReachedPayload = DaemonEventPayloads['collab.limit_reached'];
 export type ProfileWarningPayload = DaemonEventPayloads['profile.warning'];
 export type ProfileExecStartedPayload = DaemonEventPayloads['profile.exec.started'];
 export type ProfileExecEndedPayload = DaemonEventPayloads['profile.exec.ended'];

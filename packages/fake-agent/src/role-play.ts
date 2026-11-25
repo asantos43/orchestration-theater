@@ -256,6 +256,11 @@ async function submit(
  *   Actor writes nothing and finishes with a result whose state is `blocked` and whose reason says
  *   the permission was denied, as the real Claude did [V] (N181). Every attempt, or only that one.
  *   `#actor-refused:<id>=anyway` goes on after a denial and writes the file another way.
+ * - `#actor-note:<id>=<text>[*<n>]` (P13 of Phase 11b): before it writes its file the Actor posts
+ *   the note `<text>` (`-` read as a space) on the board of the play (`post_note`), `<n>` times
+ *   (default 1), and says each reply.
+ * - `#actor-read-notes:<id>`: before it writes its file the Actor reads the board (`read_notes`)
+ *   and writes the texts it read into its file, on a line `notes: a | b`.
  * What a token does once is counted in the state directory, so the next session of the attempt (a
  * baton pass or a native resume) goes on with the work.
  */
@@ -333,13 +338,14 @@ async function playActor(host: RolePlayHost, demandId: string): Promise<void> {
       return;
     }
   }
+  const notes = await playNotes(host, demandId);
   // An attempt that takes over earlier work (N82, N84) says what the prompt gave it.
   const carried = host.text.includes('## Work of the earlier attempt')
     ? `took over earlier work, diff ${host.text.includes('```diff') ? 'given' : 'not given'}\n`
     : '';
   await writeFile(
     join(host.cwd, `${demandId}.txt`),
-    `${demandId}: written by the fake Actor\n${carried}`,
+    `${demandId}: written by the fake Actor\n${carried}${notes}`,
   );
   if (actorToken(host.text, 'effects', demandId) !== undefined) {
     const commit = await host.call('git_commit', { message: `${demandId}: write ${demandId}.txt` });
@@ -354,6 +360,40 @@ async function playActor(host: RolePlayHost, demandId: string): Promise<void> {
     }
   }
   await submit(host, 'submit', { result: { file: `${demandId}.txt` } });
+}
+
+/**
+ * The tokens of the notes board (`#actor-note`, `#actor-read-notes`): posts the notes, then reads
+ * the board. Returns the line the Actor's file gets (empty when it read nothing).
+ */
+async function playNotes(host: RolePlayHost, demandId: string): Promise<string> {
+  // Under `collab.notes.mode: off` the tools are not listed: the call throws (unknown tool) and the
+  // Actor goes on without the board, as a client that does not see a tool does not call it.
+  const call = async (
+    tool: string,
+    args: Record<string, unknown>,
+  ): Promise<{ isError: boolean; text: string; structured: unknown }> => {
+    try {
+      return await host.call(tool, args);
+    } catch (error) {
+      return { isError: true, text: String(error), structured: undefined };
+    }
+  };
+  const note = actorToken(host.text, 'note', demandId);
+  if (note?.value !== undefined) {
+    const [raw = '', times = '1'] = note.value.split('*');
+    const text = raw.replaceAll('-', ' ');
+    for (let index = 0; index < Math.max(1, Number(times) || 1); index += 1) {
+      const reply = await call('post_note', { text });
+      await host.say(`post_note: ${reply.isError ? 'refused' : 'posted'} ${reply.text}`);
+    }
+  }
+  if (actorToken(host.text, 'read-notes', demandId) === undefined) return '';
+  const reply = await call('read_notes', {});
+  await host.say(`read_notes: ${reply.isError ? 'refused' : 'read'} ${reply.text}`);
+  const found = (reply.structured as { notes?: readonly { text?: unknown }[] } | undefined)?.notes;
+  const texts = (found ?? []).map((entry) => String(entry.text));
+  return texts.length === 0 ? '' : `notes: ${texts.join(' | ')}\n`;
 }
 
 /**

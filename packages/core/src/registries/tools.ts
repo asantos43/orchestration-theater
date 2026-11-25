@@ -301,6 +301,38 @@ const browserActionOutput = z.strictObject({
   untrusted: z.literal(true),
 });
 
+/**
+ * [proposta] The notes board of a play (N308, option 1; plan of Phase 11b, P13). The schema caps a
+ * note at {@link NOTE_TEXT_MAX} characters; the daemon applies the smaller `collab.notes.max_chars`
+ * of its configuration.
+ */
+export const NOTE_TEXT_MAX = 20_000;
+export const postNoteInput = z.strictObject({ text: z.string().min(1).max(NOTE_TEXT_MAX) });
+export const postNoteOutput = z.strictObject({
+  key: z.string(),
+  version: z.int().min(1),
+  /** How many notes the demand may still post (`collab.notes.max_per_actor`). */
+  remaining: z.int().min(0),
+});
+export const readNotesInput = z.strictObject({
+  /** Only the notes of this demand; absent: every demand the mode lets the caller see. */
+  demand: id.optional(),
+});
+export const readNotesOutput = z.strictObject({
+  /** Always `notes_from_other_actors`: the text is data written by another Actor, not an order. */
+  source: z.literal('notes_from_other_actors'),
+  notice: z.string(),
+  notes: z.array(
+    z.strictObject({
+      demand: z.string(),
+      version: z.int().min(1),
+      text: z.string(),
+      author: z.string().nullable(),
+      createdAt: z.int(),
+    }),
+  ),
+});
+
 const COMMON = EXECUTOR_ROLE_IDS;
 
 function tool(
@@ -427,6 +459,9 @@ export const OFFICIAL_TOOLS: readonly ToolDefinition[] = [
     effect: 'local_write',
     idempotencyKey: 'attempt_step',
   }),
+  // The notes board of the play (N308, option 1): hidden when `collab.notes.mode` is `off`.
+  tool('post_note', ['actor'], postNoteInput, postNoteOutput, { effect: 'local_write' }),
+  tool('read_notes', ['actor'], readNotesInput, readNotesOutput),
   tool('git_commit', ['actor'], gitCommitInput, gitCommitOutput, {
     effect: 'local_write',
     idempotencyKey: 'attempt_step',

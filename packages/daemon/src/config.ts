@@ -9,6 +9,7 @@ import {
   DEFAULT_SHELL_ALLOWLIST,
   DELIVERY_MODES,
   InvalidInput,
+  NOTE_TEXT_MAX,
   isKnownTimezone,
   parseAllowEntry,
   ProjectCommandSchema,
@@ -88,6 +89,7 @@ import {
 } from './direct/direct-config.js';
 import { AnalysisConfigSchema } from './analysis/analysis-config.js';
 import { AtifConfigSchema } from './atif/atif-config.js';
+import { COLLAB_NOTES_MODES } from './collab/notes-config.js';
 import {
   exportsOtlp,
   HEADER_NAME_PATTERN,
@@ -2039,6 +2041,26 @@ export const DaemonConfigSchema = z
     mcp: z
       .strictObject({
         port: z.union([z.literal('auto'), z.int().min(1024).max(65535)]).default('auto'),
+      })
+      .prefault({}),
+    /**
+     * The conversation between Executors (N308; plan of Phase 11b, P13). Every key is [proposta].
+     * `notes` is the notes board of a play (option 1): `post_note` and `read_notes` of the Actor.
+     * - `mode`: which notes an Actor may read. `play` (default): every demand of the play; `deps`:
+     *   only the demands it depends on and the ones that depend on it, in the DAG of the script;
+     *   `off`: the two tools are neither listed nor callable.
+     * - `max_per_actor`: the notes one demand may post in a play, over all its attempts.
+     * - `max_chars`: the longest note (at most {@link NOTE_TEXT_MAX}, the cap of the tool's schema).
+     */
+    collab: z
+      .strictObject({
+        notes: z
+          .strictObject({
+            mode: z.enum(COLLAB_NOTES_MODES).default('play'),
+            max_per_actor: z.int().min(1).max(1000).default(20),
+            max_chars: z.int().min(1).max(NOTE_TEXT_MAX).default(2000),
+          })
+          .prefault({}),
       })
       .prefault({}),
     /**
