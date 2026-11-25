@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-16"?>
 <Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
   <RegistrationInfo>
-    <Description>OTheater daemon (Orchestration Theater)</Description>
+    <Description>OTheater daemon (Orchestration Theater) [def:9a3e9ceff5920b6b]</Description>
     <URI>\otheater-daemon</URI>
   </RegistrationInfo>
   <Triggers>
@@ -37,7 +37,7 @@
   <Actions Context="Author">
     <Exec>
       <Command>conhost.exe</Command>
-      <Arguments>--headless &quot;C:\Program Files\nodejs\node.exe&quot; C:\ot\dist\cli.js daemon --data-dir &quot;C:\Users\Test User\AppData\Local\OTheater&quot;</Arguments>
+      <Arguments>--headless &quot;C:\Program Files\nodejs\node.exe&quot; C:\ot\dist\cli.js daemon --data-dir &quot;C:\Users\Test User\AppData\Local\OTheater&quot; --non-interactive</Arguments>
     </Exec>
   </Actions>
 </Task>

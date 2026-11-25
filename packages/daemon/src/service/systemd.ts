@@ -2,6 +2,7 @@
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import type { CommandRunner, CommandResult } from './command-runner.js';
+import { readOrUndefined } from './launchd.js';
 import {
   ServiceError,
   type InstallResult,
@@ -84,15 +85,20 @@ export class SystemdServiceManager implements ServiceManager {
   }
 
   async install(spec: ServiceSpec): Promise<InstallResult> {
-    await mkdir(dirname(this.#file), { recursive: true });
-    await writeFile(this.#file, renderSystemdUnit(spec), { mode: 0o644 });
-    this.#must(await this.#ctl(['daemon-reload']), 'systemctl daemon-reload');
+    const unit = renderSystemdUnit(spec);
+    // The same unit is left as it is (no daemon-reload); a different one (an older command) is rewritten.
+    const unchanged = (await readOrUndefined(this.#file)) === unit;
+    if (!unchanged) {
+      await mkdir(dirname(this.#file), { recursive: true });
+      await writeFile(this.#file, unit, { mode: 0o644 });
+      this.#must(await this.#ctl(['daemon-reload']), 'systemctl daemon-reload');
+    }
     if (spec.autostart === 'logon') {
       this.#must(await this.#ctl(['enable', this.#unit]), `systemctl enable ${this.#unit}`);
     } else {
       await this.#ctl(['disable', this.#unit]);
     }
-    return { location: this.#file, notes: [] };
+    return { location: this.#file, notes: unchanged ? ['unchanged'] : [] };
   }
 
   async uninstall(): Promise<void> {

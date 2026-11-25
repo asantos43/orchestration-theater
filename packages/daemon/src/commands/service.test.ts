@@ -108,7 +108,10 @@ describe('ot service', () => {
     expect(result.code).toBe(0);
     expect(manager.spec).toMatchObject({
       id: 'otheater-fake',
-      command: { command: '/n/node', args: ['/ot/dist/cli.js', 'daemon', '--data-dir', data] },
+      command: {
+        command: '/n/node',
+        args: ['/ot/dist/cli.js', 'daemon', '--data-dir', data, '--non-interactive'],
+      },
       dataDir: data,
       restart: 'always',
       autostart: 'logon',
@@ -399,7 +402,7 @@ describe('ot tui starts the daemon when it is not running (tui.start_daemon)', (
     expect(tui.liveAtLaunch).toEqual([true]);
   });
 
-  it('without the service installed it starts a detached child with daemon --data-dir', async () => {
+  it('without the service installed it starts a detached child with daemon --data-dir --non-interactive', async () => {
     const manager = new FakeServiceManager();
     const spawned: string[] = [];
     const tui = launcher();
@@ -417,7 +420,9 @@ describe('ot tui starts the daemon when it is not running (tui.start_daemon)', (
       },
     );
     expect(result).toMatchObject({ code: 0, err: [] });
-    expect(spawned).toEqual([`/n/node /ot/dist/cli.js daemon --data-dir ${data}`]);
+    expect(spawned).toEqual([
+      `/n/node /ot/dist/cli.js daemon --data-dir ${data} --non-interactive`,
+    ]);
     expect(tui.liveAtLaunch).toEqual([true]);
   });
 

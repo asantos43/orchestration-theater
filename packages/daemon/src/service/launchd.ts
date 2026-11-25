@@ -114,16 +114,23 @@ export class LaunchdServiceManager implements ServiceManager {
   async install(spec: ServiceSpec): Promise<InstallResult> {
     await mkdir(dirname(this.#file), { recursive: true });
     await mkdir(dirname(launchdLogFile(spec.dataDir)), { recursive: true });
-    // A loaded job keeps its old definition: take it out first (it is not an error if it is not there).
-    await this.#ctl(['bootout', this.#target]);
-    await writeFile(this.#file, renderLaunchdPlist({ ...spec, id: this.#deps.id }), {
-      mode: 0o644,
-    });
+    const plist = renderLaunchdPlist({ ...spec, id: this.#deps.id });
+    // The same plist is left as it is, and a loaded job is not taken out (that would stop the daemon).
+    const unchanged = (await readOrUndefined(this.#file)) === plist;
+    if (!unchanged) {
+      // A loaded job keeps its old definition: take it out first (not an error if it is not there).
+      await this.#ctl(['bootout', this.#target]);
+      await writeFile(this.#file, plist, { mode: 0o644 });
+    }
     if (spec.autostart === 'logon') {
-      this.#must(await this.#ctl(['bootstrap', this.#domain, this.#file]), 'launchctl bootstrap');
+      const loaded = unchanged && (await this.#ctl(['print', this.#target])).code === 0;
+      if (!loaded) {
+        this.#must(await this.#ctl(['bootstrap', this.#domain, this.#file]), 'launchctl bootstrap');
+      }
     }
     const notes: ServiceInstallNote[] =
       spec.autostart === 'manual' && spec.restart !== 'never' ? ['no_restart_when_manual'] : [];
+    if (unchanged) notes.push('unchanged');
     return { location: this.#file, notes };
   }
 
@@ -188,5 +195,14 @@ export class LaunchdServiceManager implements ServiceManager {
     if (!(await this.#exists())) {
       throw new ServiceError('not_installed', `the service ${this.#deps.id} is not installed`);
     }
+  }
+}
+
+/** The text of a file, or `undefined` when it cannot be read (it is not there). */
+export async function readOrUndefined(file: string): Promise<string | undefined> {
+  try {
+    return await readFile(file, 'utf8');
+  } catch {
+    return undefined;
   }
 }
