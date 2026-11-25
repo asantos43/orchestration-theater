@@ -68,7 +68,10 @@ import {
 } from './profile.js';
 import { CodexQuotaProbe, type CodexQuotaProbeOptions } from './quota-probe.js';
 
-/** What starts the client: `codex-acp` (^2.6.0), which talks to `codex app-server`. */
+/**
+ * What starts the client: `codex-acp` (^2.6.0; `ot adapters install` pins 2.12.0), which talks to
+ * `codex app-server`.
+ */
 export const DEFAULT_CODEX_COMMAND = { cmd: 'codex-acp', args: [] as readonly string[] } as const;
 
 /**
