@@ -218,6 +218,14 @@ export const PROMPT_ADAPTER_IDS = ['files'] as const;
  * `fake`: a host in memory, for the tests that run the whole daemon. [proposta]
  */
 export const CODE_HOST_ADAPTER_IDS = ['auto', 'github', 'none', 'fake'] as const;
+
+/**
+ * Where the issues are read and commented on (Phase 11b, P7, N313). `same_as_code_host`: on GitHub
+ * where the code host of the repository is GitHub (with `adapters.code_host: auto`, per
+ * repository), nowhere otherwise (the `none` and `fake` code hosts have no tracker); `github`:
+ * always the GitHub adapter; `none`: no tracker (the steps that need issues report it). [proposta]
+ */
+export const ISSUE_TRACKER_ADAPTER_IDS = ['same_as_code_host', 'github', 'none'] as const;
 export const OPENCODE_PROCESS_MODELS = ['per_profile', 'per_session'] as const;
 export const RESUME_PRESET_NAMES = ['balanced', 'patient', 'agile'] as const;
 
@@ -1927,6 +1935,7 @@ export const DaemonConfigSchema = z
         clock: z.enum(CLOCK_ADAPTER_IDS).default('system'),
         prompts: z.enum(PROMPT_ADAPTER_IDS).default('files'),
         code_host: z.enum(CODE_HOST_ADAPTER_IDS).default('auto'),
+        issue_tracker: z.enum(ISSUE_TRACKER_ADAPTER_IDS).default('same_as_code_host'),
       })
       .prefault({}),
     /** `SqliteStoreConfigSchema` without `path` (the path is `<data>/store.sqlite`). */

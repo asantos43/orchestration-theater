@@ -72,7 +72,17 @@ export {
 export { describeVcsConformance, testGit, type VcsHarness } from './conformance/vcs.js';
 export { disposeTestGitIsolation } from './conformance/git-isolation.js';
 // CodeHost
-export { describeCodeHostConformance, type CodeHostHarness } from './conformance/code-host.js';
+export {
+  describeCodeHostConformance,
+  type CiRunSeed,
+  type CodeHostHarness,
+} from './conformance/code-host.js';
+// IssueTracker
+export {
+  describeIssueTrackerConformance,
+  type IssueSeed,
+  type IssueTrackerHarness,
+} from './conformance/issue-tracker.js';
 // LocalModelServer
 export {
   describeLocalModelServerConformance,

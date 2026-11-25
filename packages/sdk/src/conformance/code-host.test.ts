@@ -35,5 +35,9 @@ describeCodeHostConformance('FakeCodeHost', () => {
       codeHost.conflictBetween(REPO, head, BASE);
       return Promise.resolve();
     },
+    seedCiRun: (sha, run) => {
+      codeHost.seedCiRun(sha, run);
+      return Promise.resolve();
+    },
   };
 });

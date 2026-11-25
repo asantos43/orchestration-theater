@@ -4,17 +4,26 @@ import type { AdapterImplements } from '../ports/adapter.js';
 import {
   assertBranchName,
   assertNonEmptyText,
+  ciLogMaxChars,
   CODE_HOST_PORT_VERSION,
   DEFAULT_REMOTE,
+  isFailedCiRun,
+  joinCiLogs,
   type BranchTarget,
+  type CiLog,
+  type CiRun,
   type CodeHost,
+  type FetchCiLogOptions,
+  type FetchPullRequestOptions,
   type FindPullRequestOptions,
   type MergeBranchOptions,
   type MergeBranchResult,
   type OpenPullRequestOptions,
   type PullRequest,
+  type PullRequestDetails,
   type PullRequestState,
 } from '../ports/code-host.js';
+import { assertItemNumber } from '../ports/issue-tracker.js';
 
 /** Methods of the port a test can make fail with {@link FakeCodeHost.failNext}. */
 export type CodeHostMethod =
@@ -23,7 +32,23 @@ export type CodeHostMethod =
   | 'openPullRequest'
   | 'findPullRequest'
   | 'mergeBranch'
-  | 'isBranchMerged';
+  | 'isBranchMerged'
+  | 'fetchPullRequest'
+  | 'fetchCiLog';
+
+/** A CI run a test puts on a commit ({@link FakeCodeHost.seedCiRun}). */
+export interface FakeCiRunInput {
+  readonly name: string;
+  /** Default `completed`. */
+  readonly status?: CiRun['status'];
+  /** Default `success`; `null` for a run that has not ended. */
+  readonly conclusion?: string | null;
+  /** The log of its failed steps (read only when it failed). Default `''`. */
+  readonly log?: string;
+}
+
+/** Login of who opens the pull requests of the fake. */
+export const FAKE_CODE_HOST_AUTHOR = 'fake-user';
 
 /** One call the fake received, for the assertions of a test. */
 export interface CodeHostCall {
@@ -61,7 +86,11 @@ export class FakeCodeHost implements CodeHost {
   readonly #pulls: PullRequest[] = [];
   readonly #conflicts = new Set<string>();
   readonly #failures = new Map<CodeHostMethod, Error[]>();
+  readonly #bodies = new Map<number, string>();
+  readonly #labels = new Map<number, readonly string[]>();
+  readonly #runs = new Map<string, { readonly run: CiRun; readonly log: string }[]>();
   #shaCounter = 0;
+  #runCounter = 0;
 
   constructor(options: FakeCodeHostOptions = {}) {
     const clock = options.clock;
@@ -128,6 +157,37 @@ export class FakeCodeHost implements CodeHost {
     const found = this.#pulls[index];
     if (found === undefined) throw new NotFound(`No pull request #${String(number)}`);
     this.#pulls[index] = { ...found, state };
+  }
+
+  /** Puts a CI run on the commit `sha` (the head of a pull request). Returns the run. */
+  seedCiRun(sha: string, input: FakeCiRunInput): CiRun {
+    this.#runCounter += 1;
+    const id = String(this.#runCounter);
+    const status = input.status ?? 'completed';
+    const run: CiRun = {
+      id,
+      name: input.name,
+      status,
+      conclusion:
+        input.conclusion === undefined
+          ? status === 'completed'
+            ? 'success'
+            : null
+          : input.conclusion,
+      url: `https://code-host.invalid/runs/${id}`,
+    };
+    const list = this.#runs.get(sha) ?? [];
+    list.push({ run, log: input.log ?? '' });
+    this.#runs.set(sha, list);
+    return run;
+  }
+
+  /** Sets the labels of a pull request, as someone on the host would. */
+  setPullRequestLabels(number: number, labels: readonly string[]): void {
+    if (!this.#pulls.some((pull) => pull.number === number)) {
+      throw new NotFound(`No pull request #${String(number)}`);
+    }
+    this.#labels.set(number, [...new Set(labels)].sort());
   }
 
   // -- Inspection ---------------------------------------------------------------------------
@@ -207,6 +267,7 @@ export class FakeCodeHost implements CodeHost {
         createdAt: this.#now(),
       };
       this.#pulls.push(pull);
+      this.#bodies.set(number, opts.body);
       return pull;
     });
   }
@@ -267,6 +328,26 @@ export class FakeCodeHost implements CodeHost {
     });
   }
 
+  fetchPullRequest(opts: FetchPullRequestOptions): Promise<PullRequestDetails> {
+    return this.#run('fetchPullRequest', opts, () =>
+      this.#details(opts.repo, opts.number, opts.remote),
+    );
+  }
+
+  fetchCiLog(opts: FetchCiLogOptions): Promise<CiLog> {
+    return this.#run('fetchCiLog', opts, () => {
+      const maxChars = ciLogMaxChars(opts.maxChars);
+      const { headSha } = this.#details(opts.repo, opts.number, opts.remote);
+      const seeded = this.#runs.get(headSha) ?? [];
+      const failed = seeded.filter((entry) => isFailedCiRun(entry.run));
+      const { log, truncated } = joinCiLogs(
+        failed.map((entry) => ({ run: entry.run, text: entry.log })),
+        maxChars,
+      );
+      return { headSha, runs: seeded.map((entry) => entry.run), log, truncated };
+    });
+  }
+
   // -- Internals ----------------------------------------------------------------------------
 
   /**
@@ -282,6 +363,23 @@ export class FakeCodeHost implements CodeHost {
     } catch (error) {
       return Promise.reject(error instanceof Error ? error : new Error(String(error)));
     }
+  }
+
+  #details(repo: string, number: number, remote: string | undefined): PullRequestDetails {
+    assertItemNumber('pull request number', number);
+    const pull = this.#pulls.find((entry) => entry.number === number);
+    if (pull === undefined) throw new NotFound(`No pull request #${String(number)}`);
+    const headSha =
+      this.#remote.get(remoteKey(repo, remote ?? DEFAULT_REMOTE, pull.headBranch)) ??
+      this.#local.get(localKey(repo, pull.headBranch)) ??
+      '';
+    return {
+      ...pull,
+      body: this.#bodies.get(number) ?? '',
+      author: FAKE_CODE_HOST_AUTHOR,
+      headSha,
+      labels: this.#labels.get(number) ?? [],
+    };
   }
 
   #tipOf(sha: string | undefined): readonly string[] {

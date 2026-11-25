@@ -11,7 +11,15 @@ export {
   GithubCodeHost,
   parseLsRemote,
   parsePullRequests,
+  parseRuns,
+  pullDetails,
   type GithubCodeHostOptions,
 } from './code-host.js';
+export {
+  GITHUB_ISSUE_TRACKER_ADAPTER,
+  GithubIssueTracker,
+  issueOf,
+  type GithubIssueTrackerOptions,
+} from './issue-tracker.js';
 export { classifyPushFailure, classifyToolFailure } from './failure.js';
 export { ToolRunner, type ToolResult, type ToolRunnerOptions } from './runner.js';

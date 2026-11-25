@@ -90,7 +90,11 @@ describe('the notices of the managed ACP adapters (P13)', () => {
 
 describe('the notices of the code host (Phase 11, P13)', () => {
   it('have their own kinds', () => {
-    for (const kind of ['delivery_without_pr', 'code_host_unavailable']) {
+    for (const kind of [
+      'delivery_without_pr',
+      'code_host_unavailable',
+      'issue_tracker_unavailable',
+    ]) {
       expect(DAEMON_NOTICE_KINDS).toContain(kind);
       const notice = { kind, subject: 'play/p1/integration', detail: 'adapters.code_host is none' };
       expect(validateEventPayload('daemon.notice', 1, notice)).toEqual(notice);

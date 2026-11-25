@@ -116,6 +116,7 @@ describe('compose', () => {
         'SecretVault:encrypted-file',
         'Store:sqlite',
         'CodeHost:auto',
+        'IssueTracker:same_as_code_host',
         'TelemetryStore:sqlite',
       ]);
       await access(join(tmp.dir, 'store.sqlite'));
@@ -184,6 +185,7 @@ describe('compose', () => {
         'override',
         'override',
         'auto',
+        'same_as_code_host',
       ]);
       await composition.close();
       await composition.close();
@@ -828,5 +830,122 @@ describe('compose: the code host (Phase 11, P13, N289)', () => {
         launcher: new FakeProcessLauncher(),
       }),
     ).rejects.toThrow(/code_host/);
+  });
+
+  describe('the issue tracker (Phase 11b, P7)', () => {
+    const ISSUE = { repo: PR.repo, number: 7 };
+    const codeOf = async (promise: Promise<unknown> | undefined): Promise<unknown> =>
+      ((await promise?.catch((error: unknown) => error)) as { code?: string } | undefined)?.code;
+
+    it('same_as_code_host follows auto by default, and the GitHub adapters are built once', async () => {
+      const launcher = new FakeProcessLauncher();
+      const { composition, dispose } = await composed('', { launcher });
+      try {
+        expect(composition.issueTracker?.id).toBe('same_as_code_host');
+        expect(composition.adapters).toContainEqual(
+          expect.objectContaining({ port: 'IssueTracker', id: 'same_as_code_host' }),
+        );
+        // The remote is not on GitHub: there is no tracker for the repository, with the reason.
+        const fetched = composition.issueTracker
+          ?.fetchIssue(ISSUE)
+          .catch((error: unknown) => error);
+        await vi.waitFor(() => {
+          expect(launcher.launched).toHaveLength(1);
+        });
+        expect(launcher.launched[0]?.options.args).toEqual(['remote', 'get-url', 'origin']);
+        launcher.launched[0]?.exit(2);
+        const error = await fetched;
+        expect(error).toBeInstanceOf(AdapterUnavailable);
+        expect(String(error)).toContain('the code host of the repository is not GitHub');
+      } finally {
+        await composition.close();
+        await dispose();
+      }
+    });
+
+    it('same_as_code_host with a code host none or fake: no tracker, with the reason', async () => {
+      for (const mode of ['none', 'fake']) {
+        const { composition, dispose } = await composed(
+          `adapters:\n  code_host: ${mode}\n${NO_LAUNCHER}`,
+        );
+        try {
+          expect(composition.issueTracker?.id).toBe('none');
+          const error = await composition.issueTracker
+            ?.listIssues({ repo: PR.repo })
+            .catch((caught: unknown) => caught);
+          expect(error).toBeInstanceOf(AdapterUnavailable);
+          expect(String(error)).toContain(`adapters.code_host is ${mode}`);
+        } finally {
+          await composition.close();
+          await dispose();
+        }
+      }
+    });
+
+    it('same_as_code_host with a code host github: the GitHub tracker, with the token of the vault', async () => {
+      const launcher = new FakeProcessLauncher();
+      const vault = new InMemorySecretVault();
+      await vault.set(TOKEN_KEY, new Secret('test-token-not-real'));
+      const { composition, dispose } = await composed(
+        'adapters:\n  code_host: github\ncode_host:\n  ghBinary: /opt/fake/gh\n',
+        { launcher, vault },
+      );
+      try {
+        expect(composition.issueTracker?.id).toBe('github');
+        const fetched = composition.issueTracker
+          ?.fetchIssue(ISSUE)
+          .catch((error: unknown) => error);
+        await vi.waitFor(() => {
+          expect(launcher.launched).toHaveLength(1);
+        });
+        const process = launcher.launched[0];
+        expect(process?.options.cmd).toBe('/opt/fake/gh');
+        expect(process?.options.args.slice(0, 4)).toEqual([
+          'api',
+          '--method',
+          'GET',
+          'repos/{owner}/{repo}/issues/7',
+        ]);
+        expect(process?.options.env.GH_TOKEN).toBe('test-token-not-real');
+        process?.exit(1);
+        expect(await fetched).toBeInstanceOf(Error);
+      } finally {
+        await composition.close();
+        await dispose();
+      }
+    });
+
+    it('none: every call is AdapterUnavailable', async () => {
+      const { composition, dispose } = await composed(
+        `adapters:\n  issue_tracker: none\n${NO_LAUNCHER}`,
+      );
+      try {
+        expect(composition.issueTracker?.id).toBe('none');
+        expect(await codeOf(composition.issueTracker?.fetchIssue(ISSUE))).toBe(
+          'ADAPTER_UNAVAILABLE',
+        );
+      } finally {
+        await composition.close();
+        await dispose();
+      }
+    });
+
+    it('github without a launcher: no tracker, a warning and the event issue_tracker_unavailable', async () => {
+      const { composition, dispose } = await composed(
+        `adapters:\n  issue_tracker: github\n${NO_LAUNCHER}`,
+      );
+      try {
+        expect(composition.issueTracker?.id).toBe('none');
+        expect(await noticesOf(composition)).toContainEqual(
+          expect.objectContaining({ kind: 'issue_tracker_unavailable', subject: 'github' }),
+        );
+        expect(await codeOf(composition.issueTracker?.fetchIssue(ISSUE))).toBe(
+          'ADAPTER_UNAVAILABLE',
+        );
+      } finally {
+        await composition.close();
+        await dispose();
+      }
+    });
   });
 });

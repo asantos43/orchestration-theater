@@ -33,6 +33,7 @@ A `.claude/` é versionada de forma seletiva (dono, 2026-11-25). Ficam fora do g
   - nunca use `pgrep -f` com um padrão que aparece no próprio comando;
   - todo comando leva `timeout`;
   - no fim de cada passo, pare as tarefas de espera que sobrarem.
+- Testar automaticamente o máximo (dono, 2026-11-25): o dono tem pouco tempo para testes manuais. O que der para testar sozinho (API local com `packages/client`, TUI com o fake-agent, rodadas reais baratas) o Claude testa; o roteiro manual fica só com o que exige o dono (login oficial, olhar visual, PR real na conta dele) e diz o que já foi coberto.
 - Rodadas reais com Claude Code, Codex e OpenCode (modelos OpenAI) estão autorizadas sem ok por rodada, usando modelos baratos. Nessas rodadas:
   - nunca leia credenciais (`~/.claude`, `~/.codex`, `~/.config/opencode`, `~/.config/gh`, perfis de teste);
   - nunca faça login pelo dono;

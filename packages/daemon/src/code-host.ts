@@ -2,7 +2,9 @@
 import {
   AdapterUnavailable,
   assertBranchName,
+  assertItemNumber,
   assertNonEmptyText,
+  ciLogMaxChars,
   CODE_HOST_PORT_VERSION,
   Conflict,
   DEFAULT_REMOTE,
@@ -10,12 +12,16 @@ import {
   supportsHistory,
   type AdapterImplements,
   type BranchTarget,
+  type CiLog,
   type CodeHost,
+  type FetchCiLogOptions,
+  type FetchPullRequestOptions,
   type FindPullRequestOptions,
   type MergeBranchOptions,
   type MergeBranchResult,
   type OpenPullRequestOptions,
   type PullRequest,
+  type PullRequestDetails,
   type Vcs,
 } from '@otheater/core';
 
@@ -40,7 +46,9 @@ export interface LocalCodeHostCall {
     | 'openPullRequest'
     | 'findPullRequest'
     | 'mergeBranch'
-    | 'isBranchMerged';
+    | 'isBranchMerged'
+    | 'fetchPullRequest'
+    | 'fetchCiLog';
   readonly args: unknown;
 }
 
@@ -57,6 +65,9 @@ export interface LocalCodeHostOptions {
 
 const REMOTE_PREFIX = 'https://code-host.invalid';
 
+/** Author of the pull requests a {@link LocalCodeHost} records. [proposta] */
+export const LOCAL_AUTHOR = 'local';
+
 /**
  * A code host that talks to nobody. [proposta]
  *
@@ -65,6 +76,8 @@ const REMOTE_PREFIX = 'https://code-host.invalid';
  *   never opened (number, local URL) and tells the situations (`delivery_without_pr`), so the
  *   play ends `DONE` with the work on the local branch, the event of the delivery has a number and
  *   the Producer is told that nothing was opened. A direct merge needs a host and is refused.
+ * - Both read back the pull requests they recorded (`fetchPullRequest`, with the body given, the
+ *   author `local`, no labels and the local head) and know no CI: `fetchCiLog` has no runs.
  * - `fake`: the same, but the remote is a map in memory (a push puts the head there, a
  *   `remoteRef` reads it) and nothing is told: it is the host of the tests that run the whole
  *   daemon (`adapters.code_host: fake`), whose `calls` and {@link pullRequests} are its journal.
@@ -85,6 +98,7 @@ export class LocalCodeHost implements CodeHost {
   readonly #onNotice: ((notice: CodeHostNotice) => void) | undefined;
   readonly #remote = new Map<string, string>();
   #pulls: PullRequest[] = [];
+  readonly #bodies = new Map<number, string>();
 
   constructor(options: LocalCodeHostOptions) {
     this.id = options.id;
@@ -149,6 +163,7 @@ export class LocalCodeHost implements CodeHost {
       createdAt: this.#now(),
     };
     this.#pulls.push(pull);
+    this.#bodies.set(number, opts.body);
     if (this.id === 'none') {
       this.#onNotice?.({
         kind: 'delivery_without_pr',
@@ -201,6 +216,36 @@ export class LocalCodeHost implements CodeHost {
           pull.state === 'merged' && pull.headBranch === opts.head && pull.baseBranch === opts.base,
       ),
     );
+  }
+
+  async fetchPullRequest(opts: FetchPullRequestOptions): Promise<PullRequestDetails> {
+    this.calls.push({ method: 'fetchPullRequest', args: opts });
+    return this.#details(opts);
+  }
+
+  async fetchCiLog(opts: FetchCiLogOptions): Promise<CiLog> {
+    this.calls.push({ method: 'fetchCiLog', args: opts });
+    ciLogMaxChars(opts.maxChars);
+    const { headSha } = await this.#details(opts);
+    return { headSha, runs: [], log: '', truncated: false };
+  }
+
+  async #details(opts: FetchPullRequestOptions): Promise<PullRequestDetails> {
+    assertItemNumber('pull request number', opts.number);
+    const pull = this.#pulls.find((candidate) => candidate.number === opts.number);
+    if (pull === undefined) throw new NotFound(`No pull request #${String(opts.number)}`);
+    const headSha =
+      this.id === 'fake'
+        ? (this.#remote.get(remoteKey(opts.repo, opts.remote, pull.headBranch)) ??
+          (await this.#head(opts.repo, pull.headBranch)))
+        : await this.#head(opts.repo, pull.headBranch);
+    return {
+      ...pull,
+      body: this.#bodies.get(pull.number) ?? '',
+      author: LOCAL_AUTHOR,
+      headSha,
+      labels: [],
+    };
   }
 
   async #head(repo: string, branch: string): Promise<string> {
@@ -288,6 +333,22 @@ export class AutoCodeHost implements CodeHost {
 
   isBranchMerged(opts: Omit<MergeBranchOptions, 'message'>): Promise<boolean> {
     return this.#pick(opts.repo, opts.remote).then((host) => host.isBranchMerged(opts));
+  }
+
+  fetchPullRequest(opts: FetchPullRequestOptions): Promise<PullRequestDetails> {
+    return this.#pick(opts.repo, opts.remote).then((host) => host.fetchPullRequest(opts));
+  }
+
+  fetchCiLog(opts: FetchCiLogOptions): Promise<CiLog> {
+    return this.#pick(opts.repo, opts.remote).then((host) => host.fetchCiLog(opts));
+  }
+
+  /**
+   * The host chosen for `(repo, remote)`: the GitHub adapter or the local one. The issue tracker
+   * of `adapters.issue_tracker: same_as_code_host` follows it.
+   */
+  hostFor(repo: string, remote?: string): Promise<CodeHost> {
+    return this.#pick(repo, remote);
   }
 
   #pick(repo: string, remote: string | undefined): Promise<CodeHost> {

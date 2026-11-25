@@ -16,7 +16,11 @@ import type {
   Clock,
   CodeHost,
   EventEnvelope,
+  CiLog,
+  FetchCiLogOptions,
+  FetchPullRequestOptions,
   FindPullRequestOptions,
+  PullRequestDetails,
   MergeBranchOptions,
   MergeBranchResult,
   OpenPullRequestOptions,
@@ -136,6 +140,14 @@ class RealHeadCodeHost implements CodeHost {
 
   isBranchMerged(opts: Omit<MergeBranchOptions, 'message'>): Promise<boolean> {
     return this.#fake.isBranchMerged(opts);
+  }
+
+  fetchPullRequest(opts: FetchPullRequestOptions): Promise<PullRequestDetails> {
+    return this.#fake.fetchPullRequest(opts);
+  }
+
+  fetchCiLog(opts: FetchCiLogOptions): Promise<CiLog> {
+    return this.#fake.fetchCiLog(opts);
   }
 }
 
