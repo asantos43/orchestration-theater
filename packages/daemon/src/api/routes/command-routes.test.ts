@@ -77,8 +77,15 @@ beforeEach(async () => {
   daemon = await startDaemon({
     dataDir: tmp.dir,
     clientSearch: NO_CLIENTS,
-    config: parseConfig('backup:\n  when: manual\n'),
-    overrides: { clock, vault, store: new InMemoryStore({ clock }) },
+    // No launcher (Windows with `windows_launcher: off`), so the plays are off: an empty pool alone
+    // no longer turns them off (P18, N321), the daemon waits for a client to be found.
+    config: parseConfig('backup:\n  when: manual\nprocesses:\n  windows_launcher: off\n'),
+    overrides: {
+      clock,
+      vault,
+      store: new InMemoryStore({ clock }),
+      launcherDeps: { platform: 'win32' },
+    },
     logger: captured.logger,
     version: '0.0.0-test',
   });

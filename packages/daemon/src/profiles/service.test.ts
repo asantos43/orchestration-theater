@@ -67,6 +67,10 @@ interface RigOptions {
   readonly probeFails?: boolean;
   readonly sessions?: ProfileSessions;
   readonly roleLists?: () => Promise<readonly RoleListFact[]>;
+  /** The clients with an adapter at the start (default both). */
+  readonly clients?: readonly string[];
+  /** P18: the search for the clients again; it gets the adapters to add one. */
+  readonly redetect?: (adapters: Map<string, FakeClientAdapter>) => Promise<void>;
 }
 
 async function setup(options: RigOptions = {}) {
@@ -108,29 +112,28 @@ async function setup(options: RigOptions = {}) {
   const prepared: string[] = [];
   const logins = new Map<string, string>();
   const adapters = new Map<string, FakeClientAdapter>();
-  for (const client of ['claude-code', 'codex']) {
-    adapters.set(
-      client,
-      new FakeClientAdapter({
-        id: client,
-        launcher,
-        baseEnv: { PATH: '/bin' },
-        adapterVersion: '1.0.0',
-        command: { cmd: 'fake-client', args: ['--acp'] },
-        secretEnv: profileSecretEnv({ store, vault, logger }),
-        loginState:
-          options.probeFails === true
-            ? () => {
-                throw new Error('login probe exploded');
-              }
-            : (options.login ?? 'logged_in'),
-        onPrepareProfile: (profile) => prepared.push(profile.id),
-        onLogout: (profile) => {
-          if (options.failLogout === true) throw new Error('logout exploded');
-          logins.set(profile.id, 'out');
-        },
-      }),
-    );
+  const adapterFor = (client: string): FakeClientAdapter =>
+    new FakeClientAdapter({
+      id: client,
+      launcher,
+      baseEnv: { PATH: '/bin' },
+      adapterVersion: '1.0.0',
+      command: { cmd: 'fake-client', args: ['--acp'] },
+      secretEnv: profileSecretEnv({ store, vault, logger }),
+      loginState:
+        options.probeFails === true
+          ? () => {
+              throw new Error('login probe exploded');
+            }
+          : (options.login ?? 'logged_in'),
+      onPrepareProfile: (profile) => prepared.push(profile.id),
+      onLogout: (profile) => {
+        if (options.failLogout === true) throw new Error('logout exploded');
+        logins.set(profile.id, 'out');
+      },
+    });
+  for (const client of options.clients ?? ['claude-code', 'codex']) {
+    adapters.set(client, adapterFor(client));
   }
   const settings: ProfileSettings = {
     sameProviderNotice: options.notice ?? 'once',
@@ -154,6 +157,9 @@ async function setup(options: RigOptions = {}) {
     transport: () => transport,
     ...(options.sessions === undefined ? {} : { sessions: options.sessions }),
     ...(options.roleLists === undefined ? {} : { roleLists: options.roleLists }),
+    ...(options.redetect === undefined
+      ? {}
+      : { redetect: () => options.redetect?.(adapters) ?? Promise.resolve() }),
     pollMs: 1000,
   });
   return {
@@ -168,6 +174,7 @@ async function setup(options: RigOptions = {}) {
     situations,
     launcher,
     adapters,
+    adapterFor,
     prepared,
     loggedOut: logins,
   };
@@ -400,6 +407,42 @@ describe('ProfileService.add (Phase 5, P2)', () => {
   it('answers unknown when the client cannot tell the login state', async () => {
     const rig = await setup({ login: 'unknown' });
     expect((await addSub(rig, 'claude-code', 'main')).login).toBe('unknown');
+  });
+});
+
+describe('ProfileService.add looks for the clients again first (P18, N321)', () => {
+  it('a client found by the search has its adapter for the new account', async () => {
+    const calls: string[] = [];
+    const holder: { rig?: Rig } = {};
+    const rig = await setup({
+      clients: ['codex'],
+      redetect: (adapters) => {
+        calls.push('redetect');
+        const own = holder.rig;
+        if (own !== undefined && !adapters.has('claude-code')) {
+          adapters.set('claude-code', own.adapterFor('claude-code'));
+        }
+        return Promise.resolve();
+      },
+    });
+    holder.rig = rig;
+    await addSub(rig, 'claude-code', 'work');
+    expect(calls).toEqual(['redetect']);
+    expect(rig.prepared).toContain('claude-code/work');
+  });
+
+  it('an input that is not valid is refused before any search', async () => {
+    const calls: string[] = [];
+    const rig = await setup({
+      redetect: () => {
+        calls.push('redetect');
+        return Promise.resolve();
+      },
+    });
+    await expect(
+      rig.service.add({ client: 'nope', name: 'x', kind: 'api', provider: 'anthropic' }),
+    ).rejects.toThrow();
+    expect(calls).toEqual([]);
   });
 });
 

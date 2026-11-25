@@ -16,7 +16,7 @@ import { fixtureOpenCodeCatalog } from '../executors/opencode-catalog-fixture.js
 import { createSilentLogger } from '../logger.js';
 import type { ProfileService, ProfileSummary } from '../profiles/service.js';
 import { makeTempDataDir } from '../test-helpers.js';
-import { SetupService } from './service.js';
+import { SetupService, type SetupServiceOptions } from './service.js';
 
 export const T0 = Date.UTC(2026, 10, 20, 12, 0, 0);
 
@@ -84,7 +84,7 @@ export interface SetupRig {
   readonly logins: Map<string, 'logged_in' | 'logged_out' | 'unknown'>;
   readonly catalogs: Record<string, ModelCatalog>;
   /** A service over the store of the rig: calling it again is what a restart of the daemon is. */
-  service(): SetupService;
+  service(extra?: Pick<SetupServiceOptions, 'redetect' | 'clientReasons'>): SetupService;
   config(): ReturnType<typeof loadConfig>;
   text(): Promise<string>;
   dispose(): Promise<void>;
@@ -155,7 +155,10 @@ export async function makeSetupRig(options: RigOptions): Promise<SetupRig> {
     },
   };
   const installed = new Set(options.installed ?? ['claude-code', 'codex', 'opencode']);
-  const service = (): SetupService => {
+  /** `extra`: the search for the clients again and its reasons (P18), absent by default. */
+  const service = (
+    extra: Pick<SetupServiceOptions, 'redetect' | 'clientReasons'> = {},
+  ): SetupService => {
     const lookup = (client: string): ModelCatalog | undefined => catalogs[client];
     return new SetupService({
       store,
@@ -172,6 +175,7 @@ export async function makeSetupRig(options: RigOptions): Promise<SetupRig> {
       }),
       catalogs: lookup,
       installedClients: () => installed,
+      ...extra,
     });
   };
   return {

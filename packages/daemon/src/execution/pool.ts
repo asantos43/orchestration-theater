@@ -331,6 +331,29 @@ export class SessionPool {
     return this.#settings.admission ?? DEFAULT_ADMISSION;
   }
 
+  /** Whether the pool has an adapter for the client id. */
+  has(client: string): boolean {
+    return this.#adapters.has(client);
+  }
+
+  /** The client ids the pool has adapters for, in the order they came. */
+  clients(): string[] {
+    return [...this.#adapters.keys()];
+  }
+
+  /**
+   * Adds the adapter of a client found after the start (P18, N321: the daemon looks for the
+   * clients again without a restart). An id the pool already has is `InvalidInput`, as in the
+   * constructor; a closed pool takes none.
+   */
+  addClient(adapter: ClientAdapter): void {
+    if (this.#closed) throw new InvalidInput('the session pool is closed');
+    if (this.#adapters.has(adapter.id)) {
+      throw new InvalidInput(`two client adapters share the id ${adapter.id}`);
+    }
+    this.#adapters.set(adapter.id, adapter);
+  }
+
   /** The adapter of a client id, or `AdapterUnavailable`. */
   adapterOf(client: string): ClientAdapter {
     const adapter = this.#adapters.get(client);

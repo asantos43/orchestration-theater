@@ -389,6 +389,23 @@ export type ClientId = (typeof CLIENT_IDS)[number];
  */
 export const ADAPTER_INSTALL_MODES = ['auto', 'ask', 'command', 'off'] as const;
 export type AdapterInstallMode = (typeof ADAPTER_INSTALL_MODES)[number];
+/**
+ * `clients.detection.path` (P18, N321) [proposta]: the `PATH` the daemon searches for the clients
+ * and gives them. `merge` (default) is the `PATH` the daemon got, and on Windows also the `Path` of
+ * the registry (the user's and the machine's), so a client installed after the session of the
+ * daemon began is found without a new logon; elsewhere it is the same as `process`. `process` is
+ * only the `PATH` the daemon got.
+ */
+export const CLIENT_PATH_MODES = ['merge', 'process'] as const;
+export type ClientPathMode = (typeof CLIENT_PATH_MODES)[number];
+/**
+ * `clients.detection.redetect` (P18, N321) [proposta]: when the daemon looks for the clients again
+ * without a restart. `auto` (default): each time the setup assistant opens, before an account is
+ * added and when asked (`POST /v1/setup/redetect`, the R key of the assistant). `manual`: only when
+ * asked. A client found is added to the pool; one that is gone stays until the next start.
+ */
+export const CLIENT_REDETECT_MODES = ['auto', 'manual'] as const;
+export type ClientRedetectMode = (typeof CLIENT_REDETECT_MODES)[number];
 /** `clients.adapters.registry` default: where the pinned tarballs are downloaded from. */
 export const DEFAULT_ADAPTER_REGISTRY = 'https://registry.npmjs.org';
 /** `clients.adapters.redirect_max` default. */
@@ -2506,6 +2523,13 @@ export const DaemonConfigSchema = z
     clients: z
       .strictObject({
         adapters: ClientAdaptersSchema.prefault({}),
+        /** How the clients are found (P18, N321); see `CLIENT_PATH_MODES` and `CLIENT_REDETECT_MODES`. */
+        detection: z
+          .strictObject({
+            path: z.enum(CLIENT_PATH_MODES).default('merge'),
+            redetect: z.enum(CLIENT_REDETECT_MODES).default('auto'),
+          })
+          .prefault({}),
         'claude-code': ClaudeCodeClientSchema.prefault({}),
         codex: CodexClientSchema.prefault({}),
         opencode: OpenCodeClientSchema.prefault({}),

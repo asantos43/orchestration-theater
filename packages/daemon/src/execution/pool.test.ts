@@ -593,3 +593,44 @@ describe('SessionPool, the profile that leaves (P21)', () => {
     await other.release();
   });
 });
+
+describe('SessionPool.addClient (P18, N321)', () => {
+  it('takes a client found after the start and opens sessions on it', async () => {
+    const { pool, launcher, request } = setup({ shared: false });
+    const late = new FakeClientAdapter({
+      id: 'late',
+      launcher,
+      baseEnv: {},
+      adapterVersion: '1.0.0',
+      command: { cmd: 'late-client', args: [] },
+      processModel: 'process-per-session',
+    });
+    expect(pool.has('late')).toBe(false);
+    pool.addClient(late);
+    expect(pool.has('late')).toBe(true);
+    expect(pool.clients()).toEqual(['fake', 'late']);
+    expect(pool.adapterOf('late')).toBe(late);
+    const lease = await pool.acquire({ ...request(), client: 'late' });
+    expect(launcher.running.some((proc) => proc.options.cmd === 'late-client')).toBe(true);
+    await lease.release();
+  });
+
+  it('refuses an id it has, and any client once it is shut down', async () => {
+    const { pool, adapter } = setup({ shared: false });
+    expect(() => {
+      pool.addClient(adapter);
+    }).toThrow(/share the id fake/);
+    await pool.shutdown();
+    const other = new FakeClientAdapter({
+      id: 'other',
+      launcher: new FakeProcessLauncher(),
+      baseEnv: {},
+      adapterVersion: '1.0.0',
+      command: { cmd: 'other', args: [] },
+      processModel: 'process-per-session',
+    });
+    expect(() => {
+      pool.addClient(other);
+    }).toThrow(/closed/);
+  });
+});

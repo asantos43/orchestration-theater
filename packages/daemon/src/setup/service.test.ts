@@ -531,3 +531,48 @@ describe('the other two flows (skeleton)', () => {
     ).rejects.toBeInstanceOf(InvalidInput);
   });
 });
+
+describe('SetupService looks for the clients again (P18, N321)', () => {
+  it('opening and starting search as open; redetect searches as asked and gives the clients with why', async () => {
+    const rig = await rigOf({ installed: ['codex'] });
+    const triggers: string[] = [];
+    const service = rig.service({
+      redetect: (trigger) => {
+        triggers.push(trigger);
+        return Promise.resolve(trigger === 'asked' ? ['codex'] : []);
+      },
+      clientReasons: (client) => (client === 'codex' ? 'found_in_path' : 'not_found'),
+    });
+    await service.overview();
+    const run = await service.start('first_run');
+    expect(triggers).toEqual(['open', 'open']);
+    if (run.prompt?.step !== 'detect') throw new Error('expected the detect prompt');
+    expect(run.prompt.clients).toContainEqual({
+      client: 'opencode',
+      installed: false,
+      reason: 'not_found',
+    });
+
+    expect(await service.redetect()).toEqual({
+      added: ['codex'],
+      clients: [
+        { client: 'claude-code', installed: false, reason: 'not_found' },
+        { client: 'codex', installed: true, reason: 'found_in_path' },
+        { client: 'opencode', installed: false, reason: 'not_found' },
+      ],
+    });
+    expect(triggers).toEqual(['open', 'open', 'asked']);
+  });
+
+  it('with no search wired, redetect adds nothing and the clients carry no reason', async () => {
+    const rig = await rigOf({ installed: ['claude-code'] });
+    expect(await rig.service().redetect()).toEqual({
+      added: [],
+      clients: [
+        { client: 'claude-code', installed: true },
+        { client: 'codex', installed: false },
+        { client: 'opencode', installed: false },
+      ],
+    });
+  });
+});
