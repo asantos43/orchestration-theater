@@ -460,7 +460,8 @@ export const OFFICIAL_TOOLS: readonly ToolDefinition[] = [
     idempotencyKey: 'attempt_step',
   }),
   // The notes board of the play (N308, option 1): hidden when `collab.notes.mode` is `off`.
-  tool('post_note', ['actor'], postNoteInput, postNoteOutput, { effect: 'local_write' }),
+  // The board is the framework's own state, not the worktree: `read` by the definition above.
+  tool('post_note', ['actor'], postNoteInput, postNoteOutput),
   tool('read_notes', ['actor'], readNotesInput, readNotesOutput),
   tool('git_commit', ['actor'], gitCommitInput, gitCommitOutput, {
     effect: 'local_write',
