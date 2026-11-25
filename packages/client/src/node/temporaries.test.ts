@@ -2,7 +2,7 @@
 import { spawnSync } from 'node:child_process';
 import { mkdir, mkdtemp, readdir, rm, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   DEFAULT_TEMPORARY_CLEANUP_MODE,
@@ -255,8 +255,8 @@ describe('temporaryPathOf', () => {
     expect(temporaryPathOf(join(dir, 'f'), { hexLength: 0, hidden: true })).toBe(
       join(dir, `.f.${pid}.tmp`),
     );
-    expect(temporaryPathOf(join(dir, 'f'), { hexLength: 8 })).toMatch(
-      new RegExp(`^${dir.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/f\\.${pid}\\.[0-9a-f]{8}\\.tmp$`),
-    );
+    const withHex = temporaryPathOf(join(dir, 'f'), { hexLength: 8 });
+    expect(dirname(withHex)).toBe(dir);
+    expect(basename(withHex)).toMatch(new RegExp(`^f\\.${pid}\\.[0-9a-f]{8}\\.tmp$`));
   });
 });
