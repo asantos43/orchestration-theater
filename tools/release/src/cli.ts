@@ -5,6 +5,13 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
 import { runAcceptance } from './acceptance.js';
+import {
+  BUSY_MODES,
+  BUSY_RESUME_FORMS,
+  runBusyAcceptance,
+  type BusyMode,
+  type BusyResumeForm,
+} from './acceptance-busy.js';
 import { buildTarget } from './build.js';
 import { loadReleaseConfig, parseReleaseConfig, ReleaseConfigError } from './config.js';
 import {
@@ -37,6 +44,16 @@ Commands:
       The acceptance of the distribution (Phase 10, P12): install, close and reopen the TUI, the four
       refusals, rollback, the update in idle and park, uninstall. Two executables built with the
       public half of --key, in a temporary HOME, against a release server on the loopback.
+  acceptance-busy --exe-n <file> --version-n <x.y.z> --exe-n1 <file> --version-n1 <x.y.z> --key <private.pem>
+      --install-script <install.sh> --model <id> --need <text> --play-timeout-ms <n> --max-wait <dur>
+      --limits <preset> [--modes idle,park] [--profile-dir <dir>] [--client-mode <mode>]
+      [--client-command <file>] [--daemon-path <PATH>] [--resume-form native|any (default any)] [--prefix <text>]
+      [--work-dir <dir>] [--keep]
+      The update with a piece in progress (Phase 10, N303 (2); level phase10-busy of
+      tools/acceptance/real-acceptance.sh): a real piece starts, the next version is published while
+      an attempt runs, and in each mode (idle: the swap waits for the attempt; park: the attempt is
+      parked and comes back by session/load) the piece must end in DONE after the swap.
+      --profile-dir is linked, never copied or read, as the profile claude-code/real of the run.
 ${RELEASE_USAGE}`;
 
 function fail(message: string): never {
@@ -161,6 +178,94 @@ export async function main(argv: readonly string[]): Promise<number> {
       ownSchemas: await readOwnSchemas(root),
       workDir: values['work-dir'] === undefined ? undefined : path.resolve(values['work-dir']),
       keep: values.keep,
+      log: (line) => process.stdout.write(`${line}\n`),
+    });
+    return result.ok ? 0 : 1;
+  }
+  if (command === 'acceptance-busy') {
+    const { values } = parseArgs({
+      args: [...rest],
+      options: {
+        'exe-n': { type: 'string' },
+        'version-n': { type: 'string' },
+        'exe-n1': { type: 'string' },
+        'version-n1': { type: 'string' },
+        key: { type: 'string' },
+        'install-script': { type: 'string' },
+        'work-dir': { type: 'string' },
+        keep: { type: 'boolean' },
+        modes: { type: 'string' },
+        'profile-dir': { type: 'string' },
+        model: { type: 'string' },
+        'client-mode': { type: 'string' },
+        'client-command': { type: 'string' },
+        'daemon-path': { type: 'string' },
+        need: { type: 'string' },
+        'play-timeout-ms': { type: 'string' },
+        'max-wait': { type: 'string' },
+        limits: { type: 'string' },
+        'resume-form': { type: 'string' },
+        prefix: { type: 'string' },
+      },
+      strict: true,
+    });
+    const exeN = values['exe-n'];
+    const versionN = values['version-n'];
+    const exeN1 = values['exe-n1'];
+    const versionN1 = values['version-n1'];
+    const key = values.key;
+    const script = values['install-script'];
+    const { model, need, limits } = values;
+    const maxWait = values['max-wait'];
+    const timeout = Number(values['play-timeout-ms']);
+    if (
+      exeN === undefined ||
+      versionN === undefined ||
+      exeN1 === undefined ||
+      versionN1 === undefined ||
+      key === undefined ||
+      script === undefined ||
+      model === undefined ||
+      need === undefined ||
+      limits === undefined ||
+      maxWait === undefined ||
+      !Number.isInteger(timeout) ||
+      timeout < 1
+    ) {
+      fail(
+        'acceptance-busy needs --exe-n, --version-n, --exe-n1, --version-n1, --key, --install-script, --model, --need, --limits, --max-wait and --play-timeout-ms',
+      );
+    }
+    const modes = (values.modes ?? BUSY_MODES.join(',')).split(',').map((m) => m.trim());
+    for (const mode of modes) {
+      if (!(BUSY_MODES as readonly string[]).includes(mode)) fail(`unknown mode "${mode}"`);
+    }
+    const resumeForm = values['resume-form'] ?? 'any';
+    if (!(BUSY_RESUME_FORMS as readonly string[]).includes(resumeForm)) {
+      fail(`--resume-form is one of ${BUSY_RESUME_FORMS.join(', ')}`);
+    }
+    const result = await runBusyAcceptance({
+      exeN: path.resolve(exeN),
+      versionN,
+      exeN1: path.resolve(exeN1),
+      versionN1,
+      privateKeyFile: path.resolve(key),
+      installScript: path.resolve(script),
+      ownSchemas: await readOwnSchemas(root),
+      workDir: values['work-dir'] === undefined ? undefined : path.resolve(values['work-dir']),
+      keep: values.keep,
+      modes: modes as BusyMode[],
+      profileDir: values['profile-dir'],
+      model,
+      clientMode: values['client-mode'],
+      clientCommand: values['client-command'],
+      daemonPath: values['daemon-path'],
+      need,
+      playTimeoutMs: timeout,
+      maxWait,
+      limitsPreset: limits,
+      resumeForm: resumeForm as BusyResumeForm,
+      prefix: values.prefix,
       log: (line) => process.stdout.write(`${line}\n`),
     });
     return result.ok ? 0 : 1;
