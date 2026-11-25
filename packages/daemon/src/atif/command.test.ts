@@ -197,10 +197,14 @@ describe('ot trajectory export (P5, N219)', () => {
   it('lists the command in the help of both languages', async () => {
     const tmp = await makeTempDataDir();
     try {
-      const en = await ot(['--help', '--data-dir', tmp.dir], tmp.dir);
-      expect(en.out.join('\n')).toContain('trajectory export <play>');
-      const pt = await ot(['--help', '--data-dir', tmp.dir], tmp.dir, { systemLocale: 'pt-BR' });
-      expect(pt.out.join('\n')).toContain('trajectory export <peça>');
+      const en = await ot(['help', 'trajectory', '--data-dir', tmp.dir], tmp.dir);
+      expect(en.out.join('\n')).toContain('ot trajectory export <play>');
+      const main = await ot(['--help', '--data-dir', tmp.dir], tmp.dir);
+      expect(main.out.join('\n')).toMatch(/^ {2}trajectory {2,}\S/m);
+      const pt = await ot(['help', 'trajectory', '--data-dir', tmp.dir], tmp.dir, {
+        systemLocale: 'pt-BR',
+      });
+      expect(pt.out.join('\n')).toContain('ot trajectory export <peça>');
     } finally {
       await tmp.dispose();
     }

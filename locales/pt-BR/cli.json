@@ -1,6 +1,5 @@
 {
   "usage": {
-    "text": "Uso: ot [opções] <comando>\n\nComandos:\n  daemon                       Inicia o daemon do OTheater neste terminal\n  backup                       Faz um backup dos dados agora\n  restore <pasta>              Restaura um backup (o daemon precisa estar parado)\n  directives <ação> [...]      Ordens (o daemon precisa estar parado); ações:\n                                 list, show <id>, add <texto>, extend <id>,\n                                 suspend <id> --scenario <c> [texto], revoke <id> --reason <texto>\n  chat                         Conversa com o Diretor de um repositório (o daemon precisa estar em execução)\n  tui                          Abre a interface de terminal (o daemon precisa estar em execução)\n  profile <ação> [...]         Contas dos clientes (o daemon precisa estar parado); ações:\n                                 add <cliente> <nome>, list, drain <cliente>/<nome>, remove <cliente>/<nome>,\n                                 exec <cliente>/<nome> [-- <args>] (também com o daemon rodando),\n                                 shims sync, shims path [--install|--uninstall] (os comandos por perfil)\n  executor <ação> [...]        Executores dos modelos (o daemon deve estar parado); ações:\n                                 models <perfil>, add <perfil> <modelo>, list, check [id], remove <id>\n  plugin <ação> [...]          Plugins (funcionam com o daemon parado ou rodando); ações:\n                                 install <origem>, list, update <id> [<origem>], remove <id>,\n                                 enable <id> --project <p>, disable <id> --project <p>,\n                                 secret set <id> <NOME> [--project <p>]\n                                 (origem: uma pasta, npm:<pacote>@<versão> ou git:<url>#<ref>)\n  api rotate-token             Troca o token da API (com o daemon parado ou em execução)\n  trajectory export <peça>     Grava a trajetória ATIF de uma peça num arquivo (com o daemon parado ou em execução)\n  analysis                     A análise do sistema: tempos, esperas, custo e cobertura sobre os agregados diários (com o daemon parado ou em execução)\n  service <ação>               O serviço de logon do daemon: install, uninstall, status, start, stop (com o daemon parado ou em execução)\n  uninstall [--purge-data]     Remove o serviço de logon e mantém os dados (--purge-data também os apaga, depois de perguntar)\n  init [--no-tui]              Primeira configuração sem perguntas: instala o serviço de logon, sobe o daemon, confere os comandos dos Executores (mostra os clientes que faltam, com o comando npm, e instala os adaptadores ACP como diz clients.adapters.install) e abre a interface de terminal\n  adapters <ação> [...]        Os adaptadores ACP que o OTheater instala para o Claude Code e o Codex (funcionam com o daemon parado ou em execução); ações:\n                                 status, install [claude-code|codex]\n  vault <ação>                 O cofre dos segredos (adapters.vault; funciona com o daemon parado ou rodando); ações:\n                                 status, use <keyring|encrypted-file|auto>\n\nOpções:\n  --data-dir <dir>  Pasta de dados (padrão: OT_DATA_DIR, senão a pasta de dados do usuário)\n  --non-interactive  Não pergunta nada no terminal (o serviço e o daemon que o OTheater sobe usam; um cofre trancado fica trancado)\n  -h, --help        Mostra esta ajuda\n  -v, --version     Mostra a versão\n\nOpções de \"ot directives\":\n  --scenario <id>   Ordem local deste cenário (sem ele, add cria uma ordem global)\n  --kind <tipo>     instruction (padrão), rule ou suspension\n  --role <papel>    Só para este papel (repita para mais papéis)\n  --rule-key <chave> --rule-value <valor>   A chave de configuração que a regra sobrepõe, e o valor\n  --suspends <id>   A ordem global que a suspensão tira do cenário\n  --replaces <id>   Revoga esta ordem e põe a nova no lugar\n  --from <data> --until <data> --for <duração>   Validade (AAAA-MM-DD [HH:mm]; 30m, 2h, 3d)\n  --forever         extend: tira o fim da ordem\n  --reason <texto>  revoke: o motivo\n  --all             list: inclui as ordens expiradas e revogadas\n\nOpções de \"ot chat\":\n  --repo <pasta>    O repositório (padrão: a pasta atual)\n  --base <branch>   A branch de onde as peças partem e onde entregam (padrão: main)\n  --name <nome>     Um nome para o cenário (padrão: o nome da pasta; um chat é identificado por ele)\n  --type <tipo>     project (padrão, precisa de um repositório) ou chat (um chat genérico, sem repositório)\n  --new-project     Cria o projeto em --repo (pasta que não existe ou está vazia) com a estrutura do perfil software\n\nOpções de \"ot profile\":\n  --kind <tipo>     add: token_plan (padrão, uma assinatura) ou api (uma chave)\n  --provider <p>    add: o provedor da conta (padrão: anthropic para claude-code, openai para codex)\n  --api-key-env <NOME>   add --kind api: o NOME da variável de ambiente que guarda a chave (nunca digite a chave como argumento)\n  --api-key-stdin   add --kind api: lê a chave da primeira linha da entrada padrão\n  --accept-notice   add: segue depois do aviso sobre uma segunda conta de assinatura do mesmo provedor\n  --login           add: entra na conta de assinatura nova já (como profiles.add.login: auto; precisa de terminal)\n  --no-login        add: não entra agora, seja qual for profiles.add.login (ask, o padrão, pergunta num terminal; auto entra; off não oferece)\n  --client <cliente> list: só este cliente\n  --all             list: também os perfis removidos\n  --check-login     list: pergunta a cada cliente se o perfil tem login\n  --json            Imprime JSON em vez de texto\n  exec roda a CLI do próprio cliente dentro do perfil, neste terminal. As palavras comuns\n  login, logout, status, run e --model (e as de profiles.commands e profiles.options)\n  viram as do cliente; depois de \"--\" os argumentos vão como estão.\n  shims sync escreve um comando por perfil (codex-personal) na pasta bin dos dados;\n  shims path diz como pôr essa pasta no PATH:\n  --install / --uninstall   shims path: escreve ou tira a linha no arquivo rc do shell (pergunta antes)\n  --shell <s>       shims path: zsh, bash ou fish (padrão: o do SHELL)\n  -y, --yes         shims path --install: não pergunta\n\nOpções de \"ot executor\":\n  --effort <e>      add: low, medium ou high (padrão: o que o catálogo sugere)\n  --family <f>      add: a família (provedor) de um modelo cujo catálogo não informa\n  --as <nome>       add: o nome do modelo dentro do id do Executor (padrão: derivado)\n  --local-url <url> add: URL do servidor de modelo local (padrão: a do catálogo)\n  --local-server <s> add: llama-cpp (padrão) ou ollama\n  --role <p>[:<n>]  add: põe também neste papel, na posição n (repita para mais papéis)\n  --test-session    add: roda a sessão de teste curta (chama o modelo); --no-test-session a pula\n  --dry-run         add: informa os campos e as checagens, não grava nada\n  --profile <id>    list: só os Executores deste perfil\n  --all             list: também os removidos\n\nOpções de \"ot plugin\":\n  --project <p>     enable, disable: o projeto; list: só os plugins desse projeto; secret set: o valor vale só para esse projeto\n  -y, --yes         enable: não perguntar (o que o plugin pede é impresso do mesmo jeito)\n  --json            Imprime JSON em vez de texto\n  secret set lê o valor da entrada padrão (oculto num terminal) e nunca o imprime.\n  install e update nunca ligam um plugin e não rodam script do pacote nem do repositório.\n  Um plugin cujo plugin.yaml mudou fica desligado em todo projeto até o \"enable\" aprovar de novo.\n\nOpções de \"ot analysis\":\n  --from <dia> --to <dia>   O período, AAAA-MM-DD (padrão: analysis.report.default_days dias até o último dia pronto)\n  --group-by <g>    day (padrão), scenario, executor ou role\n  --scenario <id>   Só este cenário\n  --compare-from <dia> --compare-to <dia>   Compara com este outro período\n  --compare-scenario <id>   Compara com este outro cenário nos mesmos dias (precisa de --scenario)\n  --json            Imprime o relatório em JSON\n\nOpções de \"ot trajectory\":\n  --unit <u>        play (um arquivo, com as tentativas embutidas), attempt (um arquivo por tentativa) ou play_files (a peça e um arquivo por tentativa); padrão: atif.export.unit (com o daemon rodando, só play)\n  --content <c>     full (padrão: atif.export.content; os segredos são mascarados do mesmo jeito) ou redacted (sem texto)\n  --out <pasta>     A pasta dos arquivos (padrão: atif.export.dir, \"trajectories\" na pasta de dados)\n\nOpções de \"ot service\" e \"ot uninstall\":\n  --no-start        service install: não sobe o daemon agora\n  --json            service status: imprime JSON em vez de texto\n  --purge-data      uninstall: apaga também a pasta de dados inteira (pergunta antes; não dá para desfazer; o chaveiro não é tocado)\n  -y, --yes         uninstall --purge-data: não pergunta\n  O serviço é do próprio usuário e só roda enquanto ele está conectado. As chaves service.* da\n  configuração (restart, autostart, console) são lidas na instalação. \"ot tui\" sobe o daemon quando\n  nenhum está no ar (tui.start_daemon).\n\nOpções de \"ot adapters\":\n  --json            status: imprime JSON em vez de texto\n  install baixa a versão fixada do registro npm (clients.adapters.registry), confere o sha512\n  e a põe na pasta de dados: sem sudo, sem mudar o PATH. Nunca instala o cliente oficial.\n\nOpções de \"ot vault\":\n  --json            status: imprime JSON em vez de texto\n  use muda só o adapters.vault do config.yaml (os comentários ficam) e não move nenhum segredo.\n\nOpções de \"ot init\":\n  --no-tui          faz os passos até a conferência dos comandos e sai, sem abrir a interface (para scripts)\n\nNo chat, \"/attach <arquivo>\" anexa um arquivo (copiado; \"/attach --ref <arquivo>\" o mantém no lugar):\na próxima mensagem que você enviar o cita como A<n> para o Diretor.\n\nSem comando, \"ot\" abre a interface de terminal quando a entrada e a saída são um terminal\n(ui.bare_command: tui, o padrão); com ui.bare_command: help, ou sem terminal, mostra esta ajuda.\n\nCódigos de saída: 0 sucesso, 1 o comando falhou, 2 uso incorreto.",
     "hint": "Rode \"ot --help\" para ver o uso.",
     "unknownCommand": "Comando desconhecido: \"{{command}}\".",
     "missingCommand": "Nenhum comando informado.",
@@ -566,5 +565,546 @@
     "unchanged": "O cofre dos segredos já é {{mode}}; nada mudou.",
     "changed": "O cofre dos segredos agora é {{mode}} (era {{before}}), em {{path}}. Os segredos gravados antes ficam no cofre em que foram gravados.",
     "restartHint": "Um daemon em execução usa o novo cofre quando reiniciar."
+  },
+  "help": {
+    "about": "OTheater: orquestração multiagente e multiconta que usa os clientes oficiais (Claude Code, Codex, OpenCode) como Executores.",
+    "mainUsage": "ot <comando> [ação] [opções]",
+    "section": {
+      "usage": "Uso:",
+      "actions": "Ações:",
+      "options": "Opções:",
+      "notes": "Observações:",
+      "globalOptions": "Opções globais:",
+      "learnMore": "Saiba mais:"
+    },
+    "group": {
+      "start": "Para começar:",
+      "accounts": "Contas e modelos:",
+      "work": "Trabalho:",
+      "system": "Sistema:"
+    },
+    "global": {
+      "data-dir": {
+        "value": "<pasta>",
+        "summary": "Pasta de dados (padrão: OT_DATA_DIR, senão a pasta de dados do usuário)"
+      },
+      "non-interactive": {
+        "summary": "Não pergunta nada no terminal (o serviço e o daemon que o OTheater sobe usam; um cofre trancado fica trancado)"
+      },
+      "help": {
+        "summary": "Mostra a ajuda (de um comando, quando vem depois dele)"
+      },
+      "version": {
+        "summary": "Mostra a versão"
+      }
+    },
+    "learnMore": {
+      "commandHelp": "ot help <comando>",
+      "commandHelpText": "O uso, as ações e as opções de um comando (o mesmo que ot <comando> --help)",
+      "bare": "ot",
+      "bareText": "Sem comando: a interface de terminal quando a entrada e a saída são um terminal (ui.bare_command: tui, o padrão); com ui.bare_command: help, ou sem terminal, esta ajuda"
+    },
+    "exitCodes": "Códigos de saída: 0 sucesso, 1 o comando falhou, 2 uso incorreto.",
+    "commands": {
+      "init": {
+        "summary": "Primeira configuração: serviço, daemon, clientes e adaptadores",
+        "description": "Primeira configuração sem perguntas: instala o serviço de logon, sobe o daemon, confere os comandos dos Executores (mostra os clientes que faltam, com o comando npm, e instala os adaptadores ACP como diz clients.adapters.install) e abre a interface de terminal.",
+        "usage": "ot init [--no-tui]",
+        "options": {
+          "no-tui": {
+            "summary": "Faz os passos até a conferência dos comandos e sai, sem abrir a interface (para scripts)"
+          }
+        }
+      },
+      "tui": {
+        "summary": "Abre a interface de terminal",
+        "description": "Abre a interface de terminal. Sobe o daemon quando nenhum está no ar (tui.start_daemon).",
+        "usage": "ot tui"
+      },
+      "chat": {
+        "summary": "Conversa com o Diretor de um repositório",
+        "description": "Conversa com o Diretor de um repositório (o daemon precisa estar em execução).",
+        "usage": "ot chat [opções]",
+        "options": {
+          "repo": {
+            "summary": "O repositório (padrão: a pasta atual)",
+            "value": "<pasta>"
+          },
+          "base": {
+            "summary": "A branch de onde as peças partem e onde entregam (padrão: main)",
+            "value": "<branch>"
+          },
+          "name": {
+            "summary": "Um nome para o cenário (padrão: o nome da pasta; um chat é identificado por ele)",
+            "value": "<nome>"
+          },
+          "type": {
+            "summary": "project (padrão, precisa de um repositório) ou chat (um chat genérico, sem repositório)",
+            "value": "<tipo>"
+          },
+          "new-project": {
+            "summary": "Cria o projeto em --repo (pasta que não existe ou está vazia) com a estrutura do perfil software"
+          }
+        },
+        "notes": "No chat, \"/attach <arquivo>\" anexa um arquivo (copiado; \"/attach --ref <arquivo>\" o mantém no lugar): a próxima mensagem que você enviar o cita como A<n> para o Diretor."
+      },
+      "daemon": {
+        "summary": "Inicia o daemon neste terminal",
+        "description": "Inicia o daemon do OTheater neste terminal.",
+        "usage": "ot daemon"
+      },
+      "profile": {
+        "summary": "Contas dos clientes",
+        "description": "As contas (perfis) dos clientes (o daemon precisa estar parado; o exec funciona também com ele rodando).",
+        "usage": "ot profile <ação> [argumentos] [opções]",
+        "actions": {
+          "add": {
+            "summary": "Adiciona uma conta de um cliente",
+            "args": "<cliente> <nome>"
+          },
+          "list": {
+            "summary": "Lista as contas"
+          },
+          "drain": {
+            "summary": "Esvazia a conta: nenhum trabalho novo vai para ela",
+            "args": "<cliente>/<nome>"
+          },
+          "remove": {
+            "summary": "Remove a conta",
+            "args": "<cliente>/<nome>"
+          },
+          "exec": {
+            "summary": "Roda a CLI do próprio cliente dentro da conta, neste terminal",
+            "args": "<cliente>/<nome> [-- <args>]"
+          },
+          "shims sync": {
+            "summary": "Escreve um comando por conta (codex-personal) na pasta bin dos dados"
+          },
+          "shims path": {
+            "summary": "Diz como pôr essa pasta no PATH"
+          }
+        },
+        "options": {
+          "kind": {
+            "summary": "add: token_plan (padrão, uma assinatura) ou api (uma chave)",
+            "value": "<tipo>"
+          },
+          "provider": {
+            "summary": "add: o provedor da conta (padrão: anthropic para claude-code, openai para codex)",
+            "value": "<p>"
+          },
+          "api-key-env": {
+            "summary": "add --kind api: o NOME da variável de ambiente que guarda a chave (nunca digite a chave como argumento)",
+            "value": "<NOME>"
+          },
+          "api-key-stdin": {
+            "summary": "add --kind api: lê a chave da primeira linha da entrada padrão"
+          },
+          "accept-notice": {
+            "summary": "add: segue depois do aviso sobre uma segunda conta de assinatura do mesmo provedor"
+          },
+          "login": {
+            "summary": "add: entra na conta de assinatura nova já (como profiles.add.login: auto; precisa de terminal)"
+          },
+          "no-login": {
+            "summary": "add: não entra agora, seja qual for profiles.add.login"
+          },
+          "client": {
+            "summary": "list: só este cliente",
+            "value": "<cliente>"
+          },
+          "all": {
+            "summary": "list: também as contas removidas"
+          },
+          "check-login": {
+            "summary": "list: pergunta a cada cliente se a conta tem login"
+          },
+          "json": {
+            "summary": "Imprime JSON em vez de texto"
+          },
+          "install": {
+            "summary": "shims path: escreve a linha no arquivo rc do shell (pergunta antes)"
+          },
+          "uninstall": {
+            "summary": "shims path: tira essa linha (pergunta antes)"
+          },
+          "shell": {
+            "summary": "shims path: zsh, bash ou fish (padrão: o do SHELL)",
+            "value": "<s>"
+          },
+          "yes": {
+            "summary": "shims path --install: não pergunta"
+          }
+        },
+        "notes": "Os clientes: {{clients}}. O nome é seu (main, trabalho...): \"ot profile add claude-code main\".\n\nO exec traduz as palavras comuns login, logout, status, run e --model (e as de profiles.commands e profiles.options) para as do cliente; depois de \"--\" os argumentos vão como estão."
+      },
+      "executor": {
+        "summary": "Executores dos modelos",
+        "description": "Os Executores: uma conta e um modelo (o daemon precisa estar parado).",
+        "usage": "ot executor <ação> [argumentos] [opções]",
+        "actions": {
+          "models": {
+            "summary": "Lista os modelos de um perfil",
+            "args": "<perfil>"
+          },
+          "add": {
+            "summary": "Adiciona um Executor",
+            "args": "<perfil> <modelo>"
+          },
+          "list": {
+            "summary": "Lista os Executores"
+          },
+          "check": {
+            "summary": "Confere os Executores, ou um",
+            "args": "[id]"
+          },
+          "remove": {
+            "summary": "Remove um Executor",
+            "args": "<id>"
+          }
+        },
+        "options": {
+          "effort": {
+            "summary": "add: low, medium ou high (padrão: o que o catálogo sugere)",
+            "value": "<e>"
+          },
+          "family": {
+            "summary": "add: a família (provedor) de um modelo cujo catálogo não informa",
+            "value": "<f>"
+          },
+          "as": {
+            "summary": "add: o nome do modelo dentro do id do Executor (padrão: derivado)",
+            "value": "<nome>"
+          },
+          "local-url": {
+            "summary": "add: URL do servidor de modelo local (padrão: a do catálogo)",
+            "value": "<url>"
+          },
+          "local-server": {
+            "summary": "add: llama-cpp (padrão) ou ollama",
+            "value": "<s>"
+          },
+          "role": {
+            "summary": "add: põe também neste papel, na posição n (repita para mais papéis)",
+            "value": "<p>[:<n>]"
+          },
+          "test-session": {
+            "summary": "add: roda a sessão de teste curta (chama o modelo)"
+          },
+          "no-test-session": {
+            "summary": "add: pula a sessão de teste"
+          },
+          "dry-run": {
+            "summary": "add: informa os campos e as checagens, não grava nada"
+          },
+          "profile": {
+            "summary": "list: só os Executores deste perfil",
+            "value": "<id>"
+          },
+          "all": {
+            "summary": "list: também os removidos"
+          },
+          "json": {
+            "summary": "Imprime JSON em vez de texto"
+          }
+        }
+      },
+      "adapters": {
+        "summary": "Adaptadores ACP do Claude Code e do Codex",
+        "description": "Os adaptadores ACP que o OTheater instala para o Claude Code e o Codex (com o daemon parado ou em execução).",
+        "usage": "ot adapters <ação> [opções]",
+        "actions": {
+          "status": {
+            "summary": "Mostra o estado dos adaptadores"
+          },
+          "install": {
+            "summary": "Instala os adaptadores, ou o de um cliente",
+            "args": "[claude-code|codex]"
+          }
+        },
+        "options": {
+          "json": {
+            "summary": "status: imprime JSON em vez de texto"
+          }
+        },
+        "notes": "O install baixa a versão fixada do registro npm (clients.adapters.registry), confere o sha512 e a põe na pasta de dados: sem sudo, sem mudar o PATH. Nunca instala o cliente oficial."
+      },
+      "vault": {
+        "summary": "Cofre dos segredos",
+        "description": "O cofre dos segredos (adapters.vault; com o daemon parado ou em execução).",
+        "usage": "ot vault <ação> [opções]",
+        "actions": {
+          "status": {
+            "summary": "Mostra o cofre em uso"
+          },
+          "use": {
+            "summary": "Escolhe o cofre",
+            "args": "<keyring|encrypted-file|auto>"
+          }
+        },
+        "options": {
+          "json": {
+            "summary": "status: imprime JSON em vez de texto"
+          }
+        },
+        "notes": "O use muda só o adapters.vault do config.yaml (os comentários ficam) e não move nenhum segredo."
+      },
+      "directives": {
+        "summary": "Ordens, globais ou de um cenário",
+        "description": "As ordens, globais ou de um cenário (o daemon precisa estar parado).",
+        "usage": "ot directives <ação> [argumentos] [opções]",
+        "actions": {
+          "list": {
+            "summary": "Lista as ordens"
+          },
+          "show": {
+            "summary": "Mostra uma ordem",
+            "args": "<id>"
+          },
+          "add": {
+            "summary": "Adiciona uma ordem (global, ou do --scenario)",
+            "args": "<texto>"
+          },
+          "extend": {
+            "summary": "Muda a validade de uma ordem",
+            "args": "<id>"
+          },
+          "suspend": {
+            "summary": "Tira uma ordem global de um cenário",
+            "args": "<id> --scenario <c> [texto]"
+          },
+          "revoke": {
+            "summary": "Revoga uma ordem",
+            "args": "<id> --reason <texto>"
+          }
+        },
+        "options": {
+          "scenario": {
+            "summary": "Ordem local deste cenário (sem ele, add cria uma ordem global)",
+            "value": "<id>"
+          },
+          "kind": {
+            "summary": "instruction (padrão), rule ou suspension",
+            "value": "<tipo>"
+          },
+          "role": {
+            "summary": "Só para este papel (repita para mais papéis)",
+            "value": "<papel>"
+          },
+          "rule-key": {
+            "summary": "A chave de configuração que a regra sobrepõe",
+            "value": "<chave>"
+          },
+          "rule-value": {
+            "summary": "O valor dessa chave",
+            "value": "<valor>"
+          },
+          "suspends": {
+            "summary": "A ordem global que a suspensão tira do cenário",
+            "value": "<id>"
+          },
+          "replaces": {
+            "summary": "Revoga esta ordem e põe a nova no lugar",
+            "value": "<id>"
+          },
+          "from": {
+            "summary": "Início da validade (AAAA-MM-DD [HH:mm])",
+            "value": "<data>"
+          },
+          "until": {
+            "summary": "Fim da validade (AAAA-MM-DD [HH:mm])",
+            "value": "<data>"
+          },
+          "for": {
+            "summary": "Validade como duração (30m, 2h, 3d)",
+            "value": "<duração>"
+          },
+          "forever": {
+            "summary": "extend: tira o fim da ordem"
+          },
+          "reason": {
+            "summary": "revoke: o motivo",
+            "value": "<texto>"
+          },
+          "all": {
+            "summary": "list: inclui as ordens expiradas e revogadas"
+          }
+        }
+      },
+      "plugin": {
+        "summary": "Instala e gerencia plugins",
+        "description": "Os plugins (com o daemon parado ou em execução).",
+        "usage": "ot plugin <ação> [argumentos] [opções]",
+        "actions": {
+          "install": {
+            "summary": "Instala um plugin (ele fica desligado)",
+            "args": "<origem>"
+          },
+          "list": {
+            "summary": "Lista os plugins"
+          },
+          "update": {
+            "summary": "Atualiza um plugin",
+            "args": "<id> [<origem>]"
+          },
+          "remove": {
+            "summary": "Remove um plugin",
+            "args": "<id>"
+          },
+          "enable": {
+            "summary": "Liga um plugin num projeto",
+            "args": "<id> --project <p>"
+          },
+          "disable": {
+            "summary": "Desliga um plugin num projeto",
+            "args": "<id> --project <p>"
+          },
+          "secret set": {
+            "summary": "Guarda um segredo do plugin, lido da entrada padrão",
+            "args": "<id> <NOME>"
+          }
+        },
+        "options": {
+          "project": {
+            "summary": "enable, disable: o projeto; list: só os plugins desse projeto; secret set: o valor vale só para esse projeto",
+            "value": "<p>"
+          },
+          "yes": {
+            "summary": "enable: não pergunta (o que o plugin pede é impresso do mesmo jeito)"
+          },
+          "json": {
+            "summary": "Imprime JSON em vez de texto"
+          }
+        },
+        "notes": "A origem: uma pasta, npm:<pacote>@<versão> ou git:<url>#<ref>.\n\nO secret set lê o valor da entrada padrão (oculto num terminal) e nunca o imprime. O install e o update nunca ligam um plugin e não rodam script do pacote nem do repositório. Um plugin cujo plugin.yaml mudou fica desligado em todo projeto até o \"enable\" aprovar de novo."
+      },
+      "trajectory": {
+        "summary": "Exporta a trajetória ATIF de uma peça",
+        "description": "Grava a trajetória ATIF de uma peça em arquivos (com o daemon parado ou em execução).",
+        "usage": "ot trajectory export <peça> [opções]",
+        "actions": {
+          "export": {
+            "summary": "Grava a trajetória da peça",
+            "args": "<peça>"
+          }
+        },
+        "options": {
+          "unit": {
+            "summary": "play (um arquivo, com as tentativas embutidas), attempt (um arquivo por tentativa) ou play_files (a peça e um arquivo por tentativa); padrão: atif.export.unit (com o daemon rodando, só play)",
+            "value": "<u>"
+          },
+          "content": {
+            "summary": "full (padrão: atif.export.content; os segredos são mascarados do mesmo jeito) ou redacted (sem texto)",
+            "value": "<c>"
+          },
+          "out": {
+            "summary": "A pasta dos arquivos (padrão: atif.export.dir, \"trajectories\" na pasta de dados)",
+            "value": "<pasta>"
+          }
+        }
+      },
+      "analysis": {
+        "summary": "Tempos, esperas, custo e cobertura do sistema",
+        "description": "A análise do sistema: tempos, esperas, custo e cobertura sobre os agregados diários (com o daemon parado ou em execução).",
+        "usage": "ot analysis [opções]",
+        "options": {
+          "from": {
+            "summary": "Primeiro dia do período, AAAA-MM-DD (padrão: analysis.report.default_days dias até o último dia pronto)",
+            "value": "<dia>"
+          },
+          "to": {
+            "summary": "Último dia do período",
+            "value": "<dia>"
+          },
+          "group-by": {
+            "summary": "day (padrão), scenario, executor ou role",
+            "value": "<g>"
+          },
+          "scenario": {
+            "summary": "Só este cenário",
+            "value": "<id>"
+          },
+          "compare-from": {
+            "summary": "Compara com outro período: o primeiro dia dele",
+            "value": "<dia>"
+          },
+          "compare-to": {
+            "summary": "O último dia do outro período",
+            "value": "<dia>"
+          },
+          "compare-scenario": {
+            "summary": "Compara com este outro cenário nos mesmos dias (precisa de --scenario)",
+            "value": "<id>"
+          },
+          "json": {
+            "summary": "Imprime o relatório em JSON"
+          }
+        }
+      },
+      "service": {
+        "summary": "O serviço de logon do daemon",
+        "description": "O serviço de logon do daemon (com o daemon parado ou em execução).",
+        "usage": "ot service <ação> [opções]",
+        "actions": {
+          "install": {
+            "summary": "Instala o serviço e sobe o daemon"
+          },
+          "uninstall": {
+            "summary": "Remove o serviço"
+          },
+          "status": {
+            "summary": "Mostra o estado do serviço e do daemon"
+          },
+          "start": {
+            "summary": "Sobe o daemon pelo serviço"
+          },
+          "stop": {
+            "summary": "Para o daemon"
+          }
+        },
+        "options": {
+          "no-start": {
+            "summary": "install: não sobe o daemon agora"
+          },
+          "json": {
+            "summary": "status: imprime JSON em vez de texto"
+          }
+        },
+        "notes": "O serviço é do próprio usuário e só roda enquanto ele está conectado. As chaves service.* da configuração (restart, autostart, console) são lidas na instalação. O \"ot tui\" sobe o daemon quando nenhum está no ar (tui.start_daemon)."
+      },
+      "uninstall": {
+        "summary": "Remove o serviço de logon (os dados ficam)",
+        "description": "Remove o serviço de logon e mantém os dados (--purge-data também os apaga, depois de perguntar).",
+        "usage": "ot uninstall [--purge-data [-y]]",
+        "options": {
+          "purge-data": {
+            "summary": "Apaga também a pasta de dados inteira (pergunta antes; não dá para desfazer; o chaveiro não é tocado)"
+          },
+          "yes": {
+            "summary": "--purge-data: não pergunta"
+          }
+        }
+      },
+      "backup": {
+        "summary": "Faz um backup dos dados agora",
+        "description": "Faz um backup dos dados agora.",
+        "usage": "ot backup"
+      },
+      "restore": {
+        "summary": "Restaura um backup",
+        "description": "Restaura um backup (o daemon precisa estar parado).",
+        "usage": "ot restore <pasta>"
+      },
+      "api": {
+        "summary": "O token da API local",
+        "description": "O token da API local (com o daemon parado ou em execução).",
+        "usage": "ot api rotate-token",
+        "actions": {
+          "rotate-token": {
+            "summary": "Troca o token da API"
+          }
+        }
+      }
+    }
   }
 }

@@ -5,7 +5,7 @@ import { createInterface } from 'node:readline';
 import { homedir, tmpdir } from 'node:os';
 import { Writable } from 'node:stream';
 import { fileURLToPath } from 'node:url';
-import { parseArgs } from 'node:util';
+import { parseArgs, type ParseArgsOptionDescriptor } from 'node:util';
 import { Secret } from '@otheater/core';
 import type { TFunction } from 'i18next';
 import { runApiRotateTokenCommand } from './commands-api.js';
@@ -21,7 +21,7 @@ import {
 import type { ComposeOverrides } from './compose.js';
 import { isSeaProcess } from '@otheater/client/node';
 import type { ClientFactory } from './clients.js';
-import { loadConfig } from './config.js';
+import { CLIENT_IDS, loadConfig } from './config.js';
 import {
   isDirectiveAction,
   runDirectivesCommand,
@@ -68,6 +68,7 @@ import { createServiceManager } from './service/index.js';
 import { resolveServiceCommand } from './service/self-command.js';
 import { recoverAtStart } from './updates/apply/recover.js';
 import { packageVersion } from './version.js';
+import { helpCommandOf, helpWidth, renderCommandHelp, renderMainHelp } from './help.js';
 
 /** Everything `main` takes from the outside, so a test can run the CLI without a process. */
 export interface CliDeps {
@@ -107,6 +108,8 @@ export interface CliDeps {
   readonly askHidden?: ((question: string) => Promise<string | undefined>) | undefined;
   /** True when the input and the output are a terminal (`ot tui`, and `ot` with no command). */
   readonly interactive?: boolean | undefined;
+  /** The width of the terminal, in columns (`ot --help` wraps at it); none without a terminal. */
+  readonly columns?: number | undefined;
   /**
    * Runs the terminal interface and gives its exit code (default: the launcher of `@otheater/tui`,
    * loaded only when it is needed, which starts the interface in a process of its own).
@@ -146,7 +149,7 @@ const noSpawn: DaemonSpawn = () =>
 /** Period of the timer that keeps `ot daemon` alive (any value below 2^31 ms; it only has to exist). */
 const KEEP_ALIVE_MS = 1_000_000_000;
 
-const COMMANDS = [
+export const COMMANDS = [
   'daemon',
   'backup',
   'restore',
@@ -263,10 +266,27 @@ export async function main(argv: readonly string[], given: CliDeps): Promise<num
   };
   if (usageProblem !== undefined)
     return usageError(t('usage.invalidOption', { message: usageProblem }));
-  if (values.help === true) {
-    deps.out(t('usage.text'));
+  // N325: `ot --help` and `ot help` show the commands; `ot <command> --help`, `ot help <command>`, one.
+  const showHelp = async (topic: string | undefined): Promise<number> => {
+    const width = helpWidth(
+      (await readConfig(dataDir))?.ui.help_width ?? 'readable',
+      deps.columns,
+      deps.env,
+    );
+    if (topic === undefined) {
+      deps.out(renderMainHelp(t, CLI_OPTIONS, width));
+      return EXIT_OK;
+    }
+    const entry = helpCommandOf(topic);
+    if (entry === undefined) return usageError(t('usage.unknownCommand', { command: topic }));
+    deps.out(renderCommandHelp(entry, t, CLI_OPTIONS, width, { clients: CLIENT_IDS.join(', ') }));
     return EXIT_OK;
+  };
+  if (positionals[0] === 'help') {
+    if (positionals.length > 2) return usageError(t('usage.tooManyArguments', { command: 'help' }));
+    return await showHelp(positionals[1]);
   }
+  if (values.help === true) return await showHelp(positionals[0]);
   if (values.version === true) {
     deps.out(version);
     return EXIT_OK;
@@ -541,79 +561,80 @@ export function withoutTerminal(deps: CliDeps): CliDeps {
 
 type ParsedValues = ReturnType<typeof parseCliArgs>['values'];
 
+/**
+ * Every option `ot` takes. The help (N325) is built from it and from {@link HELP_COMMANDS}, and a test
+ * checks that each one is in the help of some command or among the global ones.
+ */
+export const CLI_OPTIONS = {
+  'data-dir': { type: 'string' },
+  'non-interactive': { type: 'boolean' },
+  repo: { type: 'string' },
+  base: { type: 'string' },
+  name: { type: 'string' },
+  type: { type: 'string' },
+  'new-project': { type: 'boolean' },
+  help: { type: 'boolean', short: 'h' },
+  version: { type: 'boolean', short: 'v' },
+  // The options of `ot directives`.
+  scenario: { type: 'string' },
+  kind: { type: 'string' },
+  role: { type: 'string', multiple: true },
+  'rule-key': { type: 'string' },
+  'rule-value': { type: 'string' },
+  suspends: { type: 'string' },
+  replaces: { type: 'string' },
+  from: { type: 'string' },
+  until: { type: 'string' },
+  for: { type: 'string' },
+  forever: { type: 'boolean' },
+  reason: { type: 'string' },
+  all: { type: 'boolean' },
+  // The options of `ot profile` (`kind`, `all` are shared).
+  provider: { type: 'string' },
+  client: { type: 'string' },
+  'api-key-env': { type: 'string' },
+  'api-key-stdin': { type: 'boolean' },
+  'accept-notice': { type: 'boolean' },
+  'check-login': { type: 'boolean' },
+  login: { type: 'boolean' },
+  'no-login': { type: 'boolean' },
+  json: { type: 'boolean' },
+  // The options of `ot profile shims` (`json` is shared).
+  install: { type: 'boolean' },
+  uninstall: { type: 'boolean' },
+  shell: { type: 'string' },
+  yes: { type: 'boolean', short: 'y' },
+  // The options of `ot plugin` (`yes`, `json` are shared).
+  project: { type: 'string' },
+  // The options of `ot executor` (`role`, `all`, `json` are shared).
+  effort: { type: 'string' },
+  family: { type: 'string' },
+  as: { type: 'string' },
+  'local-url': { type: 'string' },
+  'local-server': { type: 'string' },
+  'test-session': { type: 'boolean' },
+  'no-test-session': { type: 'boolean' },
+  'dry-run': { type: 'boolean' },
+  profile: { type: 'string' },
+  // The options of `ot analysis` (`scenario`, `from`, `json` are shared).
+  to: { type: 'string' },
+  'group-by': { type: 'string' },
+  'compare-from': { type: 'string' },
+  'compare-to': { type: 'string' },
+  'compare-scenario': { type: 'string' },
+  // The options of `ot trajectory` (`json` is not used there).
+  unit: { type: 'string' },
+  content: { type: 'string' },
+  out: { type: 'string' },
+  // The options of `ot service` and `ot uninstall` (`json`, `yes` are shared).
+  'no-start': { type: 'boolean' },
+  'purge-data': { type: 'boolean' },
+  // The option of `ot init`.
+  'no-tui': { type: 'boolean' },
+} as const satisfies Record<string, ParseArgsOptionDescriptor>;
+
 function parseCliArgs(argv: readonly string[]) {
-  return parseArgs({
-    args: [...argv],
-    options: {
-      'data-dir': { type: 'string' },
-      'non-interactive': { type: 'boolean' },
-      repo: { type: 'string' },
-      base: { type: 'string' },
-      name: { type: 'string' },
-      type: { type: 'string' },
-      'new-project': { type: 'boolean' },
-      help: { type: 'boolean', short: 'h' },
-      version: { type: 'boolean', short: 'v' },
-      // The options of `ot directives`.
-      scenario: { type: 'string' },
-      kind: { type: 'string' },
-      role: { type: 'string', multiple: true },
-      'rule-key': { type: 'string' },
-      'rule-value': { type: 'string' },
-      suspends: { type: 'string' },
-      replaces: { type: 'string' },
-      from: { type: 'string' },
-      until: { type: 'string' },
-      for: { type: 'string' },
-      forever: { type: 'boolean' },
-      reason: { type: 'string' },
-      all: { type: 'boolean' },
-      // The options of `ot profile` (`kind`, `all` are shared).
-      provider: { type: 'string' },
-      client: { type: 'string' },
-      'api-key-env': { type: 'string' },
-      'api-key-stdin': { type: 'boolean' },
-      'accept-notice': { type: 'boolean' },
-      'check-login': { type: 'boolean' },
-      login: { type: 'boolean' },
-      'no-login': { type: 'boolean' },
-      json: { type: 'boolean' },
-      // The options of `ot profile shims` (`json` is shared).
-      install: { type: 'boolean' },
-      uninstall: { type: 'boolean' },
-      shell: { type: 'string' },
-      yes: { type: 'boolean', short: 'y' },
-      // The options of `ot plugin` (`yes`, `json` are shared).
-      project: { type: 'string' },
-      // The options of `ot executor` (`role`, `all`, `json` are shared).
-      effort: { type: 'string' },
-      family: { type: 'string' },
-      as: { type: 'string' },
-      'local-url': { type: 'string' },
-      'local-server': { type: 'string' },
-      'test-session': { type: 'boolean' },
-      'no-test-session': { type: 'boolean' },
-      'dry-run': { type: 'boolean' },
-      profile: { type: 'string' },
-      // The options of `ot analysis` (`scenario`, `from`, `json` are shared).
-      to: { type: 'string' },
-      'group-by': { type: 'string' },
-      'compare-from': { type: 'string' },
-      'compare-to': { type: 'string' },
-      'compare-scenario': { type: 'string' },
-      // The options of `ot trajectory` (`json` is not used there).
-      unit: { type: 'string' },
-      content: { type: 'string' },
-      out: { type: 'string' },
-      // The options of `ot service` and `ot uninstall` (`json`, `yes` are shared).
-      'no-start': { type: 'boolean' },
-      'purge-data': { type: 'boolean' },
-      // The option of `ot init`.
-      'no-tui': { type: 'boolean' },
-    },
-    allowPositionals: true,
-    strict: true,
-  });
+  return parseArgs({ args: [...argv], options: CLI_OPTIONS, allowPositionals: true, strict: true });
 }
 
 function analysisOptions(values: ParsedValues): AnalysisOptions {
@@ -896,6 +917,7 @@ export async function entry(): Promise<void> {
       ? (question) => readHidden(question, process.stdin, process.stderr)
       : undefined,
     interactive: process.stdin.isTTY && process.stdout.isTTY,
+    columns: process.stdout.isTTY ? process.stdout.columns : undefined,
     serviceHost: realServiceHost(),
   });
   process.exitCode = code;

@@ -52,7 +52,7 @@ describe.skipIf(!built)('the compiled ot (dist/cli.js)', () => {
     try {
       const result = await run(['--help', '--data-dir', tmp.dir], tmp.dir);
       expect(result.code).toBe(0);
-      expect(result.stdout).toMatch(/^Usage: ot /);
+      expect(result.stdout).toMatch(/^Usage:\n {2}ot <command>/m);
       expect(result.stderr).toBe('');
     } finally {
       await tmp.dispose();
