@@ -4,10 +4,14 @@ import { ApiRequestError } from '@otheater/client';
 import type {
   AddProfileBody,
   AddProfileResult,
+  SetupAdapterClient,
+  SetupAdapterInstallResult,
+  SetupDetectedClient,
   SetupDetectedProfile,
   SetupOverview,
   SetupPlan,
   SetupPrompt,
+  SetupRedetectResult,
   SetupRunView,
   SetupStepId,
   SetupStepSubmission,
@@ -142,6 +146,10 @@ export interface FakeSetupOptions {
   readonly withAccounts?: boolean;
   readonly firstRunNeeded?: boolean;
   readonly current?: 'quality' | 'balanced' | 'economical' | null;
+  /** The clients the detection lists (default: Claude Code installed, Codex not found). */
+  readonly clients?: readonly SetupDetectedClient[];
+  /** Without the routes that look again and install an adapter (an old daemon). */
+  readonly noClientRoutes?: boolean;
 }
 
 export class FakeSetupApi implements SetupApi {
@@ -162,9 +170,29 @@ export class FakeSetupApi implements SetupApi {
   hang = false;
   /** The routes of the step that adds an account; absent unless the test asked for them. */
   readonly accounts: FakeSetupAccounts | undefined;
+  /** The clients the detection lists now; a test changes them (a client installed meanwhile). */
+  clients: SetupDetectedClient[];
+  /** The clients the next look again finds (they become installed, `found_in_path`). */
+  foundNext: string[] = [];
+  /** The next install of an adapter fails with this (as the daemon answers it), once. */
+  installFailure: string | undefined;
+  /** Holds the install of an adapter until it resolves (to see the progress on screen). */
+  installGate: Promise<void> | undefined;
+  readonly redetect: (() => Promise<SetupRedetectResult>) | undefined;
+  readonly installAdapter:
+    ((client: SetupAdapterClient) => Promise<SetupAdapterInstallResult>) | undefined;
   #next = 1;
 
   constructor(options: FakeSetupOptions = {}) {
+    this.clients = [
+      ...(options.clients ?? [
+        { client: 'claude-code', installed: true },
+        { client: 'codex', installed: false },
+      ]),
+    ];
+    this.redetect = options.noClientRoutes === true ? undefined : () => this.#redetect();
+    this.installAdapter =
+      options.noClientRoutes === true ? undefined : (client) => this.#install(client);
     this.profiles = [...(options.profiles ?? [])];
     this.accounts = options.withAccounts === true ? new FakeSetupAccounts(this) : undefined;
     this.firstRunNeeded = options.firstRunNeeded ?? true;
@@ -183,6 +211,50 @@ export class FakeSetupApi implements SetupApi {
         lastFinished: null,
       })),
     }));
+  }
+
+  #redetect(): Promise<SetupRedetectResult> {
+    this.calls.push('redetect');
+    return this.#take(() => {
+      const added = this.foundNext.filter((client) =>
+        this.clients.some((entry) => entry.client === client && !entry.installed),
+      );
+      this.foundNext = [];
+      this.clients = this.clients.map((entry) =>
+        added.includes(entry.client)
+          ? { client: entry.client, installed: true, reason: 'found_in_path' }
+          : entry,
+      );
+      this.refreshRuns();
+      return { added, clients: [...this.clients] };
+    });
+  }
+
+  async #install(client: SetupAdapterClient): Promise<SetupAdapterInstallResult> {
+    this.calls.push(`install:${client}`);
+    await this.installGate;
+    return this.#take(() => {
+      const adapter = client === 'codex' ? 'codex-acp' : 'claude-agent-acp';
+      const failure = this.installFailure;
+      this.installFailure = undefined;
+      if (failure === undefined) {
+        this.clients = this.clients.map((entry) =>
+          entry.client === client
+            ? { client, installed: true, reason: 'managed_installed' }
+            : entry,
+        );
+        this.refreshRuns();
+      }
+      return {
+        client,
+        adapter,
+        version: '1.2.3',
+        installed: failure === undefined,
+        failure: failure ?? null,
+        added: failure === undefined ? [client] : [],
+        clients: [...this.clients],
+      };
+    });
   }
 
   /** The runs in progress list the accounts as they are now (the daemon reads them at each view). */
@@ -348,10 +420,7 @@ export class FakeSetupApi implements SetupApi {
       case 'detect':
         return {
           step,
-          clients: [
-            { client: 'claude-code', installed: true },
-            { client: 'codex', installed: false },
-          ],
+          clients: [...this.clients],
           profiles: this.profiles,
         };
       case 'account':

@@ -19,12 +19,15 @@ export function registerSetupRoutes(handlers: ApiHandlers, deps: ReadRouteDeps):
 
 /**
  * The commands of the setup assistant (P4 of docs/18): start a run of a flow, answer its current
- * step, go back, confirm and cancel; and look for the clients again (P18, N321). The service holds the rules (see `setup/service.ts`); the
+ * step, go back, confirm and cancel; look for the clients again and install the ACP adapter of one (P18, N321). The service holds the rules (see `setup/service.ts`); the
  * events `setup.*` are written there. The registrar gives the `Idempotency-Key` and the codes of the
  * API, and the server holds each command until the reconciliation of the start-up ends.
  */
 export function registerSetupCommands(register: CommandRegistrar, deps: CommandRouteDeps): void {
   register('redetectSetupClients', () => assistant(deps.setup).redetect());
+  register('installSetupAdapter', ({ params }) =>
+    assistant(deps.setup).installAdapter(params.client),
+  );
   register('startSetup', ({ params }) => assistant(deps.setup).start(params.flow));
   register('submitSetupStep', ({ params, body }) =>
     assistant(deps.setup).submit(params.runId, body),
