@@ -3194,6 +3194,14 @@ export const DaemonConfigSchema = z
          */
         bare_command: z.enum(['tui', 'help']).default('tui'),
         /**
+         * The width of `ot --help` (N325): `readable` (the default; the terminal's, capped at 100
+         * columns), `terminal` (the whole width) or a number of columns (at least 40).
+         * [proposta] The modes and the cap.
+         */
+        help_width: z
+          .union([z.enum(['readable', 'terminal']), z.number().int().min(40).max(1000)])
+          .default('readable'),
+        /**
          * The layout preferences of the interfaces (architecture 5.13, N170; P12 of docs/17). The
          * daemon keeps them either way; these keys are what a client reads (`GET /v1/config`) to
          * know where to keep its own.
