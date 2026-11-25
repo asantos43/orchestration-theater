@@ -28,6 +28,7 @@ async function harness(
     port?: 'auto' | number;
     handlers?: ToolHandlers;
     producerQuestions?: 'choices' | 'choices_strict' | 'free';
+    hiddenTools?: () => ReadonlySet<string>;
   } = {},
 ): Promise<Harness> {
   const { logger } = captureLogger();
@@ -39,6 +40,7 @@ async function harness(
     ...(options.producerQuestions === undefined
       ? {}
       : { producerQuestions: options.producerQuestions }),
+    ...(options.hiddenTools === undefined ? {} : { hiddenTools: options.hiddenTools }),
     logger,
     version: '0.0.0-test',
   });
@@ -203,6 +205,19 @@ describe('the token and the role', () => {
     const director = await listTools(h.grant('director'), h.server.url);
     expect(director).toContain('ask_producer');
     expect(director).not.toContain('submit');
+  });
+
+  it('leaves out the hidden tools, read at each session (collab.notes.mode: off, P13)', async () => {
+    let hidden = new Set<string>(['post_note', 'read_notes']);
+    const h = await harness({ hiddenTools: () => hidden });
+    const actor = await listTools(h.grant('actor'), h.server.url);
+    expect(actor).toContain('submit');
+    expect(actor).not.toContain('post_note');
+    expect(actor).not.toContain('read_notes');
+    hidden = new Set<string>();
+    const later = await listTools(h.grant('actor', 'p1/d1/2'), h.server.url);
+    expect(later).toContain('post_note');
+    expect(later).toContain('read_notes');
   });
 
   it('lists only the tools the grant names (the tool list of the role policy), inside the role', async () => {
