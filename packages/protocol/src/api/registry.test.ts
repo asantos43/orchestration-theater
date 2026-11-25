@@ -14,6 +14,7 @@ describe('API_ROUTES', () => {
         'openChatSocket',
         'putLayout',
         'rotateApiToken',
+        'stopDaemon',
         'streamEvents',
       ]),
     );

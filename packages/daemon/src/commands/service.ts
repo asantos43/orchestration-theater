@@ -1,14 +1,16 @@
 // SPDX-License-Identifier: MPL-2.0
-import { rm, stat } from 'node:fs/promises';
+import { access, rm, stat } from 'node:fs/promises';
 import { homedir as osHomedir } from 'node:os';
 import { isAbsolute, parse, relative, resolve } from 'node:path';
 import { hasErrorCode } from '@otheater/core';
-import { readDiscovery } from '../api/files.js';
+import { API_ROUTES } from '@otheater/protocol';
+import { isProcessAlive, readApiToken, readDiscovery } from '../api/files.js';
 import type { FindExecutable } from '../clients.js';
+import type { ApiFetch } from '../commands-api.js';
 import { EXIT_FAILED, EXIT_OK, type CommandContext } from '../commands.js';
 import { DaemonConfigSchema, loadConfig, type DaemonConfig } from '../config.js';
-import { InstanceLock } from '../instance-lock.js';
-import { dataPaths } from '../paths.js';
+import { InstanceLock, readLockInfo } from '../instance-lock.js';
+import { dataPaths, type DataPaths } from '../paths.js';
 import { ensureDaemon, type DaemonSpawn } from '../service/ensure-daemon.js';
 import { daemonCommandOf } from '../service/self-command.js';
 import {
@@ -39,6 +41,10 @@ export interface ServiceCommandDeps {
   readonly sleep?: ((ms: number) => Promise<void>) | undefined;
   readonly now?: (() => number) | undefined;
   readonly alive?: ((pid: number) => boolean) | undefined;
+  /** How the stop reaches the API of the daemon (N323; default: `fetch`). */
+  readonly fetch?: ApiFetch | undefined;
+  /** How a daemon that did not stop is ended, as a last resort (default: `process.kill`). */
+  readonly kill?: ((pid: number, signal: NodeJS.Signals) => void) | undefined;
 }
 
 export interface ServiceOptions {
@@ -49,6 +55,10 @@ export interface ServiceOptions {
 
 /** How long `stop` waits for the daemon to go away (a clean stop closes the store and the sessions). */
 const STOP_WAIT_MS = 15_000;
+/** [proposta] How long a daemon that did not stop is given after SIGTERM, and then after SIGKILL. */
+const KILL_WAIT_MS = 5_000;
+/** [proposta] How long the request to the stop route may take (a hung daemon must not hang `stop`). */
+const STOP_REQUEST_MS = 5_000;
 const POLL_MS = 100;
 
 /** Windows has no `PATH` of the service of its own; the others get the one of the shell that installs. */
@@ -89,6 +99,29 @@ export async function runServiceCommand(
   const now = deps.now ?? Date.now;
   const isLive = async (): Promise<boolean> =>
     (await readDiscovery(discoveryFile, deps.alive)).kind === 'live';
+  const tools = (installed: boolean): StopTools => ({
+    paths: dataPaths(context.dataDir),
+    service,
+    installed,
+    sleep,
+    now,
+    alive: deps.alive ?? isProcessAlive,
+    fetch: deps.fetch ?? fetch,
+    kill: deps.kill ?? ((pid, signal) => process.kill(pid, signal)),
+  });
+  /** Says how the stop went; `false` when the daemon is still running (an error, never "stopped"). */
+  const report = (outcome: StopOutcome): boolean => {
+    if (outcome.forcedPid !== undefined) {
+      context.err(t('service.forcedStop', { pid: outcome.forcedPid }));
+    }
+    if (outcome.stopped) return true;
+    context.err(
+      outcome.pid === undefined
+        ? t('service.stillRunningNoPid')
+        : t('service.stillRunning', { pid: outcome.pid }),
+    );
+    return false;
+  };
 
   try {
     switch (action) {
@@ -132,14 +165,12 @@ export async function runServiceCommand(
       }
       case 'uninstall': {
         const before = await service.status();
-        try {
-          await stopAndWait(service, before.installed, isLive, sleep, now);
-        } catch {
-          // A stop that fails must not keep the definition in place: uninstall tries it again.
-        }
+        // [proposta] A daemon started without the service (`ot daemon`, the one `ot tui` starts) is
+        // stopped too: the program is going away. A stop that fails does not keep the definition.
+        const outcome = await stopTheDaemon(tools(before.installed));
         await service.uninstall();
         context.out(t(before.installed ? 'service.uninstalled' : 'service.wasNotInstalled'));
-        return EXIT_OK;
+        return report(outcome) ? EXIT_OK : EXIT_FAILED;
       }
       case 'status': {
         const status = await service.status();
@@ -180,7 +211,12 @@ export async function runServiceCommand(
         return EXIT_OK;
       }
       case 'stop': {
-        await stopAndWait(service, true, isLive, sleep, now);
+        const outcome = await stopTheDaemon(tools(true));
+        const failure = outcome.serviceError;
+        // Without the service and with nothing running, "not installed" is still the answer.
+        if (failure !== undefined && !(isNotInstalled(failure) && outcome.wasRunning))
+          throw failure;
+        if (!report(outcome)) return EXIT_FAILED;
         context.out(t('service.stopped'));
         return EXIT_OK;
       }
@@ -202,23 +238,142 @@ function yesNo(t: CommandContext['t'], value: boolean | undefined): string {
   return t(value ? 'service.yes' : 'service.no');
 }
 
+function isNotInstalled(error: unknown): boolean {
+  return error instanceof ServiceError && error.code === 'not_installed';
+}
+
+interface StopTools {
+  readonly paths: DataPaths;
+  readonly service: ServiceManager;
+  /** Whether to ask the manager first; a daemon started without the service is stopped all the same. */
+  readonly installed: boolean;
+  readonly sleep: (ms: number) => Promise<void>;
+  readonly now: () => number;
+  readonly alive: (pid: number) => boolean;
+  readonly fetch: ApiFetch;
+  readonly kill: (pid: number, signal: NodeJS.Signals) => void;
+}
+
+interface StopOutcome {
+  /** A daemon held the data folder when the stop began. */
+  readonly wasRunning: boolean;
+  /** No daemon holds the data folder now: the instance lock is free and `api.json` is gone. */
+  readonly stopped: boolean;
+  /** The pid that had to be ended by a signal, when the clean stop did not finish in time. */
+  readonly forcedPid?: number | undefined;
+  /** The pid of the daemon that is still running, when it is known. */
+  readonly pid?: number | undefined;
+  /** What the manager answered to its stop, when it failed (the stop goes on without it). */
+  readonly serviceError?: Error | undefined;
+}
+
 /**
- * Stops the daemon through the service and waits until `api.json` says it is gone. [proposta] There
- * is no API route that stops the daemon, so the clean stop is the signal the manager sends
- * (SIGTERM on Linux and macOS; the Task Scheduler ends the process on Windows). A service that is
- * not installed, or one that has nothing running, is not an error here.
+ * Stops the daemon of the data folder (N323) and says whether it is really gone. In order: the
+ * manager stops the service (SIGTERM on Linux and macOS; on Windows ending the scheduled task does
+ * not reach the daemon), the API route `stopDaemon` asks the daemon itself, then the instance lock
+ * says when it is gone. A daemon that still holds the lock after {@link STOP_WAIT_MS} is ended by
+ * its pid (SIGTERM, then SIGKILL), but only when the lock info and `api.json` agree on that pid,
+ * it is alive and it is not this process. [proposta] The forced end happens in the command, with
+ * no daemon to record it, so it is a message on stderr and no event.
  */
-async function stopAndWait(
-  service: ServiceManager,
-  installed: boolean,
-  isLive: () => Promise<boolean>,
-  sleep: (ms: number) => Promise<void>,
-  now: () => number,
-): Promise<void> {
-  if (!installed) return;
-  await service.stop();
-  const deadline = now() + STOP_WAIT_MS;
-  while ((await isLive()) && now() < deadline) await sleep(POLL_MS);
+async function stopTheDaemon(tools: StopTools): Promise<StopOutcome> {
+  const running = (): Promise<boolean> => daemonRunning(tools);
+  const wasRunning = await running();
+  let serviceError: Error | undefined;
+  if (tools.installed) {
+    try {
+      await tools.service.stop();
+    } catch (error) {
+      serviceError = error instanceof Error ? error : new Error(String(error));
+    }
+  }
+  if (!wasRunning) return { wasRunning, stopped: !(await running()), serviceError };
+
+  await requestStop(tools);
+  if (await waitUntilGone(tools, running, STOP_WAIT_MS))
+    return { wasRunning, stopped: true, serviceError };
+
+  const pid = await holderPid(tools);
+  if (pid === undefined) return { wasRunning, stopped: false, serviceError };
+  for (const signal of ['SIGTERM', 'SIGKILL'] as const) {
+    try {
+      tools.kill(pid, signal);
+    } catch {
+      // Gone between the check and the signal (ESRCH): the wait below says so.
+    }
+    if (await waitUntilGone(tools, running, KILL_WAIT_MS)) {
+      return { wasRunning, stopped: true, forcedPid: pid, serviceError };
+    }
+  }
+  return { wasRunning, stopped: false, pid, serviceError };
+}
+
+/** A daemon holds the data folder: its instance lock is taken, or `api.json` names a live pid. */
+async function daemonRunning(tools: StopTools): Promise<boolean> {
+  if ((await readDiscovery(tools.paths.apiDiscovery, tools.alive)).kind === 'live') return true;
+  return lockHeld(tools.paths);
+}
+
+async function lockHeld(paths: DataPaths): Promise<boolean> {
+  // No lock file: no daemon ever ran here (and `stop` must not create one).
+  if (
+    !(await access(paths.lock).then(
+      () => true,
+      () => false,
+    ))
+  )
+    return false;
+  try {
+    const lock = await InstanceLock.acquire(paths.lock, paths.lockInfo);
+    await lock.release();
+    return false;
+  } catch (error) {
+    if (hasErrorCode(error, 'CONFLICT')) return true;
+    throw error;
+  }
+}
+
+/** Asks the daemon to stop through its API. Any failure is left to the wait that follows. */
+async function requestStop(tools: StopTools): Promise<void> {
+  const reading = await readDiscovery(tools.paths.apiDiscovery, tools.alive);
+  if (reading.kind !== 'live') return;
+  const token = await readApiToken(tools.paths.apiToken);
+  if (token === undefined) return;
+  const route = API_ROUTES.stopDaemon;
+  try {
+    const response = await tools.fetch(`${reading.info.url}${route.path}`, {
+      method: route.method,
+      headers: { authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(STOP_REQUEST_MS),
+    });
+    await response.body?.cancel();
+  } catch {
+    // The daemon may close the connection as it goes; a refused one is a daemon already going.
+  }
+}
+
+async function waitUntilGone(
+  tools: StopTools,
+  running: () => Promise<boolean>,
+  waitMs: number,
+): Promise<boolean> {
+  const deadline = tools.now() + waitMs;
+  for (;;) {
+    if (!(await running())) return true;
+    if (tools.now() >= deadline) return false;
+    await tools.sleep(POLL_MS);
+  }
+}
+
+/** The pid that holds the data folder, only when nothing contradicts it. */
+async function holderPid(tools: StopTools): Promise<number | undefined> {
+  const info = await readLockInfo(tools.paths.lockInfo);
+  const reading = await readDiscovery(tools.paths.apiDiscovery, tools.alive);
+  const listed = reading.kind === 'live' ? reading.info.pid : undefined;
+  const pid = info?.pid ?? listed;
+  if (pid === undefined || pid === process.pid || !tools.alive(pid)) return undefined;
+  if (info !== undefined && listed !== undefined && info.pid !== listed) return undefined;
+  return pid;
 }
 
 export interface UninstallOptions {
@@ -321,6 +476,9 @@ export interface ServiceHost {
   readonly sleep?: ((ms: number) => Promise<void>) | undefined;
   readonly now?: (() => number) | undefined;
   readonly alive?: ((pid: number) => boolean) | undefined;
+  /** `ot service stop`: how the stop reaches the API, and how a daemon that does not stop is ended. */
+  readonly fetch?: ApiFetch | undefined;
+  readonly kill?: ((pid: number, signal: NodeJS.Signals) => void) | undefined;
   /** `ot init`: how a command is looked up in `PATH` (default: the file system; a test says what is installed). */
   readonly find?: FindExecutable | undefined;
 }

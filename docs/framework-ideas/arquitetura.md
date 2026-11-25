@@ -634,7 +634,7 @@ delivery:
 
 **API:** a chave vai para o cofre do sistema operacional (`@napi-rs/keyring`; o `keytar` foi arquivado em 2022) e é injetada como variável de ambiente só no processo do Executor.
 - Backends: Credential Manager (Windows), Keychain (macOS), Secret Service (Linux).
-- **Linux sem Secret Service** (servidor sem interface gráfica, sessão SSH): fallback para um arquivo criptografado com senha mestra, pedida na abertura do daemon, ou chave só em variável de ambiente do serviço. O daemon informa qual backend está em uso, e nunca grava a chave em texto puro.
+- **Linux sem Secret Service** (servidor sem interface gráfica, sessão SSH): fallback para um arquivo criptografado com senha mestra, pedida na abertura do daemon, ou chave só em variável de ambiente do serviço. O daemon informa qual backend está em uso, e nunca grava a chave em texto puro. Com `adapters.vault: auto` (N323), o daemon usa o chaveiro e, se não houver um, cai sozinho no arquivo criptografado, com aviso no log e o evento `daemon.notice` `vault_fallback`; o padrão continua `keyring`.
 
 **Remoção de perfil:**
 1. o perfil vai para `draining`: não recebe sessões novas, e as que estão em curso terminam ou voltam à fila;
@@ -2271,7 +2271,7 @@ A escolha dos adaptadores fica na configuração. Cada adaptador contribui o sch
 ```yaml
 adapters:
   store: sqlite              # ou node-sqlite
-  vault: keyring             # ou encrypted-file | env
+  vault: keyring             # ou encrypted-file | auto | env
   vcs: git
   code_host: github
   sandbox: auto              # escolhe pelo sistema operacional

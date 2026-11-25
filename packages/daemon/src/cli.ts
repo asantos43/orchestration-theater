@@ -236,6 +236,8 @@ export async function main(argv: readonly string[], given: CliDeps): Promise<num
     sleep: deps.serviceHost?.sleep,
     now: deps.serviceHost?.now,
     alive: deps.serviceHost?.alive,
+    fetch: deps.serviceHost?.fetch,
+    kill: deps.serviceHost?.kill,
   });
   const runTui = async (ui: unknown): Promise<number> => {
     if (deps.serviceHost !== undefined) {
