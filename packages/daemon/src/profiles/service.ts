@@ -145,6 +145,11 @@ export interface ProfileServiceOptions {
   readonly roleLists?: () => Promise<readonly RoleListFact[]>;
   /** Where the warnings of the log are also written as `profile.warning` (P24, N146). */
   readonly situations?: SituationSink | undefined;
+  /**
+   * Looks for the clients again before an account is created (P18, N321), so a client installed
+   * after the start has its adapter. It never throws (a failure is the daemon's to log).
+   */
+  readonly redetect?: (() => Promise<void>) | undefined;
 }
 
 export interface AddProfileInput {
@@ -251,6 +256,7 @@ export class ProfileService {
   async add(input: AddProfileInput): Promise<AddProfileResult> {
     const { store, vault, clock } = this.#o;
     const given = validateAdd(input);
+    await this.#o.redetect?.();
     const id = formatProfileId({ client: given.client, profile: given.name });
     if ((await store.profiles.get(id)) !== undefined) {
       throw new Conflict(`Profile ${id} already exists (a name is not reused, even after removal)`);

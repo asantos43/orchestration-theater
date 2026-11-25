@@ -48,10 +48,34 @@ const profileId = z.string().min(1).max(129);
 
 // ---- what the detection found -----------------------------------------------------------------
 
+/**
+ * Why the daemon put a client on or left it out (P18, N321), so the assistant can say why a client
+ * was not found and what to do on the screen. [proposta] The same names as the choice of the
+ * daemon: `disabled` (turned off in the config), `command_configured`, `found_in_path`,
+ * `adapter_configured`, `managed_installed`, `managed_pending` (the adapter is being installed),
+ * `adapter_missing` (the client is there, its ACP adapter is not), `not_found` (the client is not
+ * in the `PATH`) and `forced_not_found` (turned on, and not in the `PATH`).
+ */
+export const SETUP_CLIENT_REASONS = [
+  'disabled',
+  'command_configured',
+  'found_in_path',
+  'adapter_configured',
+  'managed_installed',
+  'managed_pending',
+  'adapter_missing',
+  'not_found',
+  'forced_not_found',
+] as const;
+export const SetupClientReasonSchema = z.enum(SETUP_CLIENT_REASONS);
+export type SetupClientReason = z.infer<typeof SetupClientReasonSchema>;
+
 /** A client and whether its adapter can run on this machine. State only: nothing is read from it. */
 export const SetupDetectedClientSchema = z.strictObject({
   client: z.string().min(1),
   installed: z.boolean(),
+  /** Why (P18): absent when the daemon did not look at the client (a test, an old daemon). */
+  reason: SetupClientReasonSchema.optional(),
 });
 export type SetupDetectedClient = z.infer<typeof SetupDetectedClientSchema>;
 
@@ -316,6 +340,13 @@ export const SetupOverviewSchema = z.strictObject({
 });
 export type SetupOverview = z.infer<typeof SetupOverviewSchema>;
 
+/** What a search for the clients again did (P18, N321): the clients it added, and all as they are. */
+export const SetupRedetectResultSchema = z.strictObject({
+  added: z.array(z.string().min(1)),
+  clients: z.array(SetupDetectedClientSchema),
+});
+export type SetupRedetectResult = z.infer<typeof SetupRedetectResultSchema>;
+
 // ---- the routes -------------------------------------------------------------------------------
 
 const FlowParamsSchema = z.strictObject({ flow: SetupFlowSchema });
@@ -327,6 +358,16 @@ export const getSetup = defineRoute({
   path: '/v1/setup',
   summary: 'The setup assistant: whether a first run is needed, and the run to resume in each flow',
   response: SetupOverviewSchema,
+});
+
+export const redetectSetupClients = defineRoute({
+  id: 'redetectSetupClients',
+  method: 'POST',
+  path: '/v1/setup/redetect',
+  summary:
+    'Looks for the clients again without a restart (on Windows also in the Path of the registry); a client found enters the pool',
+  headers: IdempotencyHeadersSchema,
+  response: SetupRedetectResultSchema,
 });
 
 export const startSetup = defineRoute({
@@ -387,6 +428,7 @@ export const cancelSetup = defineRoute({
 
 export const SETUP_ROUTES = defineRoutes(
   getSetup,
+  redetectSetupClients,
   startSetup,
   submitSetupStep,
   backSetup,

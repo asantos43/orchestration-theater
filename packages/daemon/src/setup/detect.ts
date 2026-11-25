@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: MPL-2.0
 import { InvalidInput } from '@otheater/core';
-import type { SetupDetectedClient, SetupDetectedProfile } from '@otheater/protocol';
+import type {
+  SetupClientReason,
+  SetupDetectedClient,
+  SetupDetectedProfile,
+} from '@otheater/protocol';
 import { CLIENT_IDS } from '../config.js';
 import type { ProfileService, ProfileSummary } from '../profiles/service.js';
 
@@ -14,9 +18,18 @@ import type { ProfileService, ProfileSummary } from '../profiles/service.js';
 /** Which clients can run on this machine; the daemon answers from its adapters. */
 export type InstalledClients = () => ReadonlySet<string>;
 
-export function detectClients(installed: InstalledClients): SetupDetectedClient[] {
+/** Why the daemon put a client on or left it out (P18), or `undefined` when nothing looked at it. */
+export type ClientReasons = (client: string) => SetupClientReason | undefined;
+
+export function detectClients(
+  installed: InstalledClients,
+  reasons?: ClientReasons,
+): SetupDetectedClient[] {
   const have = installed();
-  return CLIENT_IDS.map((client) => ({ client, installed: have.has(client) }));
+  return CLIENT_IDS.map((client) => {
+    const reason = reasons?.(client);
+    return { client, installed: have.has(client), ...(reason === undefined ? {} : { reason }) };
+  });
 }
 
 /**

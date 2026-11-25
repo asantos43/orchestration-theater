@@ -29,6 +29,15 @@ const detail = z.string().min(1).max(512).nullable();
  * - `sandbox_nested`: `clients.codex.inner_sandbox: nested` weakens the write denies of the sandbox;
  * - `client_not_found`: a client is enabled by force and its executable is not in `PATH`
  *   (`subject`: the client id);
+ * - `client_added` (P18, N321; [proposta]): a search for the clients after the start (the setup
+ *   assistant opened, an account is being added, or the R key) found a client the pool did not
+ *   have, and it was added without a restart (`subject`: the client id; `detail`: why it is on);
+ * - `client_path_unreadable` (P18, N321; [proposta]): on Windows, with `clients.detection.path:
+ *   merge`, the `Path` of the registry could not be read (`subject`: the registry key); the search
+ *   goes on with the `PATH` the daemon got;
+ * - `client_redetect_failed` (P18, N321; [proposta]): a search for the clients that the assistant
+ *   or a new account started by itself failed (`detail`: the error); the call goes on with the
+ *   clients the pool has;
  * - `client_warning`: the adapter of a client warned (`subject`: the client id; `detail`: the kind of
  *   the warning of N69 and its text);
  * - `browser_warning`: the browser adapter warned;
@@ -122,6 +131,9 @@ export const DAEMON_NOTICE_KINDS = [
   'sandbox_unavailable',
   'sandbox_nested',
   'client_not_found',
+  'client_added',
+  'client_path_unreadable',
+  'client_redetect_failed',
   'client_warning',
   'browser_warning',
   'cross_check_unsatisfiable',

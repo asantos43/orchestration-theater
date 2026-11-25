@@ -24,18 +24,25 @@ describe('locale resolution', () => {
     }
   });
 
-  it('reads the environment in POSIX order and ignores C and POSIX', () => {
-    expect(detectSystemLocale({ LC_ALL: 'pt_BR.UTF-8', LANG: 'en_US' })).toBe('pt-BR');
-    expect(detectSystemLocale({ LC_ALL: 'C', LANG: 'pt_BR' })).toBe('pt-BR');
-    expect(detectSystemLocale({ LANGUAGE: 'pt_BR:en', LANG: 'en_US' })).toBe('pt-BR');
-    expect(detectSystemLocale({ LANG: 'POSIX' })).toBe('en');
-    expect(detectSystemLocale({})).toBe('en');
+  it('when the runtime reports no locale, reads the environment in POSIX order and ignores C and POSIX', () => {
+    expect(detectSystemLocale({ LC_ALL: 'pt_BR.UTF-8', LANG: 'en_US' }, '')).toBe('pt-BR');
+    expect(detectSystemLocale({ LC_ALL: 'C', LANG: 'pt_BR' }, '')).toBe('pt-BR');
+    expect(detectSystemLocale({ LANGUAGE: 'pt_BR:en', LANG: 'en_US' }, '')).toBe('pt-BR');
+    expect(detectSystemLocale({ LANG: 'POSIX' }, '')).toBe('en');
+    expect(detectSystemLocale({}, '')).toBe('en');
+  });
+
+  it('the locale of the runtime comes first, as in the CLI (Windows has no LANG; N323)', () => {
+    expect(detectSystemLocale({}, 'pt-BR')).toBe('pt-BR');
+    expect(detectSystemLocale({ LANG: 'en_US' }, 'pt-BR')).toBe('pt-BR');
+    expect(detectSystemLocale({ LANG: 'pt_BR' }, 'en-US')).toBe('en');
+    expect(resolveLocale('auto', {}, 'pt-PT')).toBe('pt-BR');
   });
 
   it('an explicit setting wins over the environment', () => {
-    expect(resolveLocale('en', { LANG: 'pt_BR' })).toBe('en');
-    expect(resolveLocale('pt-BR', { LANG: 'en_US' })).toBe('pt-BR');
-    expect(resolveLocale('auto', { LANG: 'pt_BR' })).toBe('pt-BR');
+    expect(resolveLocale('en', { LANG: 'pt_BR' }, 'pt-BR')).toBe('en');
+    expect(resolveLocale('pt-BR', { LANG: 'en_US' }, 'en-US')).toBe('pt-BR');
+    expect(resolveLocale('auto', { LANG: 'pt_BR' }, '')).toBe('pt-BR');
   });
 });
 
@@ -56,7 +63,7 @@ describe('catalogs and the live switch', () => {
     const i18n = await createTuiI18n('en');
     const changes: string[] = [];
     i18n.on('languageChanged', (language) => changes.push(language));
-    const controller = new LocaleController(i18n, 'auto', { LANG: 'en_US' });
+    const controller = new LocaleController(i18n, 'auto', { LANG: 'en_US' }, '');
     expect(i18n.t('app.quit_hint')).toMatch(/quit/i);
 
     await controller.apply('pt-BR');
