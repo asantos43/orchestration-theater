@@ -6,7 +6,7 @@ StartLimitBurst=5
 
 [Service]
 Type=simple
-ExecStart=/opt/node/bin/node /work/ot/dist/cli.js daemon --data-dir "/data/ot dir"
+ExecStart=/opt/node/bin/node /work/ot/dist/cli.js daemon --data-dir "/data/ot dir" --non-interactive
 Restart=on-failure
 RestartSec=5
 TimeoutStopSec=30

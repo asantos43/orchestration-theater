@@ -198,7 +198,7 @@ async function readConfig(
  * The `ot` command line. Returns the exit code: 0 good, 1 the command failed, 2 wrong usage.
  * Never calls `process.exit` and never reads `process.*`, see {@link CliDeps}.
  */
-export async function main(argv: readonly string[], deps: CliDeps): Promise<number> {
+export async function main(argv: readonly string[], given: CliDeps): Promise<number> {
   let parsed: ReturnType<typeof parseCliArgs>;
   let usageProblem: string | undefined;
   try {
@@ -208,6 +208,7 @@ export async function main(argv: readonly string[], deps: CliDeps): Promise<numb
     parsed = { values: {}, positionals: [] };
   }
   const { values, positionals } = parsed;
+  const deps = values['non-interactive'] === true ? withoutTerminal(given) : given;
 
   const dataDir = resolveDataDir({
     flag: values['data-dir'],
@@ -503,6 +504,23 @@ export async function main(argv: readonly string[], deps: CliDeps): Promise<numb
   }
 }
 
+/**
+ * `--non-interactive`: nothing is asked on the terminal, even when stdin is one. Every command
+ * OTheater builds to run the daemon by itself (the logon service, the daemon `ot tui` starts, the
+ * relaunch after an update) carries it, see `daemonCommandOf`: a daemon that waits for a master
+ * password nobody can type never opens its API (bug of the Windows logon task, 2026-11-25). With no
+ * prompt the vault stays locked and `daemon.notice vault_locked/no_prompt` says so.
+ */
+export function withoutTerminal(deps: CliDeps): CliDeps {
+  return {
+    ...deps,
+    passwordPrompt: undefined,
+    confirm: undefined,
+    askHidden: undefined,
+    interactive: false,
+  };
+}
+
 type ParsedValues = ReturnType<typeof parseCliArgs>['values'];
 
 function parseCliArgs(argv: readonly string[]) {
@@ -510,6 +528,7 @@ function parseCliArgs(argv: readonly string[]) {
     args: [...argv],
     options: {
       'data-dir': { type: 'string' },
+      'non-interactive': { type: 'boolean' },
       repo: { type: 'string' },
       base: { type: 'string' },
       name: { type: 'string' },

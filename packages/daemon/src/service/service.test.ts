@@ -105,7 +105,7 @@ describe('the command the service runs (one point, from resolveSelfCommand)', ()
     expect(self).toEqual({ command: '/n/node', args: ['/ot/dist/cli.js'] });
     expect(daemonCommandOf(self ?? { command: '', args: [] }, '/d')).toEqual({
       command: '/n/node',
-      args: ['/ot/dist/cli.js', 'daemon', '--data-dir', '/d'],
+      args: ['/ot/dist/cli.js', 'daemon', '--data-dir', '/d', '--non-interactive'],
     });
     expect(resolveServiceCommand(undefined)).toBeUndefined();
     // The single executable (P1): `otLauncherOf()` gives the executable with no entry script.
@@ -148,6 +148,21 @@ describe('systemd --user: the calls it makes, in order, with a fake runner and a
       'systemctl --user daemon-reload',
       'systemctl --user enable otheater-daemon.service',
     ]);
+  });
+
+  it('install leaves the same unit alone (no daemon-reload) and rewrites a different one', async () => {
+    const run = new FakeCommandRunner();
+    const manager = make(run);
+    await manager.install(POSIX_SPEC);
+    run.calls.length = 0;
+    expect((await manager.install(POSIX_SPEC)).notes).toEqual(['unchanged']);
+    expect(run.lines).toEqual(['systemctl --user enable otheater-daemon.service']);
+    run.calls.length = 0;
+    const older = { ...POSIX_SPEC, command: { command: '/opt/node/bin/node', args: ['daemon'] } };
+    await manager.install(older);
+    expect(run.lines[0]).toBe('systemctl --user daemon-reload');
+    const file = systemdUnitPath(join(home, '.config'), 'otheater-daemon');
+    expect(await readFile(file, 'utf8')).toContain('ExecStart=/opt/node/bin/node daemon\n');
   });
 
   it('install with autostart: manual disables the trigger instead', async () => {
@@ -245,6 +260,22 @@ describe('launchd: the calls it makes, in order, with a fake runner and a temp H
     ]);
   });
 
+  it('install leaves the same plist and a loaded job alone (no bootout: the daemon keeps running)', async () => {
+    const run = new FakeCommandRunner();
+    const manager = make(run);
+    await manager.install(spec());
+    run.calls.length = 0;
+    expect((await manager.install(spec())).notes).toEqual(['unchanged']);
+    expect(run.lines).toEqual(['launchctl print gui/501/com.otheater.daemon']);
+    // The same plist with the job not loaded (booted out by hand): it is loaded again.
+    const notLoaded = new FakeCommandRunner().on('print', { code: 113 });
+    const again = await make(notLoaded).install(spec());
+    expect(notLoaded.lines).toEqual([
+      'launchctl print gui/501/com.otheater.daemon',
+      `launchctl bootstrap gui/501 ${again.location}`,
+    ]);
+  });
+
   it('install with manual autostart writes the plist and loads nothing; it says there is no restart rule', async () => {
     const run = new FakeCommandRunner();
     const result = await make(run).install(spec({ autostart: 'manual' }));
@@ -311,12 +342,41 @@ describe('the Windows task: the calls it makes, in order, with a fake runner', (
       location: 'otheater-daemon',
       notes: ['restart_always_is_on_failure'],
     });
-    expect(run.calls).toHaveLength(1);
-    expect(run.calls[0]?.command).toBe('schtasks.exe');
-    expect(run.calls[0]?.args.slice(0, 4)).toEqual(['/Create', '/TN', 'otheater-daemon', '/XML']);
-    expect(run.calls[0]?.args.at(-1)).toBe('/F');
+    expect(run.calls).toHaveLength(2);
+    expect(run.lines[0]).toBe('schtasks.exe /Query /TN otheater-daemon /XML');
+    expect(run.calls[1]?.command).toBe('schtasks.exe');
+    expect(run.calls[1]?.args.slice(0, 4)).toEqual(['/Create', '/TN', 'otheater-daemon', '/XML']);
+    expect(run.calls[1]?.args.at(-1)).toBe('/F');
     expect([...(seen[0] ?? Buffer.alloc(0)).subarray(0, 2)]).toEqual([0xff, 0xfe]);
-    await expect(stat(run.calls[0]?.args[4] ?? '')).rejects.toThrow();
+    await expect(stat(run.calls[1]?.args[4] ?? '')).rejects.toThrow();
+  });
+
+  it('install leaves a task with the same fingerprint alone, and rewrites an older one', async () => {
+    const mark = /\[def:[0-9a-f]{16}\]/.exec(renderTaskXml(WINDOWS_SPEC))?.[0] ?? '';
+    expect(mark).not.toBe('');
+    // Windows prints the XML its own way (normalized): only the mark in the description is read.
+    const same = new FakeCommandRunner().on('/XML', {
+      stdout: `<Task><RegistrationInfo><Description>OTheater daemon ${mark}</Description></RegistrationInfo></Task>`,
+    });
+    expect(await make(same).install(WINDOWS_SPEC)).toEqual({
+      location: 'otheater-daemon',
+      notes: ['unchanged'],
+    });
+    expect(same.lines).toEqual(['schtasks.exe /Query /TN otheater-daemon /XML']);
+    // The task of a version before the fix: no mark, and the daemon command had no --non-interactive.
+    const older = new FakeCommandRunner().on('/XML', {
+      stdout: '<Task><Description>OTheater daemon (Orchestration Theater)</Description></Task>',
+    });
+    expect((await make(older).install(WINDOWS_SPEC)).notes).toEqual([]);
+    expect(older.lines.at(-1)).toMatch(
+      /^schtasks\.exe \/Create \/TN otheater-daemon \/XML .* \/F$/,
+    );
+    // A different definition (another command) has another fingerprint.
+    const other = renderTaskXml({
+      ...WINDOWS_SPEC,
+      command: { command: 'C:\\ot\\ot.exe', args: ['daemon'] },
+    });
+    expect(other).not.toContain(mark);
   });
 
   it('uninstall ends and deletes the task, and does nothing when there is none', async () => {

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { CommandResult, CommandRunner } from './command-runner.js';
@@ -57,6 +57,23 @@ export function taskAction(
  * a clean exit, so `restart: always` is the same as `on_failure` here.
  */
 export function renderTaskXml(spec: ServiceSpec): string {
+  const body = taskXmlBody(spec);
+  return body.replace(DEFINITION_MARK, `[def:${definitionFingerprint(body)}]`);
+}
+
+/** The place, inside the description, of the fingerprint of the definition. */
+const DEFINITION_MARK = '[def:]';
+
+/**
+ * [proposta] The fingerprint of a task definition: the first 16 hex digits of the SHA-256 of the XML
+ * with an empty mark. It goes into the description, which the Task Scheduler keeps as it is; the XML
+ * that `/Query /XML` prints is normalized by Windows, so it cannot be compared with ours directly.
+ */
+export function definitionFingerprint(body: string): string {
+  return createHash('sha256').update(body).digest('hex').slice(0, 16);
+}
+
+function taskXmlBody(spec: ServiceSpec): string {
   const action = taskAction(spec.command, spec.console);
   const user =
     spec.userId === undefined ? [] : [`      <UserId>${escapeXml(spec.userId)}</UserId>`];
@@ -64,7 +81,7 @@ export function renderTaskXml(spec: ServiceSpec): string {
     '<?xml version="1.0" encoding="UTF-16"?>',
     '<Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">',
     '  <RegistrationInfo>',
-    '    <Description>OTheater daemon (Orchestration Theater)</Description>',
+    `    <Description>OTheater daemon (Orchestration Theater) ${DEFINITION_MARK}</Description>`,
     `    <URI>\\${escapeXml(spec.id)}</URI>`,
     '  </RegistrationInfo>',
     '  <Triggers>',
@@ -144,9 +161,19 @@ export class WindowsTaskServiceManager implements ServiceManager {
   }
 
   async install(spec: ServiceSpec): Promise<InstallResult> {
+    const xml = renderTaskXml({ ...spec, id: this.#deps.id });
+    const restartNote: ServiceInstallNote[] =
+      spec.restart === 'always' ? ['restart_always_is_on_failure'] : [];
+    // The same definition (its fingerprint is in the task) is left as it is; a different one, or a
+    // task of an older version with no fingerprint, is rewritten with `/Create /F`.
+    const mark = /\[def:[0-9a-f]{16}\]/.exec(xml)?.[0];
+    const current = await this.#schtasks(['/Query', '/TN', this.#deps.id, '/XML']);
+    if (mark !== undefined && current.code === 0 && current.stdout.includes(mark)) {
+      return { location: this.#deps.id, notes: [...restartNote, 'unchanged'] };
+    }
     await mkdir(this.#deps.tmpDir, { recursive: true });
     const file = join(this.#deps.tmpDir, `otheater-task-${randomUUID()}.xml`);
-    await writeFile(file, encodeTaskXml(renderTaskXml({ ...spec, id: this.#deps.id })), {
+    await writeFile(file, encodeTaskXml(xml), {
       mode: 0o600,
     });
     try {
@@ -157,9 +184,7 @@ export class WindowsTaskServiceManager implements ServiceManager {
     } finally {
       await rm(file, { force: true });
     }
-    const notes: ServiceInstallNote[] =
-      spec.restart === 'always' ? ['restart_always_is_on_failure'] : [];
-    return { location: this.#deps.id, notes };
+    return { location: this.#deps.id, notes: restartNote };
   }
 
   async uninstall(): Promise<void> {
