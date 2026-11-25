@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 import { ApiRequestError, deriveShortcutBar, type UiBarItem } from '@otheater/client';
-import type { AddProfileBody, SetupRunView } from '@otheater/protocol';
+import type { AddProfileBody, SetupAdapterClient, SetupRunView } from '@otheater/protocol';
 import { Box, useWindowSize } from 'ink';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -16,12 +16,13 @@ import { useRenderControl } from '../render-control.js';
 import { fieldStep } from '../tabs/settings/field.js';
 import { errorText, runInTerminal } from '../tabs/settings/index.js';
 import type { SetupApi, SetupFlow } from './api.js';
-import { setupLines, type SetupLine } from './lines.js';
+import { clientStateText, clientTodoText, setupLines, type SetupLine } from './lines.js';
 import {
   accountClients,
   accountFormOf,
   accountsCursorMoved,
   accountsCursorStart,
+  adapterToInstall,
   atFirstStep,
   draftKey,
   executorsItem,
@@ -98,6 +99,8 @@ interface State {
   readonly accountsCursor: number;
   /** The accounts added in this run. */
   readonly added: readonly string[];
+  /** The install of an adapter that runs now (P18b, the I key), and since when (ms). */
+  readonly installing: { readonly client: string; readonly since: number } | undefined;
 }
 
 const IDLE: Mode = { kind: 'idle' };
@@ -118,6 +121,7 @@ const FIRST: State = {
   stage: 'steps',
   accountsCursor: 0,
   added: [],
+  installing: undefined,
 };
 
 /** The hints of the bar that make sense at the step on screen. */
@@ -138,6 +142,8 @@ function relevantBar(
     ].includes(item.id);
   }
   switch (item.id) {
+    case 'setup.install':
+      return false;
     case 'setup.toggle':
       return step === 'detect';
     case 'setup.add':
@@ -158,6 +164,8 @@ export function SetupScreen(props: SetupScreenProps): ReactNode {
   const accountsOn = flow === 'first_run' && api.accounts !== undefined;
 
   const [state, setState] = useState<State>(FIRST);
+  // While an adapter installs, the screen draws the seconds it has taken, once a second.
+  const [now, setNow] = useState(() => Date.now());
   const ref = useRef<State>(FIRST);
   const alive = useRef(true);
   // The draft of each step already answered, to bring back when the person goes back to it.
@@ -233,6 +241,17 @@ export function SetupScreen(props: SetupScreenProps): ReactNode {
       update({ load: 'failed', loadError: errorText(error), busy: false });
     }
   };
+
+  useEffect(() => {
+    if (state.installing === undefined) return undefined;
+    setNow(Date.now());
+    const timer = setInterval(() => {
+      setNow(Date.now());
+    }, 1000);
+    return () => {
+      clearInterval(timer);
+    };
+  }, [state.installing]);
 
   useEffect(() => {
     alive.current = true;
@@ -339,6 +358,77 @@ export function SetupScreen(props: SetupScreenProps): ReactNode {
   };
 
   /**
+   * Looks for the clients again, then reads the step again (R; P18, N321): a client installed
+   * while the assistant is open shows up without a restart. A daemon without the route only reads.
+   */
+  const lookAgain = async (run: SetupRunView): Promise<void> => {
+    let message: State['message'];
+    if (api.redetect !== undefined) {
+      update({ busy: true, message: undefined });
+      try {
+        const result = await api.redetect();
+        if (result.added.length > 0) {
+          message = {
+            text: t('setup.redetect.added', { list: result.added.join(', ') }),
+            tone: 'ok',
+          };
+        }
+      } catch (error) {
+        message = { text: t('setup.redetect.failed', { message: errorText(error) }), tone: 'warn' };
+      }
+      if (!alive.current) return;
+    }
+    await reread(run, message);
+  };
+
+  /**
+   * Installs the ACP adapter of the client (I; P18b, N321), then the daemon looks again, so the
+   * client is there when it ends. [proposta] The screen waits for the answer and shows the seconds
+   * it takes; a failed download says why, and I tries again.
+   */
+  const installOf = async (client: SetupAdapterClient): Promise<void> => {
+    const install = api.installAdapter;
+    if (install === undefined) {
+      say(t('setup.install.unavailable'), 'warn');
+      return;
+    }
+    update({ busy: true, message: undefined, installing: { client, since: Date.now() } });
+    let message: NonNullable<State['message']>;
+    try {
+      const result = await install(client);
+      message = result.installed
+        ? {
+            text: t('setup.install.done', {
+              client,
+              adapter: result.adapter,
+              version: result.version,
+            }),
+            tone: 'ok',
+          }
+        : {
+            text: t('setup.install.failed', {
+              adapter: result.adapter,
+              message: result.failure ?? '',
+              key: keyLabel(keymap, 'setup.install') ?? '',
+            }),
+            tone: 'error',
+          };
+    } catch (error) {
+      message = {
+        text: t('setup.install.failed', {
+          adapter: client,
+          message: errorText(error),
+          key: keyLabel(keymap, 'setup.install') ?? '',
+        }),
+        tone: 'error',
+      };
+    }
+    if (!alive.current) return;
+    update({ installing: undefined });
+    await refresh(message);
+  };
+
+  /**
    * Logs in to the account just added, the same login as the key L of Settings › Assinaturas: a
    * client that needs a terminal is run with the terminal handed over (`useSuspendTerminal`, so the
    * mouse comes back). [proposta] A login the daemon runs itself (`started`) is not followed here,
@@ -365,7 +455,6 @@ export function SetupScreen(props: SetupScreenProps): ReactNode {
         text: t('setup.accounts.result.loginFailed', {
           profile: profileId,
           message: errorText(error),
-          command,
         }),
         tone: 'error',
       };
@@ -448,6 +537,11 @@ export function SetupScreen(props: SetupScreenProps): ReactNode {
     update({ mode: IDLE, draft: withBudget(draft, budget), message: undefined });
   };
 
+  const clientKeys = (): { install: string; reload: string } => ({
+    install: keyLabel(keymap, 'setup.install') ?? '',
+    reload: keyLabel(keymap, 'setup.reload') ?? '',
+  });
+
   /** The keys of the step that adds an account. */
   const onAccountsKey = (run: SetupRunView, name: string): void => {
     const cursor = ref.current.accountsCursor;
@@ -466,15 +560,46 @@ export function SetupScreen(props: SetupScreenProps): ReactNode {
         return;
       case 'add': {
         const entry = accountClients(run.prompt)[cursor];
-        if (entry !== undefined) {
-          update({
-            mode: { kind: 'prompt', purpose: 'account', profileId: entry.client, value: '' },
-          });
+        if (entry === undefined) return;
+        // P18b: a client that is not on the machine has no account to add yet; say why, briefly.
+        if (run.prompt?.step === 'detect' && !entry.installed) {
+          const todo = clientTodoText(entry, clientKeys(), t);
+          say(
+            t('setup.accounts.cannotAdd', {
+              client: entry.client,
+              why: clientStateText(entry, t),
+              todo: todo ?? '',
+            }),
+            'warn',
+          );
+          return;
         }
+        update({
+          mode: { kind: 'prompt', purpose: 'account', profileId: entry.client, value: '' },
+        });
+        return;
+      }
+      case 'install': {
+        const entry = accountClients(run.prompt)[cursor];
+        if (entry === undefined) return;
+        const client = adapterToInstall(entry);
+        if (client !== undefined) {
+          void installOf(client);
+          return;
+        }
+        say(
+          entry.installed
+            ? t('setup.install.notNeeded', { client: entry.client })
+            : t('setup.install.notOffered', {
+                client: entry.client,
+                todo: clientTodoText(entry, clientKeys(), t) ?? '',
+              }),
+          'warn',
+        );
         return;
       }
       case 'reload':
-        void reread(run);
+        void lookAgain(run);
         return;
       case 'cancel':
         update({ mode: { kind: 'confirmCancel' } });
@@ -568,7 +693,7 @@ export function SetupScreen(props: SetupScreenProps): ReactNode {
         return;
       }
       case 'reload':
-        void reread(run);
+        void lookAgain(run);
         return;
       case 'cancel':
         if (!isFinished(run)) update({ mode: { kind: 'confirmCancel' } });
@@ -642,7 +767,7 @@ export function SetupScreen(props: SetupScreenProps): ReactNode {
       }),
       dim: true,
     });
-  } else if (state.busy) {
+  } else if (state.busy && state.installing === undefined) {
     head.push({ key: 'busy', text: t('setup.busy'), dim: true });
   }
 
@@ -661,6 +786,15 @@ export function SetupScreen(props: SetupScreenProps): ReactNode {
                 added: state.added,
                 addKey: keyLabel(keymap, 'setup.add') ?? '',
                 nextKey: keyLabel(keymap, 'setup.advance') ?? '',
+                installKey: keyLabel(keymap, 'setup.install') ?? '',
+                reloadKey: keyLabel(keymap, 'setup.reload') ?? '',
+                installing:
+                  state.installing === undefined
+                    ? undefined
+                    : {
+                        client: state.installing.client,
+                        seconds: Math.max(0, Math.floor((now - state.installing.since) / 1000)),
+                      },
               }
             : undefined,
         });

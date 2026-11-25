@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: MPL-2.0
-import type {
-  SetupBudget,
-  SetupExecutorRequest,
-  SetupPrompt,
-  SetupRunView,
-  SetupStepSubmission,
+import {
+  SETUP_ADAPTER_CLIENTS,
+  type SetupAdapterClient,
+  type SetupBudget,
+  type SetupDetectedClient,
+  type SetupExecutorRequest,
+  type SetupPrompt,
+  type SetupRunView,
+  type SetupStepSubmission,
 } from '@otheater/protocol';
 
 /**
@@ -248,11 +251,23 @@ const DEFAULT_PROVIDER: Readonly<Record<string, string>> = {
  * The clients the step lists, in the order of the detection of the daemon (a client the machine
  * has is walked first only by the cursor start, not by the order).
  */
-export function accountClients(
-  prompt: SetupPrompt | null,
-): readonly { readonly client: string; readonly installed: boolean }[] {
+export function accountClients(prompt: SetupPrompt | null): readonly SetupDetectedClient[] {
   if (prompt?.step === 'detect' && prompt.clients.length > 0) return prompt.clients;
   return KNOWN_CLIENTS.map((client) => ({ client, installed: false }));
+}
+
+/**
+ * The client whose ACP adapter the I key installs (P18b, N321): Claude Code or Codex, with its
+ * official program there and the adapter missing. Any other client gets no install from here.
+ */
+export function adapterToInstall(
+  entry: SetupDetectedClient | undefined,
+): SetupAdapterClient | undefined {
+  if (entry === undefined || entry.installed || entry.reason !== 'adapter_missing')
+    return undefined;
+  return (SETUP_ADAPTER_CLIENTS as readonly string[]).includes(entry.client)
+    ? (entry.client as SetupAdapterClient)
+    : undefined;
 }
 
 /** [proposta] The cursor of the step starts on the first client found on the machine, or the first one. */

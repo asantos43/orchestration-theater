@@ -142,6 +142,7 @@ const SETUP_KEYS: readonly (readonly [
   ['add', ['A'], ['bar.setup.add', 16]],
   ['edit', ['E'], ['bar.setup.edit', 18]],
   ['remove', ['X']],
+  ['install', ['I'], ['bar.setup.install', 17]],
   ['reload', ['R']],
   ['cancel', ['C'], ['bar.setup.cancel', 20]],
 ];

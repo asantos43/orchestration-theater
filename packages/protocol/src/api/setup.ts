@@ -347,10 +347,36 @@ export const SetupRedetectResultSchema = z.strictObject({
 });
 export type SetupRedetectResult = z.infer<typeof SetupRedetectResultSchema>;
 
+/** The clients whose ACP adapter OTheater installs itself (P13 of Phase 10; the I key of P18). */
+export const SETUP_ADAPTER_CLIENTS = ['claude-code', 'codex'] as const;
+export const SetupAdapterClientSchema = z.enum(SETUP_ADAPTER_CLIENTS);
+export type SetupAdapterClient = z.infer<typeof SetupAdapterClientSchema>;
+
+/**
+ * What the install of an adapter from the assistant did (P18, N321, the I key). A failed download
+ * is an answer, not an error: the screen says why (`failure`) and the person may try again.
+ * [proposta] After an install that worked the daemon looks for the clients again, so the client
+ * enters the pool without a restart; `added` and `clients` are what that search gave.
+ */
+export const SetupAdapterInstallResultSchema = z.strictObject({
+  client: SetupAdapterClientSchema,
+  /** The package of the adapter (`claude-agent-acp`, `codex-acp`). */
+  adapter: z.string().min(1),
+  /** The pinned version that was installed (or that failed). */
+  version: z.string().min(1),
+  installed: z.boolean(),
+  /** Why the install failed (`<code>: <message>`); `null` when it worked. */
+  failure: z.string().min(1).nullable(),
+  added: z.array(z.string().min(1)),
+  clients: z.array(SetupDetectedClientSchema),
+});
+export type SetupAdapterInstallResult = z.infer<typeof SetupAdapterInstallResultSchema>;
+
 // ---- the routes -------------------------------------------------------------------------------
 
 const FlowParamsSchema = z.strictObject({ flow: SetupFlowSchema });
 const RunParamsSchema = z.strictObject({ runId: SetupRunIdSchema });
+const AdapterParamsSchema = z.strictObject({ client: SetupAdapterClientSchema });
 
 export const getSetup = defineRoute({
   id: 'getSetup',
@@ -368,6 +394,18 @@ export const redetectSetupClients = defineRoute({
     'Looks for the clients again without a restart (on Windows also in the Path of the registry); a client found enters the pool',
   headers: IdempotencyHeadersSchema,
   response: SetupRedetectResultSchema,
+});
+
+export const installSetupAdapter = defineRoute({
+  id: 'installSetupAdapter',
+  method: 'POST',
+  path: '/v1/setup/adapters/:client/install',
+  summary:
+    'Installs the ACP adapter of a client (the pinned version, from the npm registry) and looks for the clients again; a failed download is said in the answer',
+  params: AdapterParamsSchema,
+  headers: IdempotencyHeadersSchema,
+  response: SetupAdapterInstallResultSchema,
+  errors: ['unavailable'],
 });
 
 export const startSetup = defineRoute({
@@ -429,6 +467,7 @@ export const cancelSetup = defineRoute({
 export const SETUP_ROUTES = defineRoutes(
   getSetup,
   redetectSetupClients,
+  installSetupAdapter,
   startSetup,
   submitSetupStep,
   backSetup,

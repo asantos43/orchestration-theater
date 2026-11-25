@@ -48,7 +48,11 @@ import {
   type ClientFactory,
   type ClientFactoryParts,
   type ClientSelection,
+  pathFinder,
 } from './clients.js';
+import { AdapterManager } from './adapters/manager.js';
+import type { AdapterInstallOutcome } from './setup/service.js';
+import type { SetupAdapterClient } from '@otheater/protocol';
 import {
   compose,
   composeOwnSchemas,
@@ -1588,6 +1592,7 @@ async function run(input: RunInput): Promise<DaemonHandle> {
       new Set(CLIENT_IDS.filter((client) => clientAdapter(client) !== undefined)),
     clientReasons: (client) => clientRedetector?.reasonOf(client),
     redetect: redetectClients,
+    installAdapter: built?.installAdapter,
   });
 
   // P5 (Phase 6): the read routes of the REST API. They need the services above, so they are
@@ -1759,7 +1764,13 @@ function buildExecution(
   handoff: HandoffPort,
   exhaustion: ExhaustionPort,
   telemetry: TelemetryRuntime | undefined,
-): { execution: Execution; redetector: ClientRedetector } | undefined {
+):
+  | {
+      execution: Execution;
+      redetector: ClientRedetector;
+      installAdapter: (client: SetupAdapterClient) => Promise<AdapterInstallOutcome>;
+    }
+  | undefined {
   const { logger } = composition;
   const { launcher: rawLauncher } = composition;
   if (rawLauncher === undefined) {
@@ -1894,7 +1905,43 @@ function buildExecution(
     situations: composition.situations,
   });
   redetector.note(firstSelections);
-  return { execution, redetector };
+  // P18b (N321): the assistant installs the adapter of a client when the person asks (key I), so
+  // `clients.adapters.install` is not read here: the person asked. One manager, so a second press
+  // waits for the install that runs. A failed download is an answer (`failure`), not an error.
+  const adapters = new AdapterManager({
+    adaptersDir: parts.paths.adapters,
+    install: config.clients.adapters.install,
+    registry: config.clients.adapters.registry,
+    redirectHosts: config.clients.adapters.redirect_hosts,
+    redirectMax: config.clients.adapters.redirect_max,
+    tarMaxEntries: config.clients.adapters.tar_max_entries,
+    find:
+      options.clientSearch?.findExecutable ??
+      pathFinder(clientEnv, {
+        ...(options.clientSearch?.platform === undefined
+          ? {}
+          : { platform: options.clientSearch.platform }),
+      }),
+    logger,
+    situations: composition.situations,
+    ...options.clientSearch?.adapters,
+  });
+  const installAdapter = async (client: SetupAdapterClient): Promise<AdapterInstallOutcome> => {
+    try {
+      await adapters.ensure(client);
+      const status = adapters.status(client);
+      return { adapter: status.adapter, version: status.version, installed: true, failure: null };
+    } catch (error) {
+      const status = adapters.status(client);
+      return {
+        adapter: status.adapter,
+        version: status.version,
+        installed: false,
+        failure: status.failure ?? (error instanceof Error ? error.message : String(error)),
+      };
+    }
+  };
+  return { execution, redetector, installAdapter };
 }
 
 /**

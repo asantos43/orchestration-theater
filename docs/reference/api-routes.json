@@ -24687,6 +24687,146 @@
       }
     },
     {
+      "id": "installSetupAdapter",
+      "method": "POST",
+      "path": "/v1/setup/adapters/:client/install",
+      "kind": "json",
+      "summary": "Installs the ACP adapter of a client (the pinned version, from the npm registry) and looks for the clients again; a failed download is said in the answer",
+      "pathParams": [
+        "client"
+      ],
+      "response": {
+        "type": "object",
+        "properties": {
+          "client": {
+            "type": "string",
+            "enum": [
+              "claude-code",
+              "codex"
+            ]
+          },
+          "adapter": {
+            "type": "string",
+            "minLength": 1
+          },
+          "version": {
+            "type": "string",
+            "minLength": 1
+          },
+          "installed": {
+            "type": "boolean"
+          },
+          "failure": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "added": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "clients": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "client": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "installed": {
+                  "type": "boolean"
+                },
+                "reason": {
+                  "type": "string",
+                  "enum": [
+                    "disabled",
+                    "command_configured",
+                    "found_in_path",
+                    "adapter_configured",
+                    "managed_installed",
+                    "managed_pending",
+                    "adapter_missing",
+                    "not_found",
+                    "forced_not_found"
+                  ]
+                }
+              },
+              "required": [
+                "client",
+                "installed"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "client",
+          "adapter",
+          "version",
+          "installed",
+          "failure",
+          "added",
+          "clients"
+        ],
+        "additionalProperties": false
+      },
+      "errors": {
+        "400": [
+          "invalid_input"
+        ],
+        "401": [
+          "unauthorized"
+        ],
+        "403": [
+          "forbidden"
+        ],
+        "500": [
+          "internal"
+        ],
+        "503": [
+          "unavailable"
+        ]
+      },
+      "params": {
+        "type": "object",
+        "properties": {
+          "client": {
+            "type": "string",
+            "enum": [
+              "claude-code",
+              "codex"
+            ]
+          }
+        },
+        "required": [
+          "client"
+        ],
+        "additionalProperties": false
+      },
+      "headers": {
+        "type": "object",
+        "properties": {
+          "idempotency-key": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255,
+            "pattern": "^[\\x21-\\x7e]+$"
+          }
+        },
+        "additionalProperties": {}
+      }
+    },
+    {
       "id": "redetectSetupClients",
       "method": "POST",
       "path": "/v1/setup/redetect",
