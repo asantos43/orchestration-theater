@@ -1838,7 +1838,8 @@ function adapterRef(
 ): { id: string; portVersion: string } {
   const record = composition.adapters.find((adapter) => adapter.port === port);
   return {
-    id: record?.id === 'override' ? 'override' : configured,
+    // The id of the record: the adapter in use, which `adapters.vault: auto` chooses at start (N323).
+    id: record?.id ?? configured,
     portVersion: record?.portVersion ?? 'unknown',
   };
 }

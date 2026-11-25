@@ -310,8 +310,10 @@ async function setSecret(
   }
 
   const paths = dataPaths(context.dataDir);
+  // The vault in use (`adapters.vault: auto` chooses it here): the keyring has no lock to take.
+  const { vault, record } = await composeVault(config, paths.dataDir, context.overrides);
   let lock: InstanceLock | undefined;
-  if (context.overrides?.vault === undefined && config.adapters.vault !== 'keyring') {
+  if (context.overrides?.vault === undefined && record.id !== 'keyring') {
     try {
       lock = await InstanceLock.acquire(paths.lock, paths.lockInfo);
     } catch (error) {
@@ -321,7 +323,6 @@ async function setSecret(
     }
   }
   try {
-    const { vault } = composeVault(config, paths.dataDir, context.overrides);
     if (isLockableSecretVault(vault)) {
       await unlockVault(vault, deps.passwordPrompt, createSilentLogger());
       if (vault.isLocked) {
