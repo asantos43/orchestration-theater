@@ -144,6 +144,10 @@ describe('the quality preset over the example machine (5.7)', () => {
     expect(result.notes.some((note) => note.code === 'no_account' && note.role === 'author')).toBe(
       true,
     );
+    // The note names the head of the preset it is about (N324).
+    expect(
+      result.notes.find((note) => note.code === 'no_account' && note.role === 'author')?.head,
+    ).toBe('codex-sol-high');
   });
 
   it('leaves out an Executor whose profile is removed or missing', () => {

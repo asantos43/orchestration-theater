@@ -157,11 +157,15 @@ export interface UiTuiMouseSettings {
 
 export const SETUP_OPEN_MODES = ['auto', 'never'] as const;
 export type SetupOpenMode = (typeof SETUP_OPEN_MODES)[number];
+export const SETUP_REVIEW_NOTES_MODES = ['grouped', 'all'] as const;
+export type SetupReviewNotesMode = (typeof SETUP_REVIEW_NOTES_MODES)[number];
 
 /** `ui.setup` (P17): whether the first run opens the assistant, and how long the TUI waits to know. */
 export interface UiSetupSettings {
   readonly open: SetupOpenMode;
   readonly readTimeoutMs: number;
+  /** How the review shows its notes (N324): folded by family of models, or every one. */
+  readonly reviewNotes: SetupReviewNotesMode;
 }
 
 export const NEW_PROJECT_REPO_MODES = ['cwd', 'git_root', 'empty'] as const;
@@ -272,7 +276,11 @@ export const DEFAULT_TUI_MOUSE: UiTuiMouseSettings = {
   copyMaxBytes: 100_000,
 };
 
-export const DEFAULT_SETUP: UiSetupSettings = { open: 'auto', readTimeoutMs: 5000 };
+export const DEFAULT_SETUP: UiSetupSettings = {
+  open: 'auto',
+  readTimeoutMs: 5000,
+  reviewNotes: 'grouped',
+};
 
 export const DEFAULT_NEW_PROJECT: UiNewProjectSettings = { repo: 'cwd' };
 
@@ -499,6 +507,11 @@ export function parseUiSettings(ui: unknown): UiSettings {
         100,
         60_000,
         DEFAULT_SETUP.readTimeoutMs,
+      ),
+      reviewNotes: oneOf(
+        field(setup, 'reviewNotes'),
+        SETUP_REVIEW_NOTES_MODES,
+        DEFAULT_SETUP.reviewNotes,
       ),
     },
     newProject: {

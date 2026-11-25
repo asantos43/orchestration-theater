@@ -170,7 +170,13 @@ describe('ui.* schemas of the terminal', () => {
   });
 
   it('has the defaults of the setup block (P17), takes its other mode and refuses the rest', () => {
-    expect(UiSetupConfigSchema.parse({})).toEqual({ open: 'auto', readTimeoutMs: 5000 });
+    expect(UiSetupConfigSchema.parse({})).toEqual({
+      open: 'auto',
+      readTimeoutMs: 5000,
+      reviewNotes: 'grouped',
+    });
+    expect(UiSetupConfigSchema.parse({ reviewNotes: 'all' }).reviewNotes).toBe('all');
+    expect(UiSetupConfigSchema.safeParse({ reviewNotes: 'some' }).success).toBe(false);
     expect(UiSetupConfigSchema.parse({ open: 'never' }).open).toBe('never');
     expect(UiSetupConfigSchema.safeParse({ open: 'always' }).success).toBe(false);
     expect(UiSetupConfigSchema.safeParse({ readTimeoutMs: 99 }).success).toBe(false);

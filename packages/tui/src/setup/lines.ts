@@ -1,5 +1,11 @@
 // SPDX-License-Identifier: MPL-2.0
-import type { SetupDetectedClient, SetupPlan, SetupPrompt, SetupRunView } from '@otheater/protocol';
+import type {
+  SetupDetectedClient,
+  SetupNote,
+  SetupPlan,
+  SetupPrompt,
+  SetupRunView,
+} from '@otheater/protocol';
 import type { TFunction } from 'i18next';
 import { TOKEN } from '../layout/theme.js';
 import { accountClients, stepNumber, type Draft } from './model.js';
@@ -23,6 +29,16 @@ export interface SetupLinesInput {
   readonly closeKey: string;
   /** The step that adds an account (N274): present only when the screen has it in this run. */
   readonly accounts?: AccountsStage | undefined;
+  /** How the review draws its notes (N324); folded with no key label when absent. */
+  readonly reviewNotes?: ReviewNotesView | undefined;
+}
+
+/** How the review draws its notes (N324, `ui.setup.reviewNotes`). */
+export interface ReviewNotesView {
+  /** Every note on its own line; otherwise the notes of one kind are folded. */
+  readonly all: boolean;
+  /** The label of the key that flips it. */
+  readonly key: string;
 }
 
 /** The step before the detection that adds an account; it is not a step of the daemon's run. */
@@ -274,7 +290,7 @@ function executorsLines(
   return lines;
 }
 
-function planLines(plan: SetupPlan, t: TFunction): SetupLine[] {
+function planLines(plan: SetupPlan, t: TFunction, view?: ReviewNotesView): SetupLine[] {
   const lines: SetupLine[] = [
     {
       key: 'preset',
@@ -338,16 +354,95 @@ function planLines(plan: SetupPlan, t: TFunction): SetupLine[] {
   lines.push({ key: 'writes', text: list(plan.writes, t), dim: true });
   if (plan.notes.length > 0) {
     lines.push({ key: 'h.notes', text: t('setup.review.notes'), color: TOKEN.accent, bold: true });
-    plan.notes.forEach((note, index) => {
-      lines.push({
-        key: `n.${String(index)}`,
-        text: `[${t(`setup.review.${note.severity}`)}] ${note.message}`,
-        color: note.severity === 'warning' ? TOKEN.warn : undefined,
-        dim: note.severity === 'info',
-      });
-    });
+    lines.push(...notesLines(plan.notes, t, view));
   }
   return lines;
+}
+
+/**
+ * The family of a head of the preset, for the folded review (N324): what comes before the first `-`
+ * (`claude-opus-high` → `claude`, `codex-sol-high` → `codex`). [proposta] The family, and not the
+ * client, because a head of the preset names a model and no client.
+ */
+export function familyOf(head: string): string {
+  return head.split('-')[0] ?? head;
+}
+
+function noteLine(note: SetupNote, key: string, t: TFunction): SetupLine {
+  return {
+    key,
+    text: `[${t(`setup.review.${note.severity}`)}] ${note.message}`,
+    color: note.severity === 'warning' ? TOKEN.warn : undefined,
+    dim: note.severity === 'info',
+  };
+}
+
+/**
+ * The notes of the review (N324). Folded: the notes that say no account has a model of the preset
+ * become one line per family of models, and the roles left with no Executor one line; the other notes
+ * stay as they are, and a hint names the key that shows each note. `all`: one line per note.
+ */
+function notesLines(
+  notes: readonly SetupNote[],
+  t: TFunction,
+  view: ReviewNotesView | undefined,
+): SetupLine[] {
+  const families = new Map<string, { heads: string[]; roles: Set<string> }>();
+  const empty: string[] = [];
+  const rest: SetupNote[] = [];
+  for (const note of notes) {
+    if (note.code === 'no_account' && note.head !== undefined) {
+      const family = familyOf(note.head);
+      const entry = families.get(family) ?? { heads: [], roles: new Set<string>() };
+      if (!entry.heads.includes(note.head)) entry.heads.push(note.head);
+      if (note.role !== null) entry.roles.add(note.role);
+      families.set(family, entry);
+    } else if (note.code === 'empty_list' && note.role !== null) {
+      empty.push(note.role);
+    } else {
+      rest.push(note);
+    }
+  }
+  const folds = families.size > 0 || empty.length > 0;
+  const hint: SetupLine[] =
+    folds && view !== undefined && view.key !== ''
+      ? [
+          {
+            key: 'n.hint',
+            text: t(view.all ? 'setup.review.detailsHintAll' : 'setup.review.detailsHint', {
+              key: view.key,
+            }),
+            dim: true,
+          },
+        ]
+      : [];
+  if (view?.all === true || !folds) {
+    return [...notes.map((note, index) => noteLine(note, `n.${String(index)}`, t)), ...hint];
+  }
+  const lines: SetupLine[] = [];
+  for (const [family, entry] of families) {
+    lines.push({
+      key: `n.family.${family}`,
+      text: `[${t('setup.review.info')}] ${t('setup.review.noAccountFamily', {
+        family,
+        models: entry.heads.join(', '),
+        count: entry.roles.size,
+      })}`,
+      dim: true,
+    });
+  }
+  if (empty.length > 0) {
+    lines.push({
+      key: 'n.empty',
+      text: `[${t('setup.review.warning')}] ${t('setup.review.emptyRoles', {
+        count: empty.length,
+        roles: empty.join(', '),
+      })}`,
+      color: TOKEN.warn,
+    });
+  }
+  rest.forEach((note, index) => lines.push(noteLine(note, `n.${String(index)}`, t)));
+  return [...lines, ...hint];
 }
 
 function finishedLines(run: SetupRunView, closeKey: string, t: TFunction): SetupLine[] {
@@ -415,7 +510,7 @@ export function setupLines(input: SetupLinesInput): SetupLine[] {
       if (draft.kind === 'executors') lines.push(...executorsLines(prompt, draft, t));
       break;
     case 'review':
-      lines.push(...planLines(prompt.plan, t));
+      lines.push(...planLines(prompt.plan, t, input.reviewNotes));
       break;
   }
   return lines;

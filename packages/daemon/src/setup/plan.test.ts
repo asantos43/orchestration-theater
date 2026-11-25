@@ -73,6 +73,13 @@ describe('the plan of the assistant', () => {
       API.id,
     ]);
     expect(plan.notes.map((note) => note.code)).toContain('no_account');
+    // The note names the head of the preset, so the screen can fold a family into one line (N324).
+    expect(plan.notes).toContainEqual(
+      expect.objectContaining({ code: 'no_account', role: 'author', head: 'codex-sol-high' }),
+    );
+    expect(
+      plan.notes.filter((note) => note.code !== 'no_account').every((n) => !('head' in n)),
+    ).toBe(true);
   });
 
   it('proposes the suggested cap for an API account with no cap, and not when the file has one', () => {

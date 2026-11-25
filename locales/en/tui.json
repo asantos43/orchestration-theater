@@ -168,7 +168,8 @@
       "remove": "Remove the Executor",
       "reload": "Look for the clients again and read the step again",
       "cancel": "Cancel the run (nothing is written)",
-      "install": "Install the ACP adapter of the client under the cursor"
+      "install": "Install the ACP adapter of the client under the cursor",
+      "details": "Show or fold the detail of the notes of the review"
     },
     "plugins": {
       "itemPrev": "Previous plugin",
@@ -228,7 +229,8 @@
       "add": "Add",
       "edit": "Cap",
       "cancel": "Cancel run",
-      "install": "Install adapter"
+      "install": "Install adapter",
+      "details": "Detail"
     },
     "settings": {
       "add": "Add account",
@@ -1223,7 +1225,11 @@
       "notes": "Notes",
       "info": "info",
       "warning": "warning",
-      "none": "none"
+      "none": "none",
+      "noAccountFamily": "{{family}}: no account of this machine has {{models}}; left out of {{count}} role(s)",
+      "emptyRoles": "No Executor left in {{count}} role(s): {{roles}} (they fall back to when_exhausted)",
+      "detailsHint": "{{key}} shows each note",
+      "detailsHintAll": "{{key}} folds the notes again"
     },
     "source": {
       "discovered": "found",

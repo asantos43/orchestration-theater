@@ -8,6 +8,7 @@ import type {
   SetupAdapterInstallResult,
   SetupDetectedClient,
   SetupDetectedProfile,
+  SetupNote,
   SetupOverview,
   SetupPlan,
   SetupPrompt,
@@ -166,6 +167,8 @@ export class FakeSetupApi implements SetupApi {
   current: 'quality' | 'balanced' | 'economical' | null;
   /** The next command fails with this error. */
   failNext: Error | undefined;
+  /** The notes of the plan of the review (N324). */
+  notes: SetupNote[] = [];
   /** An `overview` that never answers (a daemon that hangs). */
   hang = false;
   /** The routes of the step that adds an account; absent unless the test asked for them. */
@@ -408,7 +411,7 @@ export class FakeSetupApi implements SetupApi {
       ...(preset === null ? [] : ['roles.preset']),
       ...executors.map((executor) => `executors.${executor.id}`),
     ];
-    return { flow, preset, roles: [], executors, budgets: [], writes, notes: [] };
+    return { flow, preset, roles: [], executors, budgets: [], writes, notes: [...this.notes] };
   }
 
   #prompt(
