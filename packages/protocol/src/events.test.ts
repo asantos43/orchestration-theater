@@ -161,6 +161,8 @@ describe('daemon event registry', () => {
       'demand.transitioned',
       'atif.exported',
       'atif.export_failed',
+      'note.posted',
+      'collab.limit_reached',
       'plugin.installed',
       'plugin.removed',
       'plugin.enabled',

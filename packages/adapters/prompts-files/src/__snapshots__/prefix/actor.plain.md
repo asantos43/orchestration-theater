@@ -39,6 +39,8 @@ These are the only framework tools you can call:
 - `submit`
 - `run_tests` (changes your worktree)
 - `install_deps` (changes your worktree)
+- `post_note`
+- `read_notes`
 - `git_commit` (changes your worktree)
 - `restricted_shell` (changes your worktree)
 - `http_get` (reaches the network)

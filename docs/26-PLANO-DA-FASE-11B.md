@@ -87,7 +87,7 @@ O `@otheater/workflows` é pacote novo do monorepo, não dependência de fora. E
 | Passo | Título | Depende de | Pode correr junto com | Estado |
 |---|---|---|---|---|
 | P0 | Plano e decisões (este documento) | nada | todos os que dependem só dele | feito (este PR) |
-| P1 | `@otheater/workflows`: schema da definição, linguagem de condição, compilador para XState, validador e hash | P0 | P7, P13 | em PR |
+| P1 | `@otheater/workflows`: schema da definição, linguagem de condição, compilador para XState, validador e hash | P0 | P7, P13 | feito (#359) |
 | P2 | Runtime do motor no daemon e tipos de passo genéricos (`call_tool`, `wait_event`, `branch`, `approval`, `notify`) | P1 | P5, P14 | a fazer |
 | P3 | A definição `play` 2.0: os tipos de passo da peça, a troca da máquina, o `flows.<id>` como parâmetro, o snapshot 1.x recusado | P2 | P6, P8, P9 | a fazer |
 | P4 | Versão de nascimento e migração em ponto seguro (N295), com a 2.0 → 2.1 de teste e o caos sobre workflows gerados | P3 | P10, P12 | a fazer |
@@ -99,7 +99,7 @@ O `@otheater/workflows` é pacote novo do monorepo, não dependência de fora. E
 | P10 | API e CLI: validar, simular com o `fake-agent`, salvar, ativar, diff, listar, instalar (`ot flow ...`) | P4, P5, P9 | P12 | a fazer |
 | P11 | Editor do YAML na TUI, com o validador do P1 | P10 | P15, P16 (a parte automática) | a fazer |
 | P12 | Workflows prontos: `github-issues`, `pr-review` e `ci-fix` | P6, P8 | P10 | a fazer |
-| P13 | Mural de recados da peça (N308, opção 1): `post_note`, `read_notes` | P0 | P1, P7 | a fazer |
+| P13 | Mural de recados da peça (N308, opção 1): `post_note`, `read_notes` | P0 | P1, P7 | em PR |
 | P14 | Supervisão do Diretor (N309): sinais, `warn` e `redirect`, o canal pela resposta MCP (D8) e os três extras | P13 | P2, P5 | a fazer |
 | P15 | `ask_director` (N308, opção 2): o `blocked` que não encerra, com espera, prazo e o modo `relay` pelo canal do P14 | P14 | P3 a P12 | a fazer |
 | P16 | Aceite da fase | P1 a P15 | nada | a fazer |
@@ -374,7 +374,21 @@ Todos **[proposta]** quanto ao nome. Cada um entra no catálogo do protocolo e n
 - O recado é dado, não ordem: o texto chega ao outro Ator marcado como vindo de outro Ator, e o contrato continua sendo a interface.
 - **Aceite próprio:** dois Atores do `fake-agent` (script `role-play`) trocam um recado pelo mural; o limite é respeitado; com `off`, as ferramentas não aparecem.
 
-**Como ficou:** a preencher.
+**Como ficou:** [V] feito, em PR (2026-11-25).
+- A configuração é a seção `collab.notes`, em `daemon/src/collab/notes-config.ts` e `config.ts`:
+  - `mode` pode ser `play` (o padrão), `deps` ou `off`;
+  - `max_per_actor` vai de 1 a 1000, e o padrão é 20;
+  - `max_chars` vai de 1 a `NOTE_TEXT_MAX`, e o padrão é 2000.
+- As chaves (`NOTES_KEY_PREFIX`, `notesKey`) estão em `core/src/blackboard-keys.ts`. As ferramentas, só do Ator, estão em `core/src/registries/tools.ts`. Os eventos `note.posted` e `collab.limit_reached` estão em `protocol/src/collab-events.ts`.
+- Os handlers estão em `daemon/src/collab/notes.ts`.
+  - Cada recado é uma versão de `notes/<demanda>`, com a tentativa como autora. `note.posted` leva o tamanho do texto, não o texto.
+  - `read_notes` devolve `source: notes_from_other_actors` e um aviso de que os recados são dados, não ordens.
+  - Os erros são `collab_off`, `no_demand`, `limit_reached` (com `limit` e `max`) e `not_visible`.
+  - O evento é gravado à parte: se a gravação falhar, o recado fica.
+- No modo `off`, o servidor MCP tira as duas ferramentas da lista (a opção `hiddenTools`, lida a cada sessão), e os handlers recusam.
+- O `fake-agent` ganhou duas fichas no `role-play`: `#actor-note:<id>=<texto>[*n]` e `#actor-read-notes:<id>`.
+- [V] Testes: 12 de unidade (`collab/notes.test.ts`), 1 no servidor (`mcp/server.test.ts`) e 3 de ponta a ponta com o `fake-agent` (`orchestration/notes-e2e.test.ts`: a troca, o limite e o `off`). Todas as suítes afetadas passam (819 testes).
+- [proposta] `collab.*` não entrou nas seções quentes de `config-hot.ts`. Os handlers leem a seção na hora do uso, mas uma mudança feita pelo `PUT /v1/config` ainda pede reinício, como as outras seções que não estão na lista.
 
 ### P14. Supervisão do Diretor (N309, D8)
 

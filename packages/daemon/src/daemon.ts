@@ -76,6 +76,7 @@ import { ToolHandlers } from './mcp/handlers.js';
 import { registerBrowserTools, secretPathCheck, type BrowserTools } from './browser/index.js';
 import { nodePathHost, registerWorkTools, type ToolsDeps } from './tools/index.js';
 import { registerReadTools } from './mcp/read-tools.js';
+import { NOTE_TOOL_NAMES, registerNoteTools } from './collab/notes.js';
 import { FrameworkMcpServer } from './mcp/server.js';
 import { PluginAggregator, type ActivePluginSource } from './plugins/aggregate.js';
 import { PluginPanelService } from './plugins/panel.js';
@@ -599,9 +600,17 @@ export async function startDaemon(options: StartDaemonOptions): Promise<DaemonHa
       // So are the tools of the Director that move a play (P8); their runtime is bound later.
       handlers: scenarioHandlers.register(
         orchestrationHandlers.register(
-          registerWorkTools(registerReadTools(handlers, composition.store), workDeps),
+          registerWorkTools(
+            registerNoteTools(registerReadTools(handlers, composition.store), {
+              store: composition.store,
+              settings: () => config.collab.notes,
+            }),
+            workDeps,
+          ),
         ),
       ),
+      // Phase 11b, P13: `collab.notes.mode: off` leaves the notes board out of every listing.
+      hiddenTools: () => new Set<string>(config.collab.notes.mode === 'off' ? NOTE_TOOL_NAMES : []),
       logger: composition.logger,
       version,
       gate,
