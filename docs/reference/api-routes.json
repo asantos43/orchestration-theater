@@ -1878,6 +1878,38 @@
       }
     },
     {
+      "id": "stopDaemon",
+      "method": "POST",
+      "path": "/v1/daemon/stop",
+      "kind": "json",
+      "summary": "Stop the daemon: it answers first, then shuts down as on a signal",
+      "pathParams": [],
+      "response": {
+        "type": "object",
+        "properties": {
+          "stopping": {
+            "type": "boolean",
+            "const": true
+          }
+        },
+        "required": [
+          "stopping"
+        ],
+        "additionalProperties": false
+      },
+      "errors": {
+        "401": [
+          "unauthorized"
+        ],
+        "403": [
+          "forbidden"
+        ],
+        "500": [
+          "internal"
+        ]
+      }
+    },
+    {
       "id": "answerDecision",
       "method": "POST",
       "path": "/v1/decisions/:decisionId/answer",
