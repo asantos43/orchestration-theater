@@ -103,6 +103,8 @@ jobs:
     # skip this one.
     if: ${{ !cancelled() && (github.event_name != 'pull_request' || needs.changes.outputs.build == 'true') }}
     runs-on: windows-latest
+    # A normal run takes about 5 minutes; a hung step fails here instead of holding the runner.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4

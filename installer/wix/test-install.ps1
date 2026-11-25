@@ -17,12 +17,16 @@
   The version `ot --version` has to print.
 .PARAMETER Force
   Runs outside CI (a Windows virtual machine of yours).
+.PARAMETER MsiTimeoutMinutes
+  How long one msiexec may run before the test stops it and prints the end of its log (default 10;
+  a normal install or removal takes under a minute). [proposta]
 #>
 [CmdletBinding()]
 param(
   [Parameter(Mandatory = $true)] [string] $Msi,
   [Parameter(Mandatory = $true)] [string] $SemVer,
-  [switch] $Force
+  [switch] $Force,
+  [ValidateRange(1, 120)] [int] $MsiTimeoutMinutes = 10
 )
 
 Set-StrictMode -Version Latest
@@ -47,7 +51,17 @@ function Check([bool] $Condition, [string] $Message) {
 
 function Invoke-Msi([string[]] $Arguments, [string] $LogName) {
   $log = Join-Path $LogDir $LogName
-  $process = Start-Process -FilePath 'msiexec.exe' -ArgumentList ($Arguments + @('/qn', '/l*v', "`"$log`"")) -Wait -PassThru
+  $process = Start-Process -FilePath 'msiexec.exe' -ArgumentList ($Arguments + @('/qn', '/l*v', "`"$log`"")) -PassThru
+  # Read the handle now, or ExitCode stays empty once the process has ended.
+  $null = $process.Handle
+  # A bounded wait (the run of 2026-11-25 hung here until the runner was lost, with no log): on a
+  # timeout the end of the msiexec log says which action was running.
+  if (-not $process.WaitForExit($MsiTimeoutMinutes * 60 * 1000)) {
+    Write-Host "::error::msiexec $($Arguments[0]) did not end in $MsiTimeoutMinutes minute(s); the end of the log:"
+    if (Test-Path $log) { Get-Content $log -Tail 120 | ForEach-Object { Write-Host $_ } }
+    Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+    return -1
+  }
   if ($process.ExitCode -ne 0) {
     Write-Host "msiexec exited with $($process.ExitCode); the end of the log:"
     if (Test-Path $log) { Get-Content $log -Tail 80 | ForEach-Object { Write-Host $_ } }
