@@ -603,6 +603,22 @@ importers:
         specifier: 4.0.0
         version: 4.0.0(@types/react@19.3.0)
 
+  packages/workflows:
+    dependencies:
+      '@otheater/core':
+        specifier: workspace:*
+        version: link:../core
+      yaml:
+        specifier: 2.9.1
+        version: 2.9.1
+      zod:
+        specifier: 4.6.7
+        version: 4.6.7
+    devDependencies:
+      xstate:
+        specifier: 5.33.3
+        version: 5.33.3
+
   tools/bench:
     dependencies:
       '@otheater/adapter-store-sqlite':

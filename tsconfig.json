@@ -4,6 +4,7 @@
     { "path": "packages/core" },
     { "path": "packages/sdk" },
     { "path": "packages/protocol" },
+    { "path": "packages/workflows" },
     { "path": "packages/client" },
     { "path": "packages/tui" },
     { "path": "packages/fake-agent" },

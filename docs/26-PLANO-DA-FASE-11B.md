@@ -87,7 +87,7 @@ O `@otheater/workflows` é pacote novo do monorepo, não dependência de fora. E
 | Passo | Título | Depende de | Pode correr junto com | Estado |
 |---|---|---|---|---|
 | P0 | Plano e decisões (este documento) | nada | todos os que dependem só dele | feito (este PR) |
-| P1 | `@otheater/workflows`: schema da definição, linguagem de condição, compilador para XState, validador e hash | P0 | P7, P13 | a fazer |
+| P1 | `@otheater/workflows`: schema da definição, linguagem de condição, compilador para XState, validador e hash | P0 | P7, P13 | em PR |
 | P2 | Runtime do motor no daemon e tipos de passo genéricos (`call_tool`, `wait_event`, `branch`, `approval`, `notify`) | P1 | P5, P14 | a fazer |
 | P3 | A definição `play` 2.0: os tipos de passo da peça, a troca da máquina, o `flows.<id>` como parâmetro, o snapshot 1.x recusado | P2 | P6, P8, P9 | a fazer |
 | P4 | Versão de nascimento e migração em ponto seguro (N295), com a 2.0 → 2.1 de teste e o caos sobre workflows gerados | P3 | P10, P12 | a fazer |
@@ -212,7 +212,38 @@ Todos **[proposta]** quanto ao nome. Cada um entra no catálogo do protocolo e n
 - Hash estável da definição normalizada.
 - **Aceite próprio:** a definição `play` (escrita neste passo, só como dado) valida e compila; casos negativos para cada regra do validador; o hash não muda com a ordem das chaves.
 
-**Como ficou:** a preencher.
+**Como ficou** (2026-11-25, [V] com 145 testes locais):
+
+- O pacote é puro: depende só de `@otheater/core`, `zod` e `yaml`. O `xstate` entra só como dependência de desenvolvimento, para o teste que roda a configuração compilada num ator real. A regra `workflows-pure` do dependency-cruiser impede que ele importe o daemon, o cliente ou o Node.
+- Módulos:
+  - `definition` (schema zod);
+  - `condition` (análise, checagem de tipos e avaliação);
+  - `step-types` (registro de tipos de passo, com os genéricos, os do code host e os da peça);
+  - `validate`, `compile` (configuração XState com guardas e ações nomeadas, sem `createActor`) e `hash` (SHA-256 do JSON canônico);
+  - `yaml`, que lê o YAML com posição de linha e coluna;
+  - `schema-file`, que gera `docs/reference/workflow-definition.schema.json` (pelo script `pnpm workflow:schema`);
+  - `definitions/play` (a peça só como dado).
+- Arestas: aceitam a forma curta (`'a -> b when cond'`) e a de objeto (`from`, `to`, `when`, `limit`, `on_limit`). As duas dão o mesmo hash.
+- Os erros levam o caminho real no documento (`edges[3].when`, `nodes.review.step`) e um código da lista `VALIDATION_CODES`. Cada código tem um caso negativo, e um teste confere que nenhum fica sem caso.
+- Regra dos ciclos: todo ciclo precisa de uma aresta com `limit`. O caminho por `on_limit` também conta, então `a -(limit, on_limit c)-> b` com `c -> a` é recusado.
+- No YAML, chaves repetidas, tags desconhecidas e avisos do parser viram erro com linha e coluna. O tamanho e o número de aliases têm limite.
+- A linguagem de condição tem:
+  - os operadores `==`, `!=`, `<`, `<=`, `>`, `>=`, `in`, `and`, `or`, `not` e parênteses;
+  - os literais string, número, booleano, `null` e lista à direita do `in`;
+  - os caminhos `output.*` e `inputs.*`, sem ler o protótipo.
+  O tamanho (500) e a profundidade (32) são opções.
+- A peça como dado valida sem erro nem aviso, compila e percorre o caminho feliz, os atalhos e os limites. O hash não muda com a ordem das chaves.
+- **[proposta], perguntas ao dono (vão no PR):**
+  1. `deliver` sem modo segue o `delivery.mode` das regras do Produtor, e conta como aprovação; com `ask` também. Com `pr` ou `direct_merge` fixo na definição, ele passa por cima dessas regras e exige um `approval` antes.
+  2. `on_limit` padrão é `failed`; a peça manda ao Produtor.
+  3. `producer_rounds: 20` limita as voltas pelo Produtor.
+  4. Os tipos nomeados de entrada são `code_host_repo` e `duration`.
+  5. Os limites do YAML (256 KiB, 50 aliases) e da condição (500, 32) são opções do pacote. A chave de configuração entra no P2 ou no P10.
+  6. As escolhas de `await_producer` são `plan`, `script`, `execution`, `deliver` e `cancel`.
+  7. Na peça, a falha da integração vai ao Produtor.
+  8. A faixa de `engine` aceita só inteiros (`>=1 <2`).
+  9. Os avisos do parser YAML contam como erro.
+  10. `approval.on_timeout` tem os modos `stop` e `reject`.
 
 ### P2. Runtime do motor e tipos de passo genéricos
 
