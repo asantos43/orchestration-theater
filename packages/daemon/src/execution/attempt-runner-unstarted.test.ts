@@ -21,7 +21,7 @@ import { SessionPool } from './pool.js';
 import type { ExecutionSettings } from './settings.js';
 
 /**
- * `resume.when_unstarted` [proposta]: the daemon dies between `session.opened` and the prompt of
+ * `resume.when_unstarted` (N307, decided): the daemon dies between `session.opened` and the prompt of
  * the attempt (`attempt.before_prompt`), so the conversation it reloads at the restart never got
  * the task. With `prompt` (the default) the native resume sends the task again; with `continue` it
  * sends the continue prompt, as before the key. The continue prompt here is a script that fails, so

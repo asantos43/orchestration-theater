@@ -255,7 +255,7 @@ export const QUOTA_WAIT_MISSED_MODES = ['handoff', 'park'] as const;
  */
 export const ON_PROFILE_REMOVED_MODES = ['handoff', 'park'] as const;
 /**
- * [proposta] `resume.on_restart`: what the daemon does at start with an attempt of a live play that
+ * `resume.on_restart` (N307, decided 2026-11-25: default `native`): what the daemon does at start with an attempt of a live play that
  * was running when the previous daemon stopped (architecture 5.21). `native` keeps it for its play:
  * when the play runs the stage or the demand again, the same attempt is resumed by reloading its
  * conversation (`session/load`) in the same profile, with no new attempt; when that profile cannot
@@ -264,7 +264,7 @@ export const ON_PROFILE_REMOVED_MODES = ['handoff', 'park'] as const;
  */
 export const ON_RESTART_MODES = ['native', 'handoff'] as const;
 /**
- * [proposta] `resume.when_unstarted`: what a native resume after a restart sends when the reloaded
+ * `resume.when_unstarted` (N307, decided 2026-11-25: default `prompt`): what a native resume after a restart sends when the reloaded
  * conversation never started the task (the daemon died between `session.opened` and the
  * `session/prompt`, so the log of the attempt has no work of the client: no message, thought,
  * plan or tool call). `prompt` sends the task of the attempt again; `continue` sends
@@ -2401,9 +2401,9 @@ export const DaemonConfigSchema = z
         quota_wait_missed: z.enum(QUOTA_WAIT_MISSED_MODES).default('handoff'),
         /** [proposta] (P21b, N152) See {@link ON_PROFILE_REMOVED_MODES}. */
         on_profile_removed: z.enum(ON_PROFILE_REMOVED_MODES).default('handoff'),
-        /** [proposta] See {@link ON_RESTART_MODES}. */
+        /** N307 (decided): see {@link ON_RESTART_MODES}. */
         on_restart: z.enum(ON_RESTART_MODES).default('native'),
-        /** [proposta] See {@link WHEN_UNSTARTED_MODES}. */
+        /** N307 (decided): see {@link WHEN_UNSTARTED_MODES}. */
         when_unstarted: z.enum(WHEN_UNSTARTED_MODES).default('prompt'),
         /** [proposta] What the Executor is told when a conversation is reloaded. */
         continue_prompt: z

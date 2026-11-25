@@ -113,9 +113,9 @@ export interface ExecutionSettings {
   readonly quotaWaitMissed: (typeof QUOTA_WAIT_MISSED_MODES)[number];
   /** `resume.on_profile_removed` [proposta] (P21b, N152). */
   readonly onProfileRemoved: (typeof ON_PROFILE_REMOVED_MODES)[number];
-  /** `resume.on_restart` [proposta]. */
+  /** `resume.on_restart` (N307, decided). */
   readonly onRestart: (typeof ON_RESTART_MODES)[number];
-  /** `resume.when_unstarted` [proposta]: the prompt of a resume whose conversation never started. */
+  /** `resume.when_unstarted` (N307, decided): the prompt of a resume whose conversation never started. */
   readonly whenUnstarted: (typeof WHEN_UNSTARTED_MODES)[number];
   /** What the Executor is told when a conversation is reloaded. */
   readonly continuePrompt: string;
