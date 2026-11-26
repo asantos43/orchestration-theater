@@ -1,20 +1,26 @@
 // SPDX-License-Identifier: MPL-2.0
-import type { ApiQuotaStatus } from '@otheater/protocol';
+import type { ApiQuotaStatus, ApiRoles } from '@otheater/protocol';
 import { describe, expect, it } from 'vitest';
 import { fieldStep } from './field.js';
 import {
   LIMIT_KEYS,
+  alignColumns,
   flatten,
   formatSpan,
   limitEdit,
   limitUnsetEdit,
+  moveRoleCursor,
   moved,
   nextChoice,
   addLoginModeOf,
   parseLimit,
   quotaLine,
   reorderEdit,
+  roleItems,
   ruleEdit,
+  settingsFolded,
+  windowCell,
+  windowColumns,
 } from './model.js';
 
 function spec(key: string): (typeof LIMIT_KEYS)[number] {
@@ -124,5 +130,79 @@ describe('the one-line field', () => {
   it('takes a paste without its marks and line breaks, and ignores control bytes', () => {
     expect(fieldStep('', undefined, '\x1b[200~sk-1\n23\x1b[201~').value).toBe('sk-123');
     expect(fieldStep('x', undefined, '\x01').value).toBe('x');
+  });
+});
+
+/** The tab in columns (the owner's "Seções de hoje, em tabela", 2026-11-26). */
+describe('the columns of the tab', () => {
+  it('aligns the cells, leaves the last one and the empty tail alone, and cuts a wide row', () => {
+    expect(
+      alignColumns([
+        ['account', 'kind'],
+        ['claude-code/main', 'Subscription'],
+      ]),
+    ).toEqual(['account           kind', 'claude-code/main  Subscription']);
+    expect(
+      alignColumns([
+        ['a', ''],
+        ['bb', 'x'],
+      ]),
+    ).toEqual(['a', 'bb  x']);
+    expect(alignColumns([['key', '= 3']], 1)).toEqual(['key = 3']);
+    expect(alignColumns([['abcdef', 'ghijkl']], 2, 8)).toEqual(['abcdef …']);
+  });
+
+  it('starts Limits folded or open by ui.settingsTab.limits, and Enter flips it', () => {
+    expect([...settingsFolded(new Set(), 'folded')]).toEqual(['settings.limits']);
+    expect([...settingsFolded(new Set(['settings.limits']), 'folded')]).toEqual([]);
+    expect([...settingsFolded(new Set(), 'open')]).toEqual([]);
+    expect([...settingsFolded(new Set(['settings.roles']), 'open')]).toEqual(['settings.roles']);
+  });
+
+  it('puts 5h and 7d first, then the other windows by name, and `—` with no reading', () => {
+    const quota = (windows: { window: string; usedPercent: number }[]): ApiQuotaStatus =>
+      ({ windows }) as unknown as ApiQuotaStatus;
+    const read = quota([
+      { window: 'weekly_opus', usedPercent: 12.4 },
+      { window: '5h', usedPercent: 40 },
+    ]);
+    expect(windowColumns([null, read, undefined])).toEqual(['5h', '7d', 'weekly_opus']);
+    expect(windowColumns([])).toEqual(['5h', '7d']);
+    expect(windowCell(read, 'weekly_opus')).toBe('12%');
+    expect(windowCell(read, '7d')).toBe('—');
+    expect(windowCell(null, '5h')).toBe('—');
+  });
+});
+
+describe('the roles on one line each', () => {
+  const roles = {
+    roles: [
+      { role: 'director', executors: [{ id: 'a' }, { id: 'b' }] },
+      { role: 'author', executors: [{ id: 'c' }] },
+    ],
+  } as unknown as ApiRoles;
+
+  it('lists every role whole with no view, and only the open one with a view', () => {
+    expect(roleItems(roles)).toHaveLength(5);
+    expect(roleItems(roles, { open: null })).toEqual([
+      { kind: 'rule', role: 'director' },
+      { kind: 'rule', role: 'author' },
+    ]);
+    expect(roleItems(roles, { open: 'author' })).toEqual([
+      { kind: 'rule', role: 'director' },
+      { kind: 'rule', role: 'author' },
+      { kind: 'executor', role: 'author', index: 0 },
+    ]);
+  });
+
+  it('opens the role of the line the cursor lands on and keeps the cursor on that line', () => {
+    // director open: director, a, b, author. Down from b lands on author, which opens.
+    expect(moveRoleCursor(roles, 'director', 2, 1)).toEqual({ open: 'author', at: 1 });
+    // author open: director, author, c. Up from author lands on director, which opens.
+    expect(moveRoleCursor(roles, 'author', 1, -1)).toEqual({ open: 'director', at: 0 });
+    expect(moveRoleCursor(roles, 'director', 0, 1)).toEqual({ open: 'director', at: 1 });
+    // At the edges the cursor stays.
+    expect(moveRoleCursor(roles, 'director', 0, -1)).toEqual({ open: 'director', at: 0 });
+    expect(moveRoleCursor(roles, 'author', 2, 1)).toEqual({ open: 'author', at: 2 });
   });
 });

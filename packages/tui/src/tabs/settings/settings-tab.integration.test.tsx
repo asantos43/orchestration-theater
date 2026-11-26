@@ -59,6 +59,8 @@ async function openLimits(daemon: TuiTestDaemon): Promise<RenderedApp> {
   await app.waitForText('Limits');
   // The sections: accounts, Executors, roles, limits; then the fourth key of the limits.
   for (let index = 0; index < 3; index += 1) await key(app, '\x1b[B');
+  // Limits starts folded (`ui.settingsTab.limits`): Enter opens it.
+  await key(app, '\r');
   for (let index = 0; index < 3; index += 1) await key(app, 'j');
   return app;
 }
@@ -75,7 +77,7 @@ describe('the tab Settings, with a daemon', () => {
       await key(app, 'e');
       await key(app, '7');
       await key(app, '\r');
-      await app.waitForText('attempts_per_demand = 7');
+      await app.waitForText(/attempts_per_demand +=\s7/);
       expect(await configFile(daemon)).toMatch(/attempts_per_demand:\s*7/);
       await waitUntil(() =>
         watcher.daemon.stores.events
@@ -95,7 +97,7 @@ describe('the tab Settings, with a daemon', () => {
     await key(app, '0');
     await key(app, '\r');
     const frame = await app.waitForText('attempts_per_demand takes a whole number');
-    expect(frame).not.toContain('attempts_per_demand = 0');
+    expect(frame).not.toMatch(/attempts_per_demand +=\s0/);
     expect(await configFile(daemon)).toBe(before);
   });
 

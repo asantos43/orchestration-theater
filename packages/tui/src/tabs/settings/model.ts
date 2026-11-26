@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 import type { ApiQuotaStatus, ApiRoles, ConfigEditBody } from '@otheater/protocol';
+import { cellWidth, clip } from '../../layout/text.js';
 
 /**
  * The pure part of the tab Settings (P16 of Phase 7): what its rows say and what its commands
@@ -14,6 +15,53 @@ export const SECTION_IDS = [
   'settings.limits',
 ] as const;
 export type SettingsSection = (typeof SECTION_IDS)[number];
+
+/**
+ * The folded set the sections take: the default of `ui.settingsTab.limits` [proposta] (Limits
+ * folded), flipped by the sections the person toggled (`LayoutStore.collapsedSections`), as the
+ * tab Trajectories does. The ids of other tabs in `toggled` are left out.
+ */
+export function settingsFolded(
+  toggled: ReadonlySet<string>,
+  limits: 'folded' | 'open',
+): ReadonlySet<string> {
+  const folded = new Set<string>();
+  for (const id of SECTION_IDS) {
+    const starts = id === 'settings.limits' && limits === 'folded';
+    if (starts !== toggled.has(id)) folded.add(id);
+  }
+  return folded;
+}
+
+/**
+ * Rows of cells in columns `gap` cells apart; the last cell is not padded, nor a row's empty tail.
+ * A row wider than `maxWidth` is cut with `…`, so a narrow tab keeps one line per row.
+ */
+export function alignColumns(
+  rows: readonly (readonly string[])[],
+  gap = 2,
+  maxWidth = Number.POSITIVE_INFINITY,
+): string[] {
+  const widths: number[] = [];
+  for (const row of rows) {
+    row.forEach((cell, index) => {
+      widths[index] = Math.max(widths[index] ?? 0, cellWidth(cell));
+    });
+  }
+  const space = ' '.repeat(gap);
+  return rows
+    .map((row) =>
+      row
+        .map((cell, index) =>
+          index === row.length - 1
+            ? cell
+            : cell + ' '.repeat((widths[index] ?? 0) - cellWidth(cell)),
+        )
+        .join(space)
+        .trimEnd(),
+    )
+    .map((line) => (cellWidth(line) <= maxWidth ? line : `${clip(line, maxWidth - 1)}…`));
+}
 
 const SECOND = 1000;
 const MINUTE = 60 * SECOND;
@@ -62,20 +110,74 @@ export function quotaLine(quota: ApiQuotaStatus | null | undefined, now: number)
   };
 }
 
+/** The windows every account shows (`5h`, `7d`), then the others the accounts read, by name. */
+export const QUOTA_COLUMNS = ['5h', '7d'] as const;
+
+export function windowColumns(
+  quotas: readonly (ApiQuotaStatus | null | undefined)[],
+): readonly string[] {
+  const others = new Set<string>();
+  for (const quota of quotas) {
+    for (const window of quota?.windows ?? []) {
+      if (!(QUOTA_COLUMNS as readonly string[]).includes(window.window)) others.add(window.window);
+    }
+  }
+  return [...QUOTA_COLUMNS, ...[...others].sort()];
+}
+
+/** The used percent of a window, rounded (`12%`), or `—` when the account has no reading of it. */
+export function windowCell(quota: ApiQuotaStatus | null | undefined, name: string): string {
+  const window = quota?.windows.find((candidate) => candidate.window === name);
+  return window === undefined ? '—' : `${String(Math.round(window.usedPercent))}%`;
+}
+
 /** One line of the section Roles: the rule of the role, or one Executor of its list. */
 export type RoleItem =
   | { readonly kind: 'rule'; readonly role: string }
   | { readonly kind: 'executor'; readonly role: string; readonly index: number };
 
-export function roleItems(roles: ApiRoles): readonly RoleItem[] {
+/**
+ * The lines of the section Roles. With no `open` (`ui.settingsTab.roles: list`) every role shows
+ * its rule and its whole list; with `open` (`line` [proposta]) every role is one line and only the
+ * role named shows its list, to reorder it (`null`: none).
+ */
+export function roleItems(
+  roles: ApiRoles,
+  view?: { readonly open: string | null },
+): readonly RoleItem[] {
   const items: RoleItem[] = [];
   for (const role of roles.roles) {
     items.push({ kind: 'rule', role: role.role });
+    if (view !== undefined && view.open !== role.role) continue;
     role.executors.forEach((_executor, index) => {
       items.push({ kind: 'executor', role: role.role, index });
     });
   }
   return items;
+}
+
+/**
+ * The cursor of the section Roles on one line per role, moved by `delta`: the role of the line it
+ * lands on opens, the one it leaves closes, and the cursor stays on the same line.
+ */
+export function moveRoleCursor(
+  roles: ApiRoles,
+  open: string | null,
+  at: number,
+  delta: -1 | 1,
+): { readonly open: string | null; readonly at: number } {
+  const items = roleItems(roles, { open });
+  const last = items.length - 1;
+  const target = items[Math.min(last, Math.max(0, Math.min(at, last) + delta))];
+  if (target === undefined) return { open, at: 0 };
+  const next = roleItems(roles, { open: target.role });
+  const index = next.findIndex(
+    (item) =>
+      item.kind === target.kind &&
+      item.role === target.role &&
+      (item.kind === 'rule' || target.kind === 'rule' || item.index === target.index),
+  );
+  return { open: target.role, at: Math.max(0, index) };
 }
 
 /** The ids of a list with the one at `index` moved by `delta`; `undefined` when it would leave the list. */

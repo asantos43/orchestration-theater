@@ -98,8 +98,17 @@ const A = executor('opus', 'claude-code', 'main', ['author']);
 const B = executor('sonnet', 'claude-code', 'main', ['author']);
 const C = executor('gpt', 'codex', 'work', ['author']);
 
-function rolesOf(order: readonly string[], whenExhausted: 'next' | 'wait'): ApiRoles {
+function rolesOf(
+  order: readonly string[],
+  whenExhausted: 'next' | 'wait',
+  reviewer: readonly string[] = [],
+): ApiRoles {
   const all = [A, B, C];
+  const listOf = (ids: readonly string[]) =>
+    ids.map((id) => {
+      const found = all.find((e) => e.id === id);
+      return { ...found, origin: 'config', blockedBy: null, shortfalls: [] };
+    });
   return {
     preset: 'moderate',
     capabilityCheck: 'warn',
@@ -109,12 +118,20 @@ function rolesOf(order: readonly string[], whenExhausted: 'next' | 'wait'): ApiR
         role: 'author',
         source: 'config',
         whenExhausted,
-        executors: order.map((id) => {
-          const found = all.find((e) => e.id === id);
-          return { ...found, origin: 'config', blockedBy: null, shortfalls: [] };
-        }),
+        executors: listOf(order),
         next: null,
       },
+      ...(reviewer.length === 0
+        ? []
+        : [
+            {
+              role: 'reviewer',
+              source: 'config',
+              whenExhausted: 'wait',
+              executors: listOf(reviewer),
+              next: null,
+            },
+          ]),
     ],
     notes: [],
   } as unknown as ApiRoles;
@@ -124,6 +141,8 @@ class FakeSettingsApi implements SettingsApi {
   accounts: ApiProfile[] = [profile('claude-code', 'main'), profile('codex', 'work')];
   order: string[] = [A.id, B.id, C.id];
   whenExhausted: 'next' | 'wait' = 'next';
+  /** A second role, to walk between roles (none by default). */
+  reviewer: string[] = [];
   limits: Record<string, unknown> = { attempts_per_demand: 3 };
   edits: ConfigEditBody[] = [];
   added: AddProfileBody[] = [];
@@ -166,7 +185,7 @@ class FakeSettingsApi implements SettingsApi {
     return Promise.resolve([A, B, C]);
   }
   roles(): Promise<ApiRoles> {
-    return Promise.resolve(rolesOf(this.order, this.whenExhausted));
+    return Promise.resolve(rolesOf(this.order, this.whenExhausted, this.reviewer));
   }
   config(): Promise<ApiConfig> {
     return Promise.resolve({
@@ -424,6 +443,8 @@ async function open(
     mouseClipboard?: RenderAppOptions['mouseClipboard'];
     clipboardCopy?: UiSettings['clipboardCopy'];
     modelPick?: UiSettings['setup']['modelPick'];
+    /** `ui.settingsTab`; the default is the one the daemon writes (Limits folded, roles on a line). */
+    settingsTab?: Partial<UiSettings['settingsTab']>;
     /** The text that says the tab is drawn (an account, by default). */
     ready?: string;
   } = {},
@@ -448,6 +469,7 @@ async function open(
       login: { browser: options.browser ?? 'off' },
       clipboardCopy: options.clipboardCopy ?? TEST_UI_SETTINGS.clipboardCopy,
       setup: { ...TEST_UI_SETTINGS.setup, modelPick: options.modelPick ?? 'preset' },
+      settingsTab: { ...TEST_UI_SETTINGS.settingsTab, ...options.settingsTab },
     },
     mouseWrites: options.mouseWrites,
     mouseClipboard: options.mouseClipboard,
@@ -527,14 +549,35 @@ async function addAccount(
 }
 
 describe('the tab Settings', () => {
-  it('draws the accounts with state and quota, the Executors, the roles and the limits', async () => {
+  it('draws the sections in columns, with Limits folded (ui.settingsTab, 2026-11-26)', async () => {
     const { app } = await open(new FakeSettingsApi());
     const frame = await app.settle();
-    expect(frame).toContain('claude-code/main');
-    expect(frame).toContain('40%');
-    expect(frame).toContain('opus-high@claude-code/main');
-    expect(frame).toContain('author');
-    expect(frame).toContain('attempts_per_demand');
+    // The accounts: account, kind, one column per window (`—` with no reading) and the state.
+    expect(frame).toMatch(/account +kind +5h +7d +state/);
+    expect(frame).toMatch(/claude-code\/main +Subscription +40% +— +ok · /);
+    // A row wider than the tab is cut with `…` instead of breaking in two.
+    expect(frame).not.toMatch(/│ resets in 2h +│/);
+    // The Executors and their roles in two columns.
+    expect(frame).toMatch(/Executor +roles/);
+    expect(frame).toMatch(/opus-high@claude-code\/main +author/);
+    // One line per role, and the list of the role under the cursor open below it.
+    expect(frame).toMatch(/role +Executors +when exhausted/);
+    expect(frame).toMatch(/author +opus-high@claude-co… +→ go to the next/);
+    expect(frame).toContain(`     1. ${A.id}`);
+    // Limits keeps its header only until Enter opens it.
+    expect(frame).toContain('▸ Limits');
+    expect(frame).not.toContain('attempts_per_demand');
+  });
+
+  it('opens Limits and draws every list whole with ui.settingsTab open and list', async () => {
+    const { app } = await open(new FakeSettingsApi(), {
+      settingsTab: { limits: 'open', roles: 'list' },
+    });
+    const frame = await app.settle();
+    expect(frame).toContain('▾ Limits');
+    expect(frame).toMatch(/attempts_per_demand +=\s3/);
+    expect(frame).toContain('author  when exhausted: go to the next');
+    expect(frame).not.toMatch(/role +Executors +when exhausted/);
   });
 
   it('says how to add an account when there is none: the bar has A, L and W, and L names them (N324)', async () => {
@@ -833,6 +876,30 @@ describe('the tab Settings', () => {
     ]);
   });
 
+  it('opens the list of the role the cursor lands on, one line per role (ui.settingsTab.roles: line)', async () => {
+    const api = new FakeSettingsApi();
+    api.reviewer = [C.id];
+    const { app } = await open(api);
+    await key(app, DOWN);
+    let frame = await key(app, DOWN);
+    // author is open (the first role); reviewer keeps its line only.
+    expect(frame).toContain(`     2. ${B.id}`);
+    expect(frame).toMatch(/reviewer +gpt-high@code… +→ wait for the reset/);
+    // author, A, B, C, then reviewer: its list opens and the one of author closes.
+    for (let index = 0; index < 4; index += 1) frame = await key(app, 'j');
+    expect(frame).not.toContain(`2. ${B.id}`);
+    expect(frame).toContain(`     1. ${C.id}`);
+    // Back up: the line above is author's, which opens again; its first Executor moves down.
+    frame = await key(app, 'k');
+    expect(frame).toContain(`     2. ${B.id}`);
+    await key(app, 'j');
+    await key(app, SHIFT_DOWN);
+    await waitUntil(() => api.edits.length === 1);
+    expect(api.edits[0]?.set).toEqual([
+      { path: ['roles', 'author', 'executors'], value: [B.id, A.id, C.id] },
+    ]);
+  });
+
   it('flips the rule next/wait of a role', async () => {
     const api = new FakeSettingsApi();
     const { app } = await open(api);
@@ -1090,10 +1157,10 @@ describe('the tab Settings', () => {
 
   it('reloads when an event says the configuration changed', async () => {
     const api = new FakeSettingsApi();
-    const { app, online } = await open(api);
+    const { app, online } = await open(api, { settingsTab: { limits: 'open' } });
     api.limits = { attempts_per_demand: 9 };
     emit(online, 'config.changed', { hot: ['limits.attempts_per_demand'], restart: [] });
-    await app.waitForText('attempts_per_demand = 9');
+    await app.waitForText(/attempts_per_demand +=\s9/);
   });
 });
 

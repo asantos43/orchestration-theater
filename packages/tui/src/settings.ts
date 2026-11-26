@@ -190,6 +190,17 @@ export interface UiSidebarSettings {
   readonly finishedLimit: number;
 }
 
+export const SETTINGS_TAB_LIMITS_MODES = ['folded', 'open'] as const;
+export type SettingsTabLimitsMode = (typeof SETTINGS_TAB_LIMITS_MODES)[number];
+export const SETTINGS_TAB_ROLES_MODES = ['line', 'list'] as const;
+export type SettingsTabRolesMode = (typeof SETTINGS_TAB_ROLES_MODES)[number];
+
+/** `ui.settingsTab` [proposta] (2026-11-26): Limits folded or open; the roles on one line or whole. */
+export interface UiSettingsTabSettings {
+  readonly limits: SettingsTabLimitsMode;
+  readonly roles: SettingsTabRolesMode;
+}
+
 export const LOGIN_BROWSER_MODES = ['auto', 'key', 'off'] as const;
 export type LoginBrowserMode = (typeof LOGIN_BROWSER_MODES)[number];
 
@@ -222,6 +233,7 @@ export interface UiSettings {
   readonly newProject: UiNewProjectSettings;
   readonly sidebar: UiSidebarSettings;
   readonly login: UiLoginSettings;
+  readonly settingsTab: UiSettingsTabSettings;
 }
 
 export const DEFAULT_RENDER: UiRenderSettings = {
@@ -293,6 +305,8 @@ export const DEFAULT_SIDEBAR: UiSidebarSettings = { finishedPlays: 'collapsed', 
 
 export const DEFAULT_LOGIN: UiLoginSettings = { browser: 'auto' };
 
+export const DEFAULT_SETTINGS_TAB: UiSettingsTabSettings = { limits: 'folded', roles: 'line' };
+
 export const DEFAULT_UI_SETTINGS: UiSettings = {
   locale: 'auto',
   render: DEFAULT_RENDER,
@@ -313,6 +327,7 @@ export const DEFAULT_UI_SETTINGS: UiSettings = {
   newProject: DEFAULT_NEW_PROJECT,
   sidebar: DEFAULT_SIDEBAR,
   login: DEFAULT_LOGIN,
+  settingsTab: DEFAULT_SETTINGS_TAB,
 };
 
 /** `value` as an object (an empty one when it is not an object). */
@@ -376,6 +391,7 @@ export function parseUiSettings(ui: unknown): UiSettings {
   const newProject = record(field(source, 'newProject'));
   const sidebar = record(field(source, 'sidebar'));
   const login = record(field(source, 'login'));
+  const settingsTab = record(field(source, 'settingsTab'));
   return {
     locale: oneOf(field(source, 'locale'), LOCALE_SETTINGS, DEFAULT_UI_SETTINGS.locale),
     render: {
@@ -538,6 +554,18 @@ export function parseUiSettings(ui: unknown): UiSettings {
     },
     login: {
       browser: oneOf(field(login, 'browser'), LOGIN_BROWSER_MODES, DEFAULT_LOGIN.browser),
+    },
+    settingsTab: {
+      limits: oneOf(
+        field(settingsTab, 'limits'),
+        SETTINGS_TAB_LIMITS_MODES,
+        DEFAULT_SETTINGS_TAB.limits,
+      ),
+      roles: oneOf(
+        field(settingsTab, 'roles'),
+        SETTINGS_TAB_ROLES_MODES,
+        DEFAULT_SETTINGS_TAB.roles,
+      ),
     },
   };
 }

@@ -178,6 +178,16 @@ describe('parseConfig', () => {
     expect(() => parseConfig('ui:\n  login:\n    other: 1\n')).toThrow();
   });
 
+  it('has the default of ui.settingsTab, takes its modes and refuses bad values (2026-11-26)', () => {
+    expect(parseConfig('').ui.settingsTab).toEqual({ limits: 'folded', roles: 'line' });
+    const both = parseConfig('ui:\n  settingsTab:\n    limits: open\n    roles: list\n');
+    expect(both.ui.settingsTab).toEqual({ limits: 'open', roles: 'list' });
+    expect(() => parseConfig('ui:\n  settingsTab:\n    limits: hidden\n')).toThrow(
+      /ui\.settingsTab\.limits/,
+    );
+    expect(() => parseConfig('ui:\n  settingsTab:\n    other: 1\n')).toThrow();
+  });
+
   it('has the default of ui.newProject, takes its other modes and refuses bad values (P22)', () => {
     expect(parseConfig('').ui.newProject).toEqual({ repo: 'cwd' });
     expect(parseConfig('ui:\n  newProject:\n    repo: git_root\n').ui.newProject.repo).toBe(

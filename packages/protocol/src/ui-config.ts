@@ -462,6 +462,24 @@ export const UiLoginConfigSchema = z.strictObject({
 });
 export type UiLoginConfig = z.output<typeof UiLoginConfigSchema>;
 
+// ---- The tab Settings of the terminal interface ------------------------------------------------
+
+/** `ui.settingsTab.limits` [proposta] (2026-11-26): the section Limits starts folded or open. */
+export const UI_SETTINGS_TAB_LIMITS_MODES = ['folded', 'open'] as const;
+/**
+ * `ui.settingsTab.roles` [proposta] (2026-11-26): `line` shows each role on one line (its first
+ * Executor and what happens when it runs out) and opens the list of the role under the cursor, to
+ * reorder it; `list` shows every list whole, as before.
+ */
+export const UI_SETTINGS_TAB_ROLES_MODES = ['line', 'list'] as const;
+
+/** `ui.settingsTab` [proposta] (2026-11-26, the owner's "Seções de hoje, em tabela"). */
+export const UiSettingsTabConfigSchema = z.strictObject({
+  limits: z.enum(UI_SETTINGS_TAB_LIMITS_MODES).default('folded'),
+  roles: z.enum(UI_SETTINGS_TAB_ROLES_MODES).default('line'),
+});
+export type UiSettingsTabConfig = z.output<typeof UiSettingsTabConfigSchema>;
+
 // ---- The colours of the terminal interface ------------------------------------------------------
 
 /**
