@@ -52,6 +52,10 @@ const detail = z.string().min(1).max(512).nullable();
  * - `telemetry_receiver_unavailable` (P2 of Phase 8, N212): the OTLP receiver could not listen
  *   (`telemetry.receiver.port` is taken, or the system refused), so the clients start without
  *   telemetry; the daemon goes on (`subject`: `receiver`; `detail`: the reason, no token) [proposta].
+ * - `telemetry_vault_unreadable` (N331; [proposta]): the redaction of the telemetry could not read
+ *   the vault (most often it is locked), so the values it already had stand (`subject`: `vault`;
+ *   `detail`: why). Told as `telemetry.vault_warning` says: once and again when the reason changes
+ *   (`on_change`, the default), at each refresh (`every`), or not at all (`off`).
  * - `daemon_spans_failed` (Phase 8, P4, N214; [proposta]): the projector of the spans of the daemon
  *   could not read the log or write the base (`subject`: what failed; `detail`: why). It is told once
  *   per episode and the projector tries again; the orchestration does not depend on it.
@@ -139,6 +143,7 @@ export const DAEMON_NOTICE_KINDS = [
   'cross_check_unsatisfiable',
   'account_rotated',
   'telemetry_receiver_unavailable',
+  'telemetry_vault_unreadable',
   'daemon_spans_failed',
   'analysis_failed',
   'telemetry_purge_failed',
