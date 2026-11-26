@@ -10,7 +10,7 @@ import {
 } from '@otheater/core';
 import { EXIT_FAILED, EXIT_OK, EXIT_USAGE, type CommandContext } from '../commands.js';
 import { compose, productionClients } from '../compose.js';
-import { loadConfig, type ProfileAddLoginMode } from '../config.js';
+import { CLIENT_IDS, loadConfig, type ProfileAddLoginMode } from '../config.js';
 import type { ClientFactory } from '../clients.js';
 import { unlockVault, type PasswordPrompt } from '../daemon.js';
 import { InstanceLock, releaseOnFailure } from '../instance-lock.js';
@@ -341,6 +341,14 @@ async function runProfileAction(
       transport: () => composition.transport,
       roleLists: roleListsOf(config, composition.store),
     });
+
+    // N326: an account of a client the daemon cannot run is refused before the vault opens.
+    if (action === 'add' && !service.knowsClient(args[0] ?? '')) {
+      return usage('usage.profileUnknownClient', {
+        client: args[0] ?? '',
+        known: CLIENT_IDS.join(', '),
+      });
+    }
 
     // A locked vault is opened only when the command touches a key.
     const removing =

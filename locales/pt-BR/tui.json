@@ -169,7 +169,8 @@
       "reload": "Procurar os clientes de novo e ler o passo de novo",
       "cancel": "Cancelar a execução (nada é gravado)",
       "install": "Instalar o adaptador ACP do cliente sob o cursor",
-      "details": "Mostra ou dobra o detalhe das notas da revisão"
+      "details": "Mostra ou dobra o detalhe das notas da revisão",
+      "skip": "Seguir sem conta"
     },
     "plugins": {
       "itemPrev": "Plugin anterior",
@@ -230,12 +231,20 @@
       "edit": "Teto",
       "cancel": "Cancelar",
       "install": "Instalar adaptador",
-      "details": "Detalhe"
+      "details": "Detalhe",
+      "skip": "Sem conta",
+      "openForm": "Adicionar conta"
     },
     "settings": {
       "add": "Adicionar conta",
       "login": "Login",
       "assistant": "Assistente"
+    },
+    "accountForm": {
+      "submit": "Adicionar",
+      "next": "Próximo campo",
+      "change": "Trocar",
+      "cancel": "Cancelar"
     }
   },
   "keymap": {
@@ -705,12 +714,9 @@
       }
     },
     "prompt": {
-      "add": "Adicionar conta como: <cliente> <nome> <token_plan|api> <provedor>",
-      "apiKey": "Chave de API de {{profile}} (vai ao cofre, nunca aparece)",
       "limit": "Novo valor de {{key}} ({{hint}})",
       "confirmRemove": "Remover {{profile}}? As sessões esvaziam, depois somem o diretório e a chave. s/n",
       "confirmNotice": "{{provider}} já tem {{existing}}. Adicionar outra? s/n",
-      "confirmLogin": "{{profile}} foi adicionada. Entrar agora? s/n",
       "hintEnter": "Enter confirma, Esc cancela",
       "hintConfirm": "s confirma, qualquer outra tecla cancela",
       "yes": "s"
@@ -769,11 +775,11 @@
       "readOnly": "O escopo do projeto é só de leitura: nenhuma rota grava a sobreposição de um projeto.",
       "badWhole": "{{key}} pede um número inteiro, {{min}} ou mais.",
       "badDuration": "{{key}} pede uma duração como 30m, 2h ou 45s.",
-      "badAdd": "Escreva <cliente> <nome> <token_plan|api> <provedor>.",
       "nothing": "Nada sob o cursor.",
       "noAccounts": "Nenhuma conta ainda: {{add}} adiciona uma; {{assistant}} abre o assistente.",
       "noLogin": "Só uma conta de assinatura entra por login.",
-      "noAssistant": "O assistente precisa do daemon."
+      "noAssistant": "O assistente precisa do daemon.",
+      "noClient": "Nenhum cliente está pronto nesta máquina, então ainda não há conta para adicionar. {{assistant}} abre o assistente, que diz o que falta."
     }
   },
   "overview": {
@@ -1207,8 +1213,6 @@
       "yes": "s",
       "badExecutor": "Escreva <conta> <modelo> [esforço].",
       "badBudget": "Escreva <dia> <mês>: números acima de zero, ou - para sem teto.",
-      "account": "Conta de {{client}} como: {{form}}",
-      "badAccount": "Escreva {{form}}.",
       "confirmNotice": "{{provider}} já tem {{existing}}. Adicionar outra? s/n"
     },
     "review": {
@@ -1248,7 +1252,7 @@
       "clients": "Clientes",
       "row": "{{client}}{{state}}",
       "added": "Adicionadas nesta execução: {{list}}",
-      "keys": "{{add}} adiciona uma conta do cliente sob o cursor, {{next}} continua sem adicionar.",
+      "keys": "{{add}} adiciona outra conta, {{next}} continua.",
       "result": {
         "added": "Conta adicionada: {{profile}}.",
         "loggedIn": "Conta adicionada: {{profile}}. Ela já tem login.",
@@ -1257,7 +1261,10 @@
         "failed": "A conta não foi adicionada: {{message}}"
       },
       "state": "  ({{state}})",
-      "cannotAdd": "{{client}} não está pronto nesta máquina ({{why}}), então ainda não tem conta para adicionar. {{todo}}"
+      "cannotAdd": "{{client}} não está pronto nesta máquina ({{why}}), então ainda não tem conta para adicionar. {{todo}}",
+      "noReady": "Nenhum cliente está pronto nesta máquina ainda. {{install}} instala o adaptador do cliente sob o cursor, {{reload}} procura de novo, {{skip}} segue sem conta.",
+      "skipped": "Seguindo sem conta: os papéis ficam vazios até você adicionar uma na aba Configurações.",
+      "keysEmpty": "Nenhuma conta ainda: {{next}} abre o formulário do cliente sob o cursor, {{skip}} segue sem conta."
     },
     "reason": {
       "installed": "instalado",
@@ -1385,5 +1392,29 @@
       "disabledSame": "{{plugin}} não estava ativo em {{project}}.",
       "noAction": "O painel não tem ação para executar."
     }
+  },
+  "accountForm": {
+    "title": "Adicionar conta",
+    "field": {
+      "client": "Cliente",
+      "name": "Nome",
+      "kind": "Tipo",
+      "provider": "Provedor",
+      "apiKey": "Chave de API"
+    },
+    "kind": {
+      "token_plan": "Assinatura",
+      "api": "API"
+    },
+    "providerOwn": "Provedor: {{provider}} (o único deste cliente)",
+    "problem": {
+      "client": "Escolha um dos clientes prontos nesta máquina.",
+      "name": "O nome leva letras minúsculas, dígitos, - e _, começando por letra ou dígito.",
+      "provider": "Escreva o provedor, como openai ou anthropic.",
+      "apiKey": "Escreva a chave de API (ela vai ao cofre e nunca aparece)."
+    },
+    "keys": "Tab próximo campo · Espaço ou ←/→ troca · Enter adiciona · Esc cancela",
+    "keysLogin": "Tab próximo campo · Espaço ou ←/→ troca · Enter adiciona e abre o login · Esc cancela",
+    "unknownClient": "{{client}} não é um cliente que o daemon roda; os clientes são {{known}}."
   }
 }

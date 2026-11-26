@@ -11,7 +11,6 @@ import {
   moved,
   nextChoice,
   addLoginModeOf,
-  parseAddForm,
   parseLimit,
   quotaLine,
   reorderEdit,
@@ -99,18 +98,6 @@ describe('the model of the tab Settings', () => {
       ['limits.plan_reviews', '5'],
       ['roles.author.executors', 'a, b'],
     ]);
-  });
-
-  it('reads the form of a new account', () => {
-    expect(parseAddForm('codex alt token_plan codex')).toEqual({
-      client: 'codex',
-      name: 'alt',
-      kind: 'token_plan',
-      provider: 'codex',
-    });
-    expect(parseAddForm('codex alt')).toBeUndefined();
-    expect(parseAddForm('codex alt other codex')).toBeUndefined();
-    expect(parseAddForm('a b api c d')).toBeUndefined();
   });
 });
 

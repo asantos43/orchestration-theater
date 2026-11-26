@@ -34,6 +34,7 @@ const ESC = '\x1b';
 const DOWN = '\x1b[B';
 const UP = '\x1b[A';
 const SHIFT_DOWN = '\x1b[1;2B';
+const TAB = '\t';
 
 const keymap = buildTuiKeymap(
   { preset: 'agents', environment: 'auto', overrides: {} },
@@ -44,6 +45,12 @@ const keymap = buildTuiKeymap(
 const BOTH_INSTALLED: readonly SetupDetectedClient[] = [
   { client: 'claude-code', installed: true },
   { client: 'codex', installed: true },
+];
+
+/** The three clients on the machine (OpenCode asks for its provider). */
+const ALL_INSTALLED: readonly SetupDetectedClient[] = [
+  ...BOTH_INSTALLED,
+  { client: 'opencode', installed: true },
 ];
 
 const PROFILES = [
@@ -565,7 +572,7 @@ describe('the setup screen: the step that adds an account (N274)', () => {
     expect(frame).toContain('● New account  ○ Accounts  ○ Preset  ○ Executors  ○ Review');
     expect(frame).toContain('›claude-code  (installed)');
     expect(frame).toContain('codex  (not found)');
-    expect(frame).toContain('continues without adding');
+    expect(frame).toContain('adds another account');
     // The run of the daemon starts at the detection: the step is the screen's, not a step of it.
     expect(frame).toContain('Esc leaves');
     const detect = await screen.press(ENTER);
@@ -580,7 +587,13 @@ describe('the setup screen: the step that adds an account (N274)', () => {
     const { api, accounts } = withAccounts();
     const screen = await atStep(api);
     await screen.press('a');
-    expect(screen.frame()).toContain('Account of claude-code as: <name> [provider]');
+    // The form (N326): one client ready, so it is chosen already and the cursor is on the name.
+    const form = screen.frame();
+    expect(form).toContain('Client: claude-code');
+    expect(form).toContain('›Name: main▏');
+    expect(form).toContain('Provider: anthropic (the only one of this client)');
+    expect(form).toContain('Enter adds and opens the sign-in');
+    // The default name goes away at the first key.
     await screen.type('work');
     await screen.press(ENTER);
     const done = await screen.seen('Added in this run: claude-code/work');
@@ -591,35 +604,130 @@ describe('the setup screen: the step that adds an account (N274)', () => {
     expect(accounts.logins).toEqual(['start:claude-code/work']);
     expect(accounts.ran).toEqual(['ot profile exec claude-code/work login']);
     expect(done).toContain('The sign-in ended with code 0.');
+    expect(done).not.toContain('Name: ');
     // The detection lists the account just added.
     const detect = await screen.press(ENTER);
     expect(detect).toContain('claude-code/work');
   });
 
-  it('takes the provider of the line when it has one, and the default of the client otherwise', async () => {
-    const { api, accounts } = withAccounts({ clients: BOTH_INSTALLED });
+  it('keeps the default name main when nothing is typed', async () => {
+    const { api, accounts } = withAccounts({ profiles: [] });
+    const screen = await atStep(api);
+    await screen.press('a');
+    await screen.press(ENTER);
+    await screen.seen('Added in this run: claude-code/main');
+    expect(accounts.added[0]).toMatchObject({ client: 'claude-code', name: 'main' });
+  });
+
+  it('only OpenCode asks for the provider; the others take their own', async () => {
+    const { api, accounts } = withAccounts({ clients: ALL_INSTALLED });
     const screen = await atStep(api);
     await screen.press(DOWN);
     await screen.press('a');
-    await screen.type('alt openrouter');
+    // Several clients ready: the cursor starts on the client, the one under the cursor chosen.
+    const codex = screen.frame();
+    expect(codex).toContain('›Client:  claude-code  [codex]  opencode');
+    expect(codex).toContain('Provider: openai (the only one of this client)');
+    // Space moves to the next client: OpenCode, which shows the field of the provider.
+    const opencode = await screen.press(' ');
+    expect(opencode).toContain('[opencode]');
+    expect(opencode).not.toContain('the only one of this client');
+    await screen.press(TAB);
+    await screen.type('alt');
+    await screen.press(TAB);
+    await screen.press(TAB);
+    await screen.type('openrouter');
     await screen.press(ENTER);
-    await screen.seen('Added in this run: codex/alt');
-    expect(accounts.added[0]).toMatchObject({
-      client: 'codex',
+    await screen.seen('Added in this run: opencode/alt');
+    expect(accounts.added[0]).toEqual({
+      client: 'opencode',
       name: 'alt',
+      kind: 'token_plan',
       provider: 'openrouter',
     });
   });
 
-  it('a line that is not <name> [provider] adds nothing', async () => {
+  it('OpenCode without a provider adds nothing and says what is missing', async () => {
+    const { api, accounts } = withAccounts({ clients: ALL_INSTALLED });
+    const screen = await atStep(api);
+    await screen.press(DOWN);
+    await screen.press(DOWN);
+    await screen.press('a');
+    await screen.press(ENTER);
+    expect(screen.frame()).toContain('Write the provider, such as openai or anthropic.');
+    expect(accounts.added).toEqual([]);
+  });
+
+  it('a wrong name adds nothing and says why', async () => {
     const { api, accounts } = withAccounts();
     const screen = await atStep(api);
     await screen.press('a');
-    await screen.type('a b c');
+    await screen.type('Work');
     await screen.press(ENTER);
-    expect(screen.frame()).toContain('Write <name> [provider].');
+    expect(screen.frame()).toContain('The name takes lowercase letters');
     expect(accounts.added).toEqual([]);
     expect(accounts.logins).toEqual([]);
+  });
+
+  it('adds an API account with its key, hidden, and does not log in', async () => {
+    const { api, accounts } = withAccounts();
+    const screen = await atStep(api);
+    await screen.press('a');
+    await screen.type('paid');
+    await screen.press(TAB);
+    const kind = await screen.press(' ');
+    expect(kind).toContain('[API]');
+    expect(kind).toContain('API key: ');
+    await screen.press(TAB);
+    await screen.type('sk-fake');
+    expect(screen.frame()).toContain('API key: •••••••▏');
+    expect(screen.frame()).not.toContain('sk-fake');
+    await screen.press(ENTER);
+    const done = await screen.seen('Account added: claude-code/paid.');
+    expect(done).not.toContain('sk-fake');
+    expect(accounts.added[0]).toMatchObject({ kind: 'api', apiKey: 'sk-fake' });
+    expect(accounts.logins).toEqual([]);
+  });
+
+  it('Esc drops the form and stays at the step', async () => {
+    const { api, accounts } = withAccounts();
+    const screen = await atStep(api);
+    await screen.press('a');
+    await screen.type('work');
+    const back = await screen.press(ESC);
+    expect(back).not.toContain('Name: ');
+    expect(back).toContain('Add an account of a client');
+    expect(screen.outcomes).toEqual([]);
+    expect(accounts.added).toEqual([]);
+  });
+
+  it('with no account yet, Enter opens the form and S skips with a notice (N326)', async () => {
+    const { api, accounts } = withAccounts({ profiles: [] });
+    const screen = await atStep(api);
+    expect(screen.frame()).toContain('No account yet: Enter opens the form');
+    expect(screen.frame()).toContain('S  No account');
+    expect(screen.frame()).toContain('Enter  Add account');
+    const form = await screen.press(ENTER);
+    expect(form).toContain('Name: main');
+    // The bar shows the keys of the form, not the ones of the step.
+    expect(form).toContain('Enter  Add   Tab  Next field   Space  Change   Esc  Cancel');
+    expect(form).not.toContain('S  No account');
+    await screen.press(ESC);
+    const skipped = await screen.press('s');
+    expect(skipped).toContain('Continuing without an account');
+    expect(skipped).toContain('Step 2 of 5');
+    expect(accounts.added).toEqual([]);
+  });
+
+  it('with no client ready, Enter says what to do and opens no form', async () => {
+    const { api } = withAccounts({
+      profiles: [],
+      clients: [{ client: 'claude-code', installed: false, reason: 'adapter_missing' }],
+    });
+    const screen = await atStep(api);
+    const frame = (await screen.press(ENTER)).replace(/[│\n]/g, ' ').replace(/\s+/g, ' ');
+    expect(frame).toContain('No client is ready on this machine yet.');
+    expect(frame).not.toContain('Name: ');
   });
 
   it('a login the daemon would run itself is cancelled and run in the terminal [proposta]', async () => {
@@ -676,6 +784,22 @@ describe('the setup screen: the step that adds an account (N274)', () => {
     expect(accounts.logins).toEqual([]);
   });
 
+  it('says in its own words that the daemon does not run the client (N326)', async () => {
+    const { api, accounts } = withAccounts();
+    accounts.failAdd = requestError('invalid_input', 400, 'Unknown client "claude-code"', {
+      reason: 'unknown_client',
+      client: 'claude-code',
+      known: ['codex', 'opencode'],
+    });
+    const screen = await atStep(api);
+    await screen.press('a');
+    await screen.press(ENTER);
+    const frame = (await screen.seen('is not a client the daemon runs'))
+      .replace(/[│\n]/g, ' ')
+      .replace(/\s+/g, ' ');
+    expect(frame).toContain('the clients are codex, opencode');
+  });
+
   it('asks before a second subscription of the same provider, and adds it with the notice accepted', async () => {
     const { api, accounts } = withAccounts();
     accounts.noticeFirst = true;
@@ -724,11 +848,13 @@ describe('the setup screen: the step that adds an account (N274)', () => {
     const { api, accounts } = withAccounts({ clients: BOTH_INSTALLED });
     const screen = await atStep(api);
     await screen.press('a');
+    await screen.press(TAB);
     await screen.type('work');
     await screen.press(ENTER);
     await screen.seen('Added in this run: claude-code/work');
     await screen.press(DOWN);
     await screen.press('a');
+    await screen.press(TAB);
     await screen.type('home');
     await screen.press(ENTER);
     await screen.seen('Added in this run: claude-code/work, codex/home');

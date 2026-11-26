@@ -241,12 +241,6 @@ export function draftKey(run: SetupRunView): string {
 /** The clients the step offers when the detection names none. */
 export const KNOWN_CLIENTS = ['claude-code', 'codex', 'opencode'] as const;
 
-/** [proposta] The provider of an account of a client that has only one possible provider (as `ot profile add`). */
-const DEFAULT_PROVIDER: Readonly<Record<string, string>> = {
-  'claude-code': 'anthropic',
-  codex: 'openai',
-};
-
 /**
  * The clients the step lists, in the order of the detection of the daemon (a client the machine
  * has is walked first only by the cursor start, not by the order).
@@ -288,32 +282,7 @@ export function accountsCursorMoved(
   return Math.min(last, Math.max(0, cursor + delta));
 }
 
-/**
- * `<name> [provider]` of a new subscription account of `client`. The provider is optional where the
- * client has one possible provider (`ot profile add` does the same); `undefined` when the line is
- * not that, or the client needs a provider and the line has none.
- */
-export function parseAccountLine(
-  client: string,
-  text: string,
-): { readonly name: string; readonly provider: string } | undefined {
-  const words = text
-    .trim()
-    .split(/\s+/)
-    .filter((word) => word !== '');
-  if (words.length < 1 || words.length > 2) return undefined;
-  const [name, given] = words;
-  const provider = given ?? DEFAULT_PROVIDER[client];
-  if (name === undefined || provider === undefined) return undefined;
-  return { name, provider };
-}
-
 /** The command that logs in to an account in a terminal (what the daemon answers as `local`). */
 export function loginCommandOf(profileId: string): string {
   return `ot profile exec ${profileId} login`;
-}
-
-/** What the prompt of the step shows as the form of the line: the provider is optional where it has a default. */
-export function accountFormOf(client: string): string {
-  return DEFAULT_PROVIDER[client] === undefined ? '<name> <provider>' : '<name> [provider]';
 }

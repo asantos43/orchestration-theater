@@ -11,6 +11,7 @@ import {
   type ConfigEditBody,
   type ConfigEditResult,
   type RemoveProfileResult,
+  type SetupDetectedClient,
   type StartProfileLoginResult,
 } from '@otheater/protocol';
 import { randomUUID } from 'node:crypto';
@@ -30,6 +31,12 @@ export interface SettingsApi {
   config(): Promise<ApiConfig>;
   /** The keys a scenario overrides, with the values a secret could hold held back. */
   scenarioOverride(scenarioId: string): Promise<Readonly<Record<string, unknown>>>;
+  /**
+   * The clients and whether each is ready on the machine (N326): the form that adds an account
+   * offers only the ready ones. It looks for the clients again first (`POST /v1/setup/redetect`),
+   * so a client installed while the TUI is open is offered without a restart.
+   */
+  clients(): Promise<readonly SetupDetectedClient[]>;
   addProfile(body: AddProfileBody): Promise<AddProfileResult>;
   removeProfile(profileId: string): Promise<RemoveProfileResult>;
   putConfig(edit: ConfigEditBody): Promise<ConfigEditResult>;
@@ -83,6 +90,8 @@ export function apiOf(client: ApiClient): SettingsApi {
     config: () => client.call(API_ROUTES.getConfig, {}),
     scenarioOverride: async (scenarioId) =>
       (await client.call(API_ROUTES.getScenario, { params: { scenarioId } })).configOverride,
+    clients: async () =>
+      (await client.call(API_ROUTES.redetectSetupClients, { headers: key() })).clients,
     addProfile: (body) => client.call(API_ROUTES.addProfile, { body, headers: key() }),
     removeProfile: (profileId) =>
       client.call(API_ROUTES.removeProfile, {

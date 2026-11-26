@@ -203,27 +203,11 @@ export function flatten(
   return rows;
 }
 
-/** The four words of the form `<client> <name> <kind> <provider>`; `undefined` when it is not that. */
-export function parseAddForm(text: string):
-  | {
-      readonly client: string;
-      readonly name: string;
-      readonly kind: 'token_plan' | 'api';
-      readonly provider: string;
-    }
-  | undefined {
-  const [client, name, kind, provider, ...rest] = text.trim().split(/\s+/);
-  if (client === undefined || name === undefined || provider === undefined || rest.length > 0) {
-    return undefined;
-  }
-  if (kind !== 'token_plan' && kind !== 'api') return undefined;
-  return { client, name, kind, provider };
-}
-
 /**
  * `profiles.add.login` [proposta] (2026-11-22): what adding a subscription account does about its
- * login: `ask` (default) asks "log in now?", `auto` logs in at once, `off` never offers it. A value
- * the tab does not know (an older or newer daemon) is read as the default.
+ * login: `ask` (default) asks "log in now?", `auto` logs in at once, `off` never offers it. In the
+ * TUI the Enter of the form that adds the account is the yes (N326), so `ask` logs in at once
+ * there too. A value the tab does not know (an older or newer daemon) is read as the default.
  */
 export type AddLoginMode = 'ask' | 'auto' | 'off';
 

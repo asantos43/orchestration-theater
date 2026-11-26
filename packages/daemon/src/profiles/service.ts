@@ -19,7 +19,7 @@ import {
   type Store,
 } from '@otheater/core';
 import { buildDaemonEvent, type ProfileWarningKind } from '@otheater/protocol';
-import type { DaemonConfig } from '../config.js';
+import { CLIENT_IDS, type DaemonConfig } from '../config.js';
 import type { Logger } from '../logger.js';
 import type { DataPaths } from '../paths.js';
 import { detailOf, type SituationSink } from '../situations.js';
@@ -242,6 +242,16 @@ export class ProfileService {
     return this.#o.vaultBackend;
   }
 
+  /**
+   * The client is one the daemon can run (N326): one of {@link CLIENT_IDS}, or one whose adapter is
+   * registered (a test client). An account of any other client could never run, so it is refused.
+   */
+  knowsClient(client: string): boolean {
+    return (
+      (CLIENT_IDS as readonly string[]).includes(client) || this.#o.adapters(client) !== undefined
+    );
+  }
+
   /** The availability hook of the pool: a profile takes new sessions only while it is `active`. */
   async acceptsSessions(profileId: string): Promise<boolean> {
     return (await this.#o.store.profiles.get(profileId))?.state === 'active';
@@ -256,6 +266,11 @@ export class ProfileService {
   async add(input: AddProfileInput): Promise<AddProfileResult> {
     const { store, vault, clock } = this.#o;
     const given = validateAdd(input);
+    if (!this.knowsClient(given.client)) {
+      throw new InvalidInput(
+        `Unknown client ${JSON.stringify(given.client)}: ${CLIENT_IDS.join(', ')}`,
+      );
+    }
     await this.#o.redetect?.();
     const id = formatProfileId({ client: given.client, profile: given.name });
     if ((await store.profiles.get(id)) !== undefined) {
