@@ -109,8 +109,9 @@ jobs:
       # OT_REQUIRE_SANDBOX=1: the acceptance tests of the sandbox fail, not skip, if bwrap does not run.
       # OT_REQUIRE_TMUX=1 [proposta]: the same for the smoke test of the TUI, which fails, not skips,
       # if tmux or the build is missing.
-      # OT_REQUIRE_PTY=1 (owner, N271): the click test in a real pty (pty.focus.test.ts) fails, not
-      # skips, if Python 3 or the build is missing. Only here: on macOS it failed with no known cause.
+      # OT_REQUIRE_PTY=1 (owner, N271): the tests of the TUI in a real terminal (pty.focus.test.ts and
+      # tui-terminal.e2e.test.ts) fail, not skip, if @microsoft/tui-test does not load or the build is
+      # missing. On macOS and Windows they run in the job `tui-terminal` (N320), not in `cross`.
       - run: bash tools/ci/test-affected.sh HEAD^1
         env:
           NODE_OPTIONS: --max-old-space-size=6144
@@ -320,6 +321,50 @@ jobs:
       # Once per system: it reads the tree, not the part of the tests.
       - run: pnpm verify
         if: ${{ matrix.shard == 1 }}
+
+  # The TUI in a real terminal (N320, P17 of Phase 11b): the compiled TUI in a pty (ConPTY on
+  # Windows) whose screen @microsoft/tui-test emulates, on the three systems. It checks the colours of
+  # the theme, the OSC 8 link, the mouse, a resize, Ctrl+C and the exit of the real binary. OT_REQUIRE_PTY=1:
+  # here they fail instead of skipping when the native module of tui-test, the build or the launcher
+  # is missing. On Windows the daemon of the test needs ot-job-launcher.exe, so it is built first
+  # (`cross` does not build it, and there these tests skip). [proposta] The repository variable
+  # OT_TUI_TEST_BACKEND picks the emulated terminal: `alacritty` (default), `xtermjs`, `ghostty` or
+  # `all`. On a failure, the trace (trace.md) and the text of the screen go up as an artifact.
+  # Same conditions as `linux`.
+  tui-terminal:
+    needs: [changes]
+    if: ${{ !cancelled() && (github.event_name != 'pull_request' || needs.changes.outputs.full == 'true') }}
+    name: tui-terminal (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: cargo build --locked
+        if: ${{ runner.os == 'Windows' }}
+        working-directory: native/job-launcher
+      - run: pnpm build
+        env:
+          NODE_OPTIONS: --max-old-space-size=6144
+      - run: pnpm exec vitest run packages/tui/src/tui-terminal.e2e.test.ts packages/tui/src/pty.focus.test.ts
+        env:
+          OT_REQUIRE_PTY: '1'
+          OT_TUI_TEST_BACKEND: ${{ vars.OT_TUI_TEST_BACKEND || 'alacritty' }}
+          OT_TUI_TEST_ARTIFACTS: ${{ runner.temp }}/tui-test
+      - uses: actions/upload-artifact@v4
+        if: ${{ failure() }}
+        with:
+          name: tui-terminal-${{ matrix.os }}
+          path: ${{ runner.temp }}/tui-test
+          if-no-files-found: ignore
 
   # Real test of the Windows Job Object launcher (N58): only here the integration tests run.
   windows-launcher:

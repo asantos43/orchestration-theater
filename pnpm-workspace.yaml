@@ -15,3 +15,7 @@ ignoredBuiltDependencies:
   # any package runs. (pnpm 10.33 still lists it in its "Ignored build scripts" warning; the script
   # does not run.)
   - esbuild
+  # koffi (the FFI of @microsoft/tui-test, a dev dependency of packages/tui, N320) has an install script
+  # that only copies the prebuilt binary; the binary comes from the @koromix/koffi-<platform> optional
+  # package either way (verified: a tui-test session runs with the script ignored).
+  - koffi

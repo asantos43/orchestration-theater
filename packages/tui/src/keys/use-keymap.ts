@@ -75,6 +75,15 @@ export interface KeyEvent {
   readonly data: string;
 }
 
+/**
+ * Whether the key is Ctrl+C, which always quits: the control byte of a legacy terminal, or
+ * `CSI 99;5u` once the kitty keyboard protocol is on (`ui.keyboard.protocol`), which tells
+ * Ctrl+letter apart from the control characters (P17 of Phase 11b found that only the byte quit).
+ */
+export function isCtrlC(event: KeyEvent): boolean {
+  return event.data === '\x03' || event.combo === 'Ctrl+C';
+}
+
 /** What `useStdin()` gives at run time, beyond the types: the emitter Ink's own `useInput` listens on. */
 interface InkStdin {
   readonly setRawMode: (value: boolean) => void;

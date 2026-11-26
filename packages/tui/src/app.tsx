@@ -9,6 +9,7 @@ import { Text } from './layout/themed-text.js';
 import type { DaemonConnector } from './daemon-connection.js';
 import { SUPPORTED_INK_VERSION, type InkPatchOutcome } from './ink-patch.js';
 import {
+  isCtrlC,
   useRawKeys,
   useTuiKeymap,
   type KeyEnvironment,
@@ -67,7 +68,7 @@ function useQuitKeys(keymap: TuiKeymap, isActive: boolean): void {
   useRawKeys(
     (event) => {
       if (
-        event.data === '\x03' ||
+        isCtrlC(event) ||
         (event.combo !== undefined && keymap.match(event.combo) === 'app.quit')
       ) {
         exit();
