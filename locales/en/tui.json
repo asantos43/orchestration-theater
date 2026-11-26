@@ -491,7 +491,21 @@
           "switched": "The Director moved from {{from}} to {{to}} ({{cause}}); the work goes on.",
           "waiting": "The Director of {{from}} is waiting ({{cause}}) until {{until}}.",
           "unavailable": "The Director is unavailable ({{cause}}); the queue stops until the next prompt.",
-          "detail": "Why: {{detail}}"
+          "detail": "Why: {{detail}}",
+          "permissionHint": "To open the Director here, enable the missing protection layer (such as the sandbox) or change `security.unenforced`.",
+          "cause": {
+            "quota_exhausted": "quota exhausted",
+            "spend_cap": "spending cap",
+            "transient": "provider error",
+            "client_crash": "client crashed",
+            "daemon_restart": "daemon restart",
+            "timeout": "timed out",
+            "stuck": "stuck",
+            "refusal": "refused by the model",
+            "permission": "refused by the security policy",
+            "profile_removed": "profile removed",
+            "paused": "paused"
+          }
         },
         "directorSwitch": {
           "live": "The Director now runs {{what}} ({{source}}).",

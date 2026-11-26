@@ -46,6 +46,18 @@ export function directorFailureOf(error: unknown): DirectorFailure | undefined {
   return undefined;
 }
 
+/**
+ * [proposta] (N334) The cause the chat tells when the opening of a session fails: a refusal of the
+ * security policy (`PermissionDenied`: `security.unenforced: refuse` with no layer for a field,
+ * as on a machine with no sandbox) is `permission`; the failure the failover answers keeps its own
+ * cause; anything else is told as `client_crash`, as before. It only names the failure: whether a
+ * new session is tried is still `directorFailureOf`.
+ */
+export function directorOpenCauseOf(error: unknown): InterruptionCause {
+  if (hasErrorCode(error, 'PERMISSION_DENIED')) return 'permission';
+  return directorFailureOf(error)?.cause ?? 'client_crash';
+}
+
 /** The causes `scenarios.director_failover: quota_only` answers. */
 const QUOTA_CAUSES: readonly InterruptionCause[] = ['quota_exhausted', 'spend_cap'];
 

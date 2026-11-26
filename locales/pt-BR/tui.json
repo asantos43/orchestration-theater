@@ -491,7 +491,21 @@
           "switched": "O Diretor passou de {{from}} para {{to}} ({{cause}}); o trabalho segue.",
           "waiting": "O Diretor de {{from}} está esperando ({{cause}}) até {{until}}.",
           "unavailable": "O Diretor está indisponível ({{cause}}); a fila para até o próximo prompt.",
-          "detail": "Motivo: {{detail}}"
+          "detail": "Motivo: {{detail}}",
+          "permissionHint": "Para abrir o Diretor aqui, ative a camada de proteção que falta (como o sandbox) ou mude `security.unenforced`.",
+          "cause": {
+            "quota_exhausted": "cota esgotada",
+            "spend_cap": "teto de gasto",
+            "transient": "erro do provedor",
+            "client_crash": "cliente caiu",
+            "daemon_restart": "reinício do daemon",
+            "timeout": "tempo esgotado",
+            "stuck": "travado",
+            "refusal": "recusa do modelo",
+            "permission": "recusado pela política de segurança",
+            "profile_removed": "perfil removido",
+            "paused": "pausado"
+          }
         },
         "directorSwitch": {
           "live": "O Diretor passou a rodar {{what}} ({{source}}).",

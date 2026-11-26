@@ -64,13 +64,18 @@ function noticeText(t: Translate, notice: ScenarioSystemMessagePayload): string 
       const said = t(`${ROOT}.failover.${notice.outcome}`, {
         from: notice.fromExecutor ?? '?',
         to: notice.toExecutor ?? '?',
-        cause: notice.cause,
+        // [proposta] (N334) The cause in words, not the code (`permission` is "refused by the policy").
+        cause: t(`${ROOT}.failover.cause.${notice.cause}`),
         until: whenOf(t, notice.resetsAt),
       });
+      if (notice.outcome !== 'unavailable') return said;
       // [proposta] (N331) Why the Director is unavailable: the error, masked and cut by the daemon.
-      return notice.outcome === 'unavailable' && notice.detail !== null
-        ? `${said} ${t(`${ROOT}.failover.detail`, { detail: notice.detail })}`
-        : said;
+      const why =
+        notice.detail === null
+          ? said
+          : `${said} ${t(`${ROOT}.failover.detail`, { detail: notice.detail })}`;
+      // [proposta] (N334) A refusal of the policy says what can be done about it.
+      return notice.cause === 'permission' ? `${why} ${t(`${ROOT}.failover.permissionHint`)}` : why;
     }
     case 'director_switch':
       return t(`${ROOT}.directorSwitch.${notice.form}`, {

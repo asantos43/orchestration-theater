@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0
 import { describe, expect, it } from 'vitest';
-import { AdapterUnavailable, QuotaExhausted, Transient } from '@otheater/core';
+import { AdapterUnavailable, PermissionDenied, QuotaExhausted, Transient } from '@otheater/core';
 import { INTERRUPTION_CAUSES } from '@otheater/protocol';
-import { directorFailureOf, failoverApplies } from './director-failover.js';
+import { directorFailureOf, directorOpenCauseOf, failoverApplies } from './director-failover.js';
 
 /** The classification of a failed turn of the Director and the modes of `scenarios.director_failover` (P20). */
 
@@ -30,6 +30,20 @@ describe('directorFailureOf', () => {
     expect(directorFailureOf(new Error('refused'))).toBeUndefined();
     expect(directorFailureOf('boom')).toBeUndefined();
     expect(directorFailureOf(undefined)).toBeUndefined();
+  });
+});
+
+describe('directorOpenCauseOf (N334)', () => {
+  it('tells a refusal of the security policy as permission, and does not make it a failover', () => {
+    const refused = new PermissionDenied('claude-code: the policy is short of guarantee layers');
+    expect(directorOpenCauseOf(refused)).toBe('permission');
+    expect(directorFailureOf(refused)).toBeUndefined();
+  });
+
+  it('keeps the cause of what the failover answers and client_crash for the rest', () => {
+    expect(directorOpenCauseOf(new QuotaExhausted('out of quota'))).toBe('quota_exhausted');
+    expect(directorOpenCauseOf(new Transient('503'))).toBe('transient');
+    expect(directorOpenCauseOf(new Error('boom'))).toBe('client_crash');
   });
 });
 

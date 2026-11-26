@@ -231,7 +231,20 @@
       "directorFailover": {
         "switched": "System: the Director's session of {{from}} failed ({{cause}}); a new session opened with {{to}}, with the state summary, and the prompt in progress went back to the queue.",
         "waiting": "System: the Director's session of {{from}} failed ({{cause}}) and no Executor is available; the queue waits and the Director goes on by itself when one is free{{until}}.",
-        "unavailable": "System: the Director's session of {{from}} failed ({{cause}}) and no other Executor can take it; the queue is held until the next prompt tries again."
+        "unavailable": "System: the Director's session of {{from}} failed ({{cause}}) and no other Executor can take it; the queue is held until the next prompt tries again.",
+        "cause": {
+          "quota_exhausted": "quota exhausted",
+          "spend_cap": "spending cap",
+          "transient": "provider error",
+          "client_crash": "client crashed",
+          "daemon_restart": "daemon restart",
+          "timeout": "timed out",
+          "stuck": "stuck",
+          "refusal": "refused by the model",
+          "permission": "refused by the security policy",
+          "profile_removed": "profile removed",
+          "paused": "paused"
+        }
       },
       "directorSwitch": {
         "source": {
