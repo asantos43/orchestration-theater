@@ -3,6 +3,7 @@ import type {
   Executor,
   ExecutorDraft,
   ModelCatalog,
+  ModelFloating,
   ModelInfo,
   ProfileRef,
   ValidationIssue,
@@ -144,7 +145,25 @@ interface Listing {
   readonly reason?: string;
 }
 
+/** The id of the model the client recommends for the account, chosen by its plan. [S] */
+export const ACCOUNT_DEFAULT_ALIAS = 'default';
+
+/** The aliases that stand for the newest model of a family (`opus`, `sonnet[1m]`...). [S] */
+export const FAMILY_ALIASES: readonly string[] = ['opus', 'sonnet', 'haiku', 'fable'];
+
+/**
+ * Whether an id of the list is an alias Claude Code resolves (N324, the owner on 2026-11-26).
+ * [proposta] An id that is not one of these (a full id as `claude-opus-5`, or `opusplan`, which
+ * mixes two models) is taken as fixed. [S: the model aliases of the Claude Code docs]
+ */
+export function floatingOf(id: string): ModelFloating | undefined {
+  if (id === ACCOUNT_DEFAULT_ALIAS) return 'account';
+  const base = id.replace(/\[[^\]]*\]$/, '');
+  return FAMILY_ALIASES.includes(base) ? 'family' : undefined;
+}
+
 function toInfo(entry: ClaudeModelEntry, efforts: readonly string[]): ModelInfo {
+  const floating = floatingOf(entry.id);
   return {
     id: entry.id,
     ...(entry.name === undefined ? {} : { name: entry.name }),
@@ -154,6 +173,7 @@ function toInfo(entry: ClaudeModelEntry, efforts: readonly string[]): ModelInfo 
     // Every model of Claude Code calls tools. [S: the product is a tool-using agent]
     toolCalls: true,
     ...(entry.id.endsWith('[1m]') ? { contextWindow: ONE_MILLION } : {}),
+    ...(floating === undefined ? {} : { floating }),
   };
 }
 

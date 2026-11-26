@@ -570,6 +570,22 @@ describe('the models of an account after its login (N324)', () => {
     ).toEqual(discovered.map((executor) => executor.id).toSorted());
   });
 
+  it('passes on which ids are aliases the client resolves', async () => {
+    const rig = await rigOf({
+      catalogs: {
+        codex: new ListCatalog(['auto', 'sol', 'luna'], {
+          floating: { auto: 'account', sol: 'family' },
+        }),
+      },
+    });
+    const models = await rig.service().models(CODEX);
+    expect(models.models.map((model) => [model.id, model.floating])).toEqual([
+      ['auto', 'account'],
+      ['sol', 'family'],
+      ['luna', null],
+    ]);
+  });
+
   it('a logged-out account says so, and a catalog that fails is said, not thrown', async () => {
     const rig = await rigOf({ catalogs: { codex: new ListCatalog([], { fail: true }) } });
     rig.logins.set(CLAUDE, 'logged_out');

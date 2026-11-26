@@ -403,6 +403,7 @@ export class SetupService {
         efforts: [...info.efforts],
         local: info.local,
         contextWindow: info.contextWindow ?? null,
+        floating: info.floating ?? null,
         preset: found.discovered
           .filter((executor) => executor.model === info.id)
           .map((executor) => ({ id: executor.id, effort: executor.effort })),

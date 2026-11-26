@@ -1322,6 +1322,10 @@
     "models": {
       "title": "Modelos de {{profile}}: marque os que viram Executores",
       "inPreset": "no preset",
+      "floating": {
+        "account": "apelido: o cliente escolhe pelo plano da conta",
+        "family": "apelido: o mais novo da família"
+      },
       "registered": "já é Executor",
       "keys": "↑/↓ andam, Espaço marca, Enter fica com a lista, Esc mantém o preset",
       "loggedOut": "{{profile}} ainda não está logada, então o cliente dela não lista os modelos.",

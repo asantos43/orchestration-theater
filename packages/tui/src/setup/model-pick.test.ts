@@ -26,6 +26,7 @@ function model(id: string, extra: Partial<SetupModel> = {}): SetupModel {
     efforts: [],
     local: false,
     contextWindow: null,
+    floating: null,
     preset: [],
     registered: [],
     ...extra,
@@ -150,6 +151,23 @@ describe('the keys of the list', () => {
     expect(lines[3]).toBe('[ ] haiku');
     expect(lines.at(-1)).toBe('setup.models.keys');
     expect(modelPickLines(start, t)[2]?.selected).toBe(true);
+  });
+
+  it('says which ids are aliases the client resolves (N324)', () => {
+    const pick = must(
+      modelPickStart(
+        found([
+          model('default', { name: 'Default (recommended)', floating: 'account' }),
+          model('opus', { floating: 'family', preset: [{ id: `opus@${ACCOUNT}`, effort: null }] }),
+          model('claude-opus-5'),
+        ]),
+        'preset',
+      ),
+    );
+    const lines = modelPickLines(pick, t).map((line) => line.text);
+    expect(lines[1]).toBe('[ ] default (Default (recommended))  setup.models.floating.account');
+    expect(lines[2]).toBe('[x] opus  setup.models.floating.family, setup.models.inPreset');
+    expect(lines[3]).toBe('[ ] claude-opus-5');
   });
 });
 

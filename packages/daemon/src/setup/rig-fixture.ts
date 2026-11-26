@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import {
   type ExecutorDraft,
   type ModelCatalog,
+  type ModelFloating,
   type ModelInfo,
   type Clock,
   type Store,
@@ -28,10 +29,22 @@ export class ListCatalog implements ModelCatalog {
 
   constructor(
     ids: readonly string[],
-    options: { fail?: boolean; efforts?: readonly string[] } = {},
+    options: {
+      fail?: boolean;
+      efforts?: readonly string[];
+      floating?: Readonly<Record<string, ModelFloating>>;
+    } = {},
   ) {
     this.#fail = options.fail === true;
-    this.#models = ids.map((id) => ({ id, efforts: options.efforts ?? [], local: false }));
+    this.#models = ids.map((id) => {
+      const floating = options.floating?.[id];
+      return {
+        id,
+        efforts: options.efforts ?? [],
+        local: false,
+        ...(floating === undefined ? {} : { floating }),
+      };
+    });
   }
 
   list(): Promise<readonly ModelInfo[]> {
