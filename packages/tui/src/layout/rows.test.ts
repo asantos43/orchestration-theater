@@ -45,6 +45,14 @@ describe('quotaRows and fillBar', () => {
     ]);
   });
 
+  it('shows what is left of each window with ui.quota.show: remaining (N330, [proposta])', () => {
+    const rows = quotaRows({ a: quota('a', 62.4, 31), b: quota('b', 120, undefined) }, 'remaining');
+    expect(rows.map((row) => [row.profile, row.fiveHour, row.week])).toEqual([
+      ['a', 38, 69],
+      ['b', 0, undefined],
+    ]);
+  });
+
   it('says a Claude Code account is read at its first session, and any other has no reading (N328, [proposta])', () => {
     expect(noReadingKey('claude-code/main')).toBe('firstSession');
     expect(noReadingKey('codex/work')).toBe('noReading');

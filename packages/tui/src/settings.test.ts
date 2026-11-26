@@ -58,7 +58,8 @@ describe('parseUiSettings', () => {
       newProject: { repo: 'cwd', type: 'chat' },
       sidebar: { finishedPlays: 'collapsed', finishedLimit: 20 },
       login: { browser: 'auto' },
-      settingsTab: { limits: 'folded', roles: 'line' },
+      settingsTab: { limits: 'folded', roles: 'line', modelsAfterLogin: 'empty' },
+      quota: { show: 'remaining' },
     });
   });
 
@@ -195,6 +196,7 @@ describe('parseUiSettings', () => {
       sidebar: DEFAULT_UI_SETTINGS.sidebar,
       login: DEFAULT_UI_SETTINGS.login,
       settingsTab: DEFAULT_UI_SETTINGS.settingsTab,
+      quota: DEFAULT_UI_SETTINGS.quota,
     });
   });
 
@@ -276,13 +278,21 @@ describe('parseUiSettings', () => {
   });
 
   it('reads ui.settingsTab and falls back key by key', () => {
-    expect(parseUiSettings({ settingsTab: { limits: 'open', roles: 'list' } }).settingsTab).toEqual(
-      { limits: 'open', roles: 'list' },
-    );
-    expect(parseUiSettings({ settingsTab: { limits: 'shut' } }).settingsTab).toEqual({
-      limits: 'folded',
-      roles: 'line',
-    });
+    expect(
+      parseUiSettings({
+        settingsTab: { limits: 'open', roles: 'list', modelsAfterLogin: 'always' },
+      }).settingsTab,
+    ).toEqual({ limits: 'open', roles: 'list', modelsAfterLogin: 'always' });
+    expect(
+      parseUiSettings({ settingsTab: { limits: 'shut', modelsAfterLogin: 'never' } }).settingsTab,
+    ).toEqual({ limits: 'folded', roles: 'line', modelsAfterLogin: 'empty' });
+  });
+
+  it('reads ui.quota and falls back to remaining (N330, [proposta])', () => {
+    expect(parseUiSettings({}).quota).toEqual({ show: 'remaining' });
+    expect(parseUiSettings({ quota: { show: 'used' } }).quota.show).toBe('used');
+    expect(parseUiSettings({ quota: { show: 'left' } }).quota.show).toBe('remaining');
+    expect(parseUiSettings({ quota: 3 }).quota.show).toBe('remaining');
   });
 
   it('reads ui.login and falls back to auto', () => {

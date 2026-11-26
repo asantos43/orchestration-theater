@@ -221,6 +221,31 @@ describe('a ! command (P18)', () => {
     expect(unknown.terminal?.header).toBe('!');
   });
 
+  it('names the default Executor of the role, not ?, when the Director goes back to the default (N330)', () => {
+    const text = messageOf(
+      t,
+      entry(
+        {
+          kind: 'system',
+          notice: {
+            kind: 'director_switch',
+            scenarioId: 'S1',
+            form: 'stored',
+            fromExecutor: null,
+            toExecutor: null,
+            model: null,
+            effort: null,
+            override: false,
+            waited: false,
+          },
+        },
+        { who: 'system' },
+      ),
+    ).text;
+    expect(text).toContain('what=[layout.chat.entry.directorSwitch.defaultExecutor]');
+    expect(text).not.toContain('what=?');
+  });
+
   it('shows a refusal by its code, with the message of the daemon as the fallback', () => {
     const text = (code: 'forbidden' | 'internal'): string =>
       messageOf(

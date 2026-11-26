@@ -12,6 +12,7 @@ import {
   UiRenderConfigSchema,
   UiRuntimeConfigSchema,
   UiNewProjectConfigSchema,
+  UiQuotaConfigSchema,
   UiSettingsTabConfigSchema,
   UiSetupConfigSchema,
   UiThemeModeSchema,
@@ -216,13 +217,24 @@ describe('ui.* schemas of the terminal', () => {
   });
 
   it('has the default of ui.settingsTab and refuses an unknown mode', () => {
-    expect(UiSettingsTabConfigSchema.parse({})).toEqual({ limits: 'folded', roles: 'line' });
-    expect(UiSettingsTabConfigSchema.parse({ limits: 'open', roles: 'list' })).toEqual({
-      limits: 'open',
-      roles: 'list',
+    expect(UiSettingsTabConfigSchema.parse({})).toEqual({
+      limits: 'folded',
+      roles: 'line',
+      modelsAfterLogin: 'empty',
     });
+    expect(
+      UiSettingsTabConfigSchema.parse({ limits: 'open', roles: 'list', modelsAfterLogin: 'added' }),
+    ).toEqual({ limits: 'open', roles: 'list', modelsAfterLogin: 'added' });
+    expect(UiSettingsTabConfigSchema.safeParse({ modelsAfterLogin: 'never' }).success).toBe(false);
     expect(UiSettingsTabConfigSchema.safeParse({ limits: 'shut' }).success).toBe(false);
     expect(UiSettingsTabConfigSchema.safeParse({ table: true }).success).toBe(false);
+  });
+
+  it('has the default of ui.quota and refuses an unknown mode (N330, [proposta])', () => {
+    expect(UiQuotaConfigSchema.parse({})).toEqual({ show: 'remaining' });
+    expect(UiQuotaConfigSchema.parse({ show: 'used' }).show).toBe('used');
+    expect(UiQuotaConfigSchema.safeParse({ show: 'left' }).success).toBe(false);
+    expect(UiQuotaConfigSchema.safeParse({ bars: true }).success).toBe(false);
   });
 
   it('has the modes of ui.theme and refuses an unknown one', () => {

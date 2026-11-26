@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 import type { ApiPlay, ApiQuotaStatus, ApiScenario } from '@otheater/protocol';
+import type { QuotaShowMode } from '../settings.js';
 
 /**
  * What the side bar lists, worked out from the stores of the client. Pure. [proposta] The marker of
@@ -87,27 +88,44 @@ export function finishedRows(
 export interface QuotaRow {
   readonly profile: string;
   readonly state: ApiQuotaStatus['state'];
-  /** Percent used in the five-hour window; `undefined` when the account has none. */
+  /**
+   * Percent of the five-hour window, left or used as `ui.quota.show` says (N330); `undefined` when
+   * the account has none.
+   */
   readonly fiveHour: number | undefined;
-  /** Percent used in the weekly window. */
+  /** Percent of the weekly window, the same way. */
   readonly week: number | undefined;
 }
 
-function percentOf(status: ApiQuotaStatus, window: string): number | undefined {
-  const found = status.windows.find((item) => item.window === window);
-  return found === undefined
-    ? undefined
-    : Math.max(0, Math.min(100, Math.round(found.usedPercent)));
+/**
+ * The percent a quota window shows (`ui.quota.show`, N330): what is left of it (`remaining`, 100
+ * minus the used part) or the part used; whole, from 0 to 100.
+ */
+export function shownQuotaPercent(usedPercent: number, show: QuotaShowMode): number {
+  const used = Math.max(0, Math.min(100, Math.round(usedPercent)));
+  return show === 'used' ? used : 100 - used;
 }
 
-export function quotaRows(byProfile: Readonly<Record<string, ApiQuotaStatus>>): QuotaRow[] {
+function percentOf(
+  status: ApiQuotaStatus,
+  window: string,
+  show: QuotaShowMode,
+): number | undefined {
+  const found = status.windows.find((item) => item.window === window);
+  return found === undefined ? undefined : shownQuotaPercent(found.usedPercent, show);
+}
+
+export function quotaRows(
+  byProfile: Readonly<Record<string, ApiQuotaStatus>>,
+  show: QuotaShowMode = 'used',
+): QuotaRow[] {
   return Object.values(byProfile)
     .sort((a, b) => a.profile.localeCompare(b.profile))
     .map((status) => ({
       profile: status.profile,
       state: status.state,
-      fiveHour: percentOf(status, '5h'),
-      week: percentOf(status, '7d'),
+      fiveHour: percentOf(status, '5h', show),
+      week: percentOf(status, '7d', show),
     }));
 }
 

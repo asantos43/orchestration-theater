@@ -553,8 +553,8 @@ describe('the tab Settings', () => {
     const { app } = await open(new FakeSettingsApi());
     const frame = await app.settle();
     // The accounts: account, kind, one column per window (`—` with no reading) and the state.
-    expect(frame).toMatch(/account +kind +5h +7d +state/);
-    expect(frame).toMatch(/claude-code\/main +Subscription +40% +— +ok · /);
+    expect(frame).toMatch(/Subscriptions · quota left[\s\S]*account +kind +5h +7d +state/);
+    expect(frame).toMatch(/claude-code\/main +Subscription +60% +— +ok · /);
     // A row wider than the tab is cut with `…` instead of breaking in two.
     expect(frame).not.toMatch(/│ resets in 2h +│/);
     // The Executors and their roles in two columns.
@@ -1405,6 +1405,55 @@ describe('the list of models after the login of A (N324, part B2)', () => {
     });
     await app.waitForText('Signed in: claude-code/main');
     expect(setup.read).toEqual([]);
+  });
+
+  /** A tab where codex/alt already exists, with no Executor, and the cursor on it. */
+  async function onAccountWithNoExecutor(
+    settingsTab: Partial<UiSettings['settingsTab']> = {},
+  ): Promise<{ app: RenderedApp; online: FakeOnline; setup: FakeSettingsSetup }> {
+    const api = new FakeSettingsApi();
+    api.accounts = [...api.accounts, profile('codex', 'alt')];
+    const setup = new FakeSettingsSetup();
+    api.setup = setup;
+    api.loginAnswer = BROWSER_LOGIN;
+    const { app, online } = await open(api, { columns: 260, settingsTab });
+    // The rows of the subscriptions: claude-code/main, codex/work, then codex/alt.
+    await key(app, 'j');
+    await key(app, 'j');
+    return { app, online, setup };
+  }
+
+  it('L on an account with no Executor opens the list after the login (modelsAfterLogin: empty, N330)', async () => {
+    const { app, online, setup } = await onAccountWithNoExecutor();
+    await key(app, 'l');
+    await app.waitForText('https://login.example.test/oauth?state=alt');
+    emit(online, 'profile.login.completed', {
+      profileId: 'codex/alt',
+      mode: 'browser',
+      durationMs: 5,
+    });
+    await app.waitForText(TITLE);
+    expect(setup.read).toEqual(['codex/alt']);
+  });
+
+  it('with modelsAfterLogin: added, L on an account that exists opens no list (N330)', async () => {
+    const { app, online, setup } = await onAccountWithNoExecutor({ modelsAfterLogin: 'added' });
+    await key(app, 'l');
+    await app.waitForText('https://login.example.test/oauth?state=alt');
+    emit(online, 'profile.login.completed', {
+      profileId: 'codex/alt',
+      mode: 'browser',
+      durationMs: 5,
+    });
+    await app.waitForText('Signed in: codex/alt');
+    expect(setup.read).toEqual([]);
+  });
+
+  it('M opens the list of the account under the cursor at any time (N330, [proposta])', async () => {
+    const { app, setup } = await onAccountWithNoExecutor();
+    await key(app, 'm');
+    await app.waitForText(TITLE);
+    expect(setup.read).toEqual(['codex/alt']);
   });
 
   it('an API account opens no list', async () => {

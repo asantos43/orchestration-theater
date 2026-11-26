@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 import type { DaemonStores } from '@otheater/client';
 import { useMemo } from 'react';
+import type { QuotaShowMode } from '../settings.js';
 import { useStoreValue } from '../use-store-value.js';
 import {
   finishedRows,
@@ -26,10 +27,10 @@ export function useFinishedRows(stores: DaemonStores, limit: number): FinishedRo
   return useMemo(() => finishedRows(scenarios, plays, limit), [scenarios, plays, limit]);
 }
 
-/** One row per account with a reading of its quota. */
-export function useQuotaRows(stores: DaemonStores): QuotaRow[] {
+/** One row per account with a reading of its quota, its percents as `ui.quota.show` says (N330). */
+export function useQuotaRows(stores: DaemonStores, show: QuotaShowMode): QuotaRow[] {
   const byProfile = useStoreValue(stores.quotas, (s) => s.byProfile);
-  return useMemo(() => quotaRows(byProfile), [byProfile]);
+  return useMemo(() => quotaRows(byProfile, show), [byProfile, show]);
 }
 
 /** Pending decisions of one scenario (or of all, with no id). */

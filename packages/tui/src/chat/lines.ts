@@ -70,7 +70,11 @@ function noticeText(t: Translate, notice: ScenarioSystemMessagePayload): string 
     case 'director_switch':
       return t(`${ROOT}.directorSwitch.${notice.form}`, {
         from: notice.fromExecutor ?? '?',
-        what: [notice.toExecutor ?? '?', notice.model, notice.effort]
+        what: [
+          notice.toExecutor ?? t(`${ROOT}.directorSwitch.defaultExecutor`),
+          notice.model,
+          notice.effort,
+        ]
           .filter((item): item is string => item !== null)
           .join(' / '),
         source: t(`${ROOT}.directorSwitch.${notice.override ? 'override' : 'default'}`),

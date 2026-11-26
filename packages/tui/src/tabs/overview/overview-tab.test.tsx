@@ -188,7 +188,7 @@ describe('what the Overview draws', () => {
     expect(frame).toContain('demand.transitioned');
     expect(frame).not.toContain('session.update');
     expect(frame).toContain('claude-main');
-    expect(frame).toContain('62%');
+    expect(frame).toContain('38%');
   });
 
   it('says a Claude Code account with no reading is read at its first session (N328, [proposta])', async () => {
