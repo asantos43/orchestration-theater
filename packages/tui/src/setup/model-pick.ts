@@ -114,7 +114,15 @@ export interface ModelPickLine {
   readonly tone?: 'accent';
 }
 
-export function modelPickLines(pick: ModelPick, t: TFunction): readonly ModelPickLine[] {
+/**
+ * The lines of the list. `keys` is the key of the text of the hint (the assistant's by default):
+ * the tab Settings has its own, since there Esc writes nothing.
+ */
+export function modelPickLines(
+  pick: ModelPick,
+  t: TFunction,
+  keys = 'setup.models.keys',
+): readonly ModelPickLine[] {
   const lines: ModelPickLine[] = [
     { key: 'mp.title', text: t('setup.models.title', { profile: pick.profileId }), tone: 'accent' },
   ];
@@ -133,7 +141,7 @@ export function modelPickLines(pick: ModelPick, t: TFunction): readonly ModelPic
       ...(registered ? { dim: true } : {}),
     });
   });
-  lines.push({ key: 'mp.keys', text: t('setup.models.keys'), dim: true });
+  lines.push({ key: 'mp.keys', text: t(keys), dim: true });
   return lines;
 }
 

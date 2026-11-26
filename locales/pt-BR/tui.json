@@ -789,6 +789,18 @@
       "noLogin": "Só uma conta de assinatura entra por login.",
       "noAssistant": "O assistente precisa do daemon.",
       "noClient": "Nenhum cliente está pronto nesta máquina, então ainda não há conta para adicionar. {{assistant}} abre o assistente, que diz o que falta."
+    },
+    "models": {
+      "keys": "↑/↓ andam, Espaço marca, Enter grava os marcados como Executores, Esc não grava nada",
+      "saving": "Gravando os Executores de {{profile}}…",
+      "registered_one": "{{profile}}: {{count}} Executor gravado ({{ids}}).",
+      "registered_other": "{{profile}}: {{count}} Executores gravados ({{ids}}).",
+      "none": "{{profile}}: nenhum modelo marcado, então nenhum Executor foi gravado.",
+      "skipped": "{{profile}}: a lista ficou de lado, então nenhum Executor foi gravado.",
+      "busy": "Há um cadastro de conta aberto no assistente ({{assistant}}), então os Executores de {{profile}} não foram gravados: termine ou cancele esse cadastro lá.",
+      "writeFailed": "Os Executores de {{profile}} não foram gravados: {{message}}",
+      "failed": "Não deu para ler os modelos de {{profile}}: {{message}}. Nenhum Executor foi gravado.",
+      "unavailable": "O cliente de {{profile}} não listou os modelos ({{reason}}). Nenhum Executor foi gravado."
     }
   },
   "overview": {
