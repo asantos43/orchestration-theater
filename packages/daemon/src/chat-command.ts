@@ -236,7 +236,8 @@ function renderDirectorFailoverMessage(
     t(`chat.system.directorFailover.${notice.outcome}`, {
       from: notice.fromExecutor ?? '-',
       to: notice.toExecutor ?? '-',
-      cause: notice.cause,
+      // [proposta] (N334) The cause in words, not the code.
+      cause: t(`chat.system.directorFailover.cause.${notice.cause}`),
       until: notice.resetsAt === null ? '' : ` (${new Date(notice.resetsAt).toISOString()})`,
     }),
   ];

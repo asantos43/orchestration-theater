@@ -274,6 +274,34 @@ describe('a ! command (P18)', () => {
     expect(text(null)).not.toContain('failover.detail');
   });
 
+  it('says the cause in words, and what to do about a refusal of the policy (N334)', () => {
+    const text = (cause: 'permission' | 'client_crash'): string =>
+      messageOf(
+        t,
+        entry(
+          {
+            kind: 'system',
+            notice: {
+              kind: 'director_failover',
+              scenarioId: 'S1',
+              outcome: 'unavailable',
+              cause,
+              fromExecutor: null,
+              toExecutor: null,
+              requeued: null,
+              resetsAt: null,
+              detail: 'short of layers',
+            },
+          },
+          { who: 'system' },
+        ),
+      ).text;
+    expect(text('permission')).toContain('cause=[layout.chat.entry.failover.cause.permission]');
+    expect(text('permission')).toContain('[layout.chat.entry.failover.permissionHint]');
+    expect(text('client_crash')).toContain('cause=[layout.chat.entry.failover.cause.client_crash]');
+    expect(text('client_crash')).not.toContain('permissionHint');
+  });
+
   it('shows a refusal by its code, with the message of the daemon as the fallback', () => {
     const text = (code: 'forbidden' | 'internal'): string =>
       messageOf(
