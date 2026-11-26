@@ -485,12 +485,12 @@ Todos **[proposta]** quanto ao nome. Cada um entra no catálogo do protocolo e n
   - Nos runners, a tela ficava vazia. O Ink 8 (`is-in-ci`) trata como CI qualquer `CI` cujo valor não seja `0` nem `false`, até a vazia, e aí só escreve o último quadro. O `supports-color` tira a cor quando a chave `CI` existe. O suporte apaga `CI` e `CONTINUOUS_INTEGRATION` do processo do teste [V: com `CI=true`, os 10 testes passam].
   - No macOS, o aviso da tecla Option toma o lugar da barra de atalhos até a primeira tecla. Depois de desenhar a tela, o suporte aperta F12, que não tem atalho.
   - No Windows, o ConPTY do runner descarta o desligamento do mouse (`?1006l ?1002l ?1000l`). A TUI escreve as sequências duas vezes, como no Linux, e o `?2004l` e o `?1049l` entre elas passam [N: visto no trace, não no código do ConPTY]. Lá o teste não confere o modo do mouse. Fica para o roteiro manual: no Windows Terminal, sair com Ctrl+C e mexer o mouse não pode escrever nada no shell.
-- **[proposta]** (perguntas ao dono):
-  - o `alacritty` como terminal padrão;
-  - as cores escritas em hexadecimal no teste, em vez de lidas da paleta;
-  - o `SAFE_UI`;
-  - o job próprio na CI, em vez do `cross`;
-  - a variável do repositório `OT_TUI_TEST_BACKEND`, que escolhe o terminal na CI.
+- **Decidido pelo dono** (2026-11-26, por múltipla escolha, tudo igual à recomendação; docs/13, N320):
+  - o `alacritty` é o terminal padrão;
+  - as cores ficam escritas em hexadecimal no teste, e não lidas da paleta, para que uma cor trocada por engano falhe;
+  - o `SAFE_UI` fica como está (assistente `never`, navegador do login `off`);
+  - os testes rodam num job próprio da CI, o `tui-terminal`, e não no `cross`;
+  - a variável do repositório `OT_TUI_TEST_BACKEND` escolhe o terminal na CI, e sem ela vale o `alacritty`. Quem cria a variável é o dono; o Claude não cria.
 
 ## Riscos
 

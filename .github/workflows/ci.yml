@@ -327,9 +327,10 @@ jobs:
   # the theme, the OSC 8 link, the mouse, a resize, Ctrl+C and the exit of the real binary. OT_REQUIRE_PTY=1:
   # here they fail instead of skipping when the native module of tui-test, the build or the launcher
   # is missing. On Windows the daemon of the test needs ot-job-launcher.exe, so it is built first
-  # (`cross` does not build it, and there these tests skip). [proposta] The repository variable
+  # (`cross` does not build it, and there these tests skip). The repository variable
   # OT_TUI_TEST_BACKEND picks the emulated terminal: `alacritty` (default), `xtermjs`, `ghostty` or
-  # `all`. On a failure, the trace (trace.md) and the text of the screen go up as an artifact.
+  # `all` (N320, decided by the owner on 2026-11-26). On a failure, the trace (trace.md) and the
+  # text of the screen go up as an artifact.
   # Same conditions as `linux`.
   tui-terminal:
     needs: [changes]
