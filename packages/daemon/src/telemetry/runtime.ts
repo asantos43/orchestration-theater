@@ -69,7 +69,10 @@ export async function startTelemetry(
     }
     return undefined;
   }
-  const values = new VaultValues(input.vault, logger);
+  const values = new VaultValues(input.vault, logger, {
+    warning: config.telemetry.vault_warning,
+    situations,
+  });
   const sessions = new TelemetrySessions();
   try {
     await values.start();

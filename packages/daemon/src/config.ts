@@ -134,6 +134,9 @@ import {
 /** `setup.role_lists`: what the setup assistant writes of the lists of the roles. */
 export const SETUP_ROLE_LIST_MODES = ['explicit', 'preset'] as const;
 export type SetupRoleListMode = (typeof SETUP_ROLE_LIST_MODES)[number];
+/** `setup.preset_match` (N333): how a model name of a preset finds a model a catalog lists. */
+export const PRESET_MATCH_MODES = ['newest', 'exact'] as const;
+export type PresetMatchMode = (typeof PRESET_MATCH_MODES)[number];
 
 /** [proposta] What the logon service does when the daemon exits (`service.restart`, Phase 10, P3). */
 export const SERVICE_RESTART_MODES = ['on_failure', 'always', 'never'] as const;
@@ -1584,6 +1587,14 @@ export const BACKUP_TELEMETRY_MODES = ['exclude', 'include'] as const;
 /** `telemetry.redaction`: `default` also redacts the content (prompts, answers, tool arguments and output); `full` keeps it. */
 export const TELEMETRY_REDACTION_MODES = ['default', 'full'] as const;
 
+/**
+ * `telemetry.vault_warning` (N331; [proposta]): how a vault the telemetry redaction cannot read is
+ * told. `on_change` (default): one warning, again only when the reason changes, and an info line
+ * when it reads again; `every`: a warning at each refresh (every 30 s); `off`: the debug log only.
+ */
+export const TELEMETRY_VAULT_WARNING_MODES = ['on_change', 'every', 'off'] as const;
+export type TelemetryVaultWarningMode = (typeof TELEMETRY_VAULT_WARNING_MODES)[number];
+
 /** `telemetry.receiver.reparent` (Phase 9, P1; [proposta]): `session` puts the clients' spans under the daemon's tree; `off` keeps them in their own traces. */
 export const TELEMETRY_REPARENT_MODES = ['session', 'off'] as const;
 export type TelemetryReparentMode = (typeof TELEMETRY_REPARENT_MODES)[number];
@@ -1777,6 +1788,11 @@ const TelemetryConfigSchema = z
      * size and hash. `full`: the content stays; the identity and secrets are still removed.
      */
     redaction: z.enum(TELEMETRY_REDACTION_MODES).default('default'),
+    /**
+     * How a vault the redaction cannot read (a locked one) is told (N331): see
+     * {@link TELEMETRY_VAULT_WARNING_MODES}. Default `on_change`. [proposta]
+     */
+    vault_warning: z.enum(TELEMETRY_VAULT_WARNING_MODES).default('on_change'),
     /**
      * The spans of the daemon itself (P4; N214 (a)): the play, its stages, the attempts, the
      * sessions, the tool calls and the waits, made by reading the event log with a cursor of their
@@ -3325,6 +3341,13 @@ export const DaemonConfigSchema = z
          * following the preset.
          */
         role_lists: z.enum(SETUP_ROLE_LIST_MODES).default('explicit'),
+        /**
+         * [proposta] (N333) How a model name of the preset (`codex-sol`) finds the model the
+         * catalog of the account lists: `newest` takes an id equal to the family, else the newest
+         * id with the family as a word (`gpt-6.2-sol`); `exact` only the equal id. The table
+         * `executors.aliases` comes first in both.
+         */
+        preset_match: z.enum(PRESET_MATCH_MODES).default('newest'),
       })
       .prefault({}),
     /**

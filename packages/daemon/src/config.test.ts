@@ -1580,16 +1580,19 @@ describe('setup (the setup assistant, P4 of Phase 7)', () => {
     const { setup } = parseConfig('');
     expect(setup.suggested_budget).toEqual({ daily_usd: 20, monthly_usd: 200 });
     expect(setup.role_lists).toBe('explicit');
+    expect(setup.preset_match).toBe('newest');
   });
 
   it('takes each mode and a cap of its own', () => {
     expect(parseConfig('setup:\n  role_lists: preset\n').setup.role_lists).toBe('preset');
+    expect(parseConfig('setup:\n  preset_match: exact\n').setup.preset_match).toBe('exact');
     const { setup } = parseConfig('setup:\n  suggested_budget:\n    daily_usd: 5\n');
     expect(setup.suggested_budget).toEqual({ daily_usd: 5, monthly_usd: 200 });
   });
 
   it('rejects an unknown mode, a cap that is not positive and unknown keys', () => {
     expect(() => parseConfig('setup:\n  role_lists: some\n')).toThrow(InvalidInput);
+    expect(() => parseConfig('setup:\n  preset_match: closest\n')).toThrow(InvalidInput);
     expect(() => parseConfig('setup:\n  suggested_budget:\n    daily_usd: 0\n')).toThrow(
       InvalidInput,
     );
@@ -1644,6 +1647,7 @@ describe('telemetry (P1 of Phase 8)', () => {
       },
       receiver: { port: 'auto', max_body: 8 * 1024 * 1024, reparent: 'session' },
       redaction: 'default',
+      vault_warning: 'on_change',
       daemon_spans: { enabled: 'on', waits: 'all' },
       export: 'off',
       otlp: {
@@ -1741,6 +1745,15 @@ describe('telemetry (P1 of Phase 8)', () => {
     expect(parseConfig('telemetry:\n  receiver:\n    port: auto\n').telemetry.receiver.port).toBe(
       'auto',
     );
+  });
+
+  it('takes the modes of telemetry.vault_warning (N331) and refuses another', () => {
+    for (const mode of ['on_change', 'every', 'off'] as const) {
+      expect(parseConfig(`telemetry:\n  vault_warning: ${mode}\n`).telemetry.vault_warning).toBe(
+        mode,
+      );
+    }
+    expect(() => parseConfig('telemetry:\n  vault_warning: always\n')).toThrow();
   });
 
   it('takes the modes of telemetry.receiver.reparent (Phase 9, P1) and refuses another', () => {
