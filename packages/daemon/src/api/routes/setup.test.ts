@@ -56,7 +56,8 @@ beforeEach(async () => {
   daemon = await startDaemon({
     dataDir: tmp.dir,
     clientSearch: NO_CLIENTS,
-    config: parseConfig('backup:\n  when: manual\n'),
+    // The routes here do not test the question about layer 3 (N334), which a Windows without it asks.
+    config: parseConfig('backup:\n  when: manual\nsetup:\n  unenforced_prompt: never\n'),
     overrides: { clock, vault: new InMemorySecretVault(), store: new InMemoryStore({ clock }) },
     logger: captureLogger().logger,
     version: '0.0.0-test',
@@ -213,7 +214,8 @@ describe('the setup routes', () => {
       startDaemon({
         dataDir: dir,
         clientSearch: NO_CLIENTS,
-        config: parseConfig('backup:\n  when: manual\n'),
+        // The routes here do not test the question about layer 3 (N334), which a Windows without it asks.
+        config: parseConfig('backup:\n  when: manual\nsetup:\n  unenforced_prompt: never\n'),
         overrides: { clock: new FakeClock(), vault: new InMemorySecretVault() },
         logger: captureLogger().logger,
         version: '0.0.0-test',
