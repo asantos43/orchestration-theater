@@ -10,15 +10,16 @@ Phase 10, P4. A per-user `.msi` (no administrator) built with the WiX Toolset **
 
 ## The choices of the install (N322)
 
-A double click shows one page: where to keep the secrets (keep what is configured, the Windows Credential Manager, an encrypted file, or auto), a check box for the logon service and one for downloading the ACP adapters now, and the Install button. No wizard, no folder choice, no EULA. A choice that needs an administrator would carry the UAC shield and "needs administrator"; none does (the package is per user), and the page says so. The page is made of core WiX elements, with no WixUI extension. [proposta]
+A double click shows one page: where to keep the secrets (keep what is configured, the Windows Credential Manager, an encrypted file, or auto), a check box for the logon service, one check box per ACP adapter to download now (Claude Code and Codex, both checked; N324), and the Install button. No wizard, no folder choice, no EULA. A choice that needs an administrator would carry the UAC shield and "needs administrator"; none does (the package is per user), and the page says so. The page is made of core WiX elements, with no WixUI extension. [proposta]
 
-A silent install takes the same choices as properties: `VAULT` (`keep`, the default, `keyring`, `encrypted-file` or `auto`), `LOGON_SERVICE` (`1`, the default, or `0`) and `PREFETCH_ADAPTERS` (`1`, the default, or `0`). For example:
+A silent install takes the same choices as properties: `VAULT` (`keep`, the default, `keyring`, `encrypted-file` or `auto`), `LOGON_SERVICE` (`1`, the default, or `0`) and `PREFETCH_ADAPTERS` (`all`, the default, `claude-code`, `codex` or `0`; `1` is still read as `all` and an empty value as `0`, for the command lines of before [proposta]). Given with the page, `PREFETCH_ADAPTERS` says which boxes start checked. For example:
 
 ```powershell
 msiexec /i OTheater-<version>-win32-x64.msi /qn VAULT=encrypted-file PREFETCH_ADAPTERS=0
+msiexec /i OTheater-<version>-win32-x64.msi /qn PREFETCH_ADAPTERS=claude-code
 ```
 
-Another value of `VAULT` stops the install before anything is done. A vault that cannot be written or a download that fails does not fail the install: `ot vault use` and `ot adapters install` do it later. The test of the package (`test-install.ps1`) installs with `VAULT=encrypted-file PREFETCH_ADAPTERS=0` and checks the vault.
+Another value of `VAULT` or `PREFETCH_ADAPTERS` stops the install before anything is done. A vault that cannot be written or a download that fails does not fail the install: `ot vault use` and `ot adapters install` do it later (each adapter is downloaded by its own action, so one failed download does not keep the other). The test of the package (`test-install.ps1`) checks that `PREFETCH_ADAPTERS=gemini` is refused with nothing installed, then installs with `VAULT=encrypted-file PREFETCH_ADAPTERS=0` and checks the vault.
 
 What goes into the package: `ot.exe` (the single executable of P1, installed under this name), `ot-job-launcher.exe` (P2, next to it, where the adapter looks first), `LICENSE` and the third-party notices.
 The data folder (`%LOCALAPPDATA%\OTheater`) is not part of the package: install, upgrade and uninstall never touch it.
