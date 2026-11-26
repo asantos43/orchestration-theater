@@ -539,6 +539,89 @@ describe('the other two flows (skeleton)', () => {
   });
 });
 
+describe('the models of an account after its login (N324)', () => {
+  it('says the login the client gives, and marks the models with the Executors of the preset the account step finds', async () => {
+    const rig = await rigOf({
+      configYaml: `roles:\n  preset: quality\nexecutors:\n  codex-luna@${CODEX}:\n    client: codex\n    profile: main\n    model: luna\n`,
+    });
+    const service = rig.service();
+    const models = await service.models(CODEX);
+    expect(models).toMatchObject({
+      profileId: CODEX,
+      kind: 'token_plan',
+      login: 'logged_in',
+      preset: 'quality',
+      catalog: 'listed',
+      reason: null,
+    });
+    expect(models.models.map((model) => model.id)).toEqual(['sol', 'luna']);
+    expect(models.models.find((model) => model.id === 'luna')?.registered).toEqual([
+      `codex-luna@${CODEX}`,
+    ]);
+    expect(models.models.find((model) => model.id === 'sol')?.registered).toEqual([]);
+
+    // The marks are the ids the account step would put in the plan: unchecking is excluding them.
+    const run = await service.start('add_account');
+    const after = await service.submit(run.id, { step: 'account', input: { profileId: CODEX } });
+    const discovered = after.done[0]?.step === 'account' ? after.done[0].output.discovered : [];
+    expect(discovered.length).toBeGreaterThan(0);
+    expect(
+      models.models.flatMap((model) => model.preset.map((mark) => mark.id)).toSorted(),
+    ).toEqual(discovered.map((executor) => executor.id).toSorted());
+  });
+
+  it('a logged-out account says so, and a catalog that fails is said, not thrown', async () => {
+    const rig = await rigOf({ catalogs: { codex: new ListCatalog([], { fail: true }) } });
+    rig.logins.set(CLAUDE, 'logged_out');
+    const service = rig.service();
+    expect((await service.models(CLAUDE)).login).toBe('logged_out');
+    expect(await service.models(CODEX)).toMatchObject({
+      catalog: 'unavailable',
+      reason: 'the catalog is down',
+      models: [],
+    });
+  });
+
+  it('an API account has no login, a client with no catalog is none, and an unknown account is not found', async () => {
+    const rig = await rigOf();
+    delete rig.catalogs.codex;
+    const service = rig.service();
+    const api = await service.models(MINIMAX);
+    expect(api).toMatchObject({ kind: 'api', login: null });
+    expect(api.models.every((model) => model.preset.length === 0)).toBe(true);
+    expect(await service.models(CODEX)).toMatchObject({ catalog: 'none', models: [] });
+    await expect(service.models('codex/ghost')).rejects.toBeInstanceOf(NotFound);
+  });
+
+  it('the executors step leaves out the unchecked Executors of the preset, and refuses an id it did not find', async () => {
+    const rig = await rigOf({ configYaml: 'roles:\n  preset: quality\n' });
+    const service = rig.service();
+    const run = await service.start('add_account');
+    const after = await service.submit(run.id, { step: 'account', input: { profileId: CODEX } });
+    const discovered = after.done[0]?.step === 'account' ? after.done[0].output.discovered : [];
+    const [dropped, kept] = discovered.map((executor) => executor.id);
+    if (dropped === undefined || kept === undefined) throw new Error('expected two Executors');
+    await expect(
+      service.submit(run.id, { step: 'executors', input: { exclude: [`codex-ghost@${CODEX}`] } }),
+    ).rejects.toBeInstanceOf(InvalidInput);
+    await expect(
+      service.submit(run.id, { step: 'executors', input: { exclude: [dropped, dropped] } }),
+    ).rejects.toBeInstanceOf(InvalidInput);
+
+    const review = await service.submit(run.id, {
+      step: 'executors',
+      input: { exclude: [dropped] },
+    });
+    if (review.prompt?.step !== 'review') throw new Error('expected the review prompt');
+    expect(review.prompt.plan.executors.map((executor) => executor.id)).toEqual([kept]);
+    await service.confirm(run.id);
+    const config = await rig.config();
+    expect(config.executors.entries[kept]).toBeDefined();
+    expect(config.executors.entries[dropped]).toBeUndefined();
+    expect(await rig.store.executors.get(dropped)).toBeUndefined();
+  });
+});
+
 describe('SetupService looks for the clients again (P18, N321)', () => {
   it('opening and starting search as open; redetect searches as asked and gives the clients with why', async () => {
     const rig = await rigOf({ installed: ['codex'] });

@@ -6,7 +6,14 @@ import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { plain, waitFor } from '../ink.test-support.js';
 import { buildTuiKeymap } from '../keys/use-keymap.js';
 import { createTuiI18n, loadTuiCatalogs } from '../locale.js';
-import type { SetupDetectedClient } from '@otheater/protocol';
+import type {
+  SetupDetectedClient,
+  SetupExecutor,
+  SetupModel,
+  SetupModels,
+  SetupNote,
+} from '@otheater/protocol';
+import type { SetupModelPickMode } from '../settings.js';
 import type { SetupFlow } from './api.js';
 import {
   FakeSetupApi,
@@ -34,6 +41,7 @@ const ESC = '\x1b';
 const DOWN = '\x1b[B';
 const UP = '\x1b[A';
 const SHIFT_DOWN = '\x1b[1;2B';
+const TAB = '\t';
 
 const keymap = buildTuiKeymap(
   { preset: 'agents', environment: 'auto', overrides: {} },
@@ -44,6 +52,12 @@ const keymap = buildTuiKeymap(
 const BOTH_INSTALLED: readonly SetupDetectedClient[] = [
   { client: 'claude-code', installed: true },
   { client: 'codex', installed: true },
+];
+
+/** The three clients on the machine (OpenCode asks for its provider). */
+const ALL_INSTALLED: readonly SetupDetectedClient[] = [
+  ...BOTH_INSTALLED,
+  { client: 'opencode', installed: true },
 ];
 
 const PROFILES = [
@@ -64,11 +78,18 @@ interface Mounted {
 function mount(
   flow: SetupFlow,
   api: FakeSetupApi = new FakeSetupApi({ profiles: PROFILES }),
+  modelPick?: SetupModelPickMode,
 ): Mounted {
   const outcomes: SetupOutcome[] = [];
   const view = render(
     <I18nextProvider i18n={i18n}>
-      <SetupScreen flow={flow} api={api} keymap={keymap} onClose={(o) => outcomes.push(o)} />
+      <SetupScreen
+        flow={flow}
+        api={api}
+        keymap={keymap}
+        modelPick={modelPick}
+        onClose={(o) => outcomes.push(o)}
+      />
     </I18nextProvider>,
   );
   Object.defineProperty(view.stdout, 'columns', { value: 110, configurable: true });
@@ -440,6 +461,76 @@ describe('the setup screen: the other flows', () => {
     expect(api.written[0]?.preset).toBe('economical');
   });
 
+  it('folds the notes of the review by family, and D shows each one (N324)', async () => {
+    const api = new FakeSetupApi({ profiles: PROFILES, current: 'quality' });
+    const noAccount = (head: string, role: 'author' | 'reviewer'): SetupNote => ({
+      severity: 'info',
+      code: 'no_account',
+      role,
+      head,
+      message: `no account has ${head} for ${role}`,
+    });
+    api.notes = [
+      noAccount('claude-opus-high', 'author'),
+      noAccount('claude-opus-high', 'reviewer'),
+      noAccount('claude-sonnet-medium', 'author'),
+      noAccount('codex-sol-high', 'author'),
+      { severity: 'warning', code: 'empty_list', role: 'author', message: 'author is empty' },
+      { severity: 'info', code: 'other', role: null, message: 'a note of its own' },
+    ];
+    const screen = mount('change_preset', api);
+    await screen.seen('Pick the preset of the roles.');
+    await screen.press(ENTER);
+    const folded = await screen.seen('This is what will be written.');
+    expect(folded).toContain(
+      'claude: no account of this machine has claude-opus-high, claude-sonnet-medium; left out of 2 role(s)',
+    );
+    expect(folded).toContain('codex: no account of this machine has codex-sol-high');
+    expect(folded).toContain('No Executor left in 1 role(s): author');
+    expect(folded).toContain('a note of its own');
+    expect(folded).not.toContain('no account has claude-opus-high for reviewer');
+    expect(folded).toContain('D shows each note');
+    const all = await screen.press('d');
+    expect(all).toContain('no account has claude-opus-high for reviewer');
+    expect(all).toContain('author is empty');
+    expect(all).toContain('D folds the notes again');
+    expect(await screen.press('d')).not.toContain('no account has claude-opus-high for reviewer');
+  });
+
+  it('shows every note at once with ui.setup.reviewNotes all (N324)', async () => {
+    const api = new FakeSetupApi({ profiles: PROFILES, current: 'quality' });
+    api.notes = [
+      {
+        severity: 'info',
+        code: 'no_account',
+        role: 'author',
+        head: 'codex-sol-high',
+        message: 'one by one',
+      },
+    ];
+    const outcomes: SetupOutcome[] = [];
+    const view = render(
+      <I18nextProvider i18n={i18n}>
+        <SetupScreen
+          flow="change_preset"
+          api={api}
+          keymap={keymap}
+          reviewNotes="all"
+          onClose={(o) => outcomes.push(o)}
+        />
+      </I18nextProvider>,
+    );
+    const frame = (): string => plain(view.lastFrame() ?? '');
+    await waitFor(() => (frame().includes('Pick the preset') ? true : undefined), 'preset');
+    view.stdin.write(ENTER);
+    const review = await waitFor(
+      () => (frame().includes('This is what will be written.') ? frame() : undefined),
+      'review',
+    );
+    expect(review).toContain('one by one');
+    expect(review).not.toContain('no account of this machine has');
+  });
+
   it('shows the preset as kept when the plan does not change it', async () => {
     const api = new FakeSetupApi({ profiles: PROFILES });
     const screen = mount('add_account', api);
@@ -481,8 +572,8 @@ describe('the setup screen: the step that adds an account (N274)', () => {
     return { api, accounts };
   }
 
-  async function atStep(api: FakeSetupApi): Promise<Mounted> {
-    const screen = mount('first_run', api);
+  async function atStep(api: FakeSetupApi, modelPick?: SetupModelPickMode): Promise<Mounted> {
+    const screen = mount('first_run', api, modelPick);
     await screen.seen('Add an account of a client');
     return screen;
   }
@@ -495,7 +586,7 @@ describe('the setup screen: the step that adds an account (N274)', () => {
     expect(frame).toContain('● New account  ○ Accounts  ○ Preset  ○ Executors  ○ Review');
     expect(frame).toContain('›claude-code  (installed)');
     expect(frame).toContain('codex  (not found)');
-    expect(frame).toContain('continues without adding');
+    expect(frame).toContain('adds another account');
     // The run of the daemon starts at the detection: the step is the screen's, not a step of it.
     expect(frame).toContain('Esc leaves');
     const detect = await screen.press(ENTER);
@@ -510,7 +601,13 @@ describe('the setup screen: the step that adds an account (N274)', () => {
     const { api, accounts } = withAccounts();
     const screen = await atStep(api);
     await screen.press('a');
-    expect(screen.frame()).toContain('Account of claude-code as: <name> [provider]');
+    // The form (N326): one client ready, so it is chosen already and the cursor is on the name.
+    const form = screen.frame();
+    expect(form).toContain('Client: claude-code');
+    expect(form).toContain('›Name: main▏');
+    expect(form).toContain('Provider: anthropic (the only one of this client)');
+    expect(form).toContain('Enter adds and opens the sign-in');
+    // The default name goes away at the first key.
     await screen.type('work');
     await screen.press(ENTER);
     const done = await screen.seen('Added in this run: claude-code/work');
@@ -521,35 +618,130 @@ describe('the setup screen: the step that adds an account (N274)', () => {
     expect(accounts.logins).toEqual(['start:claude-code/work']);
     expect(accounts.ran).toEqual(['ot profile exec claude-code/work login']);
     expect(done).toContain('The sign-in ended with code 0.');
+    expect(done).not.toContain('Name: ');
     // The detection lists the account just added.
     const detect = await screen.press(ENTER);
     expect(detect).toContain('claude-code/work');
   });
 
-  it('takes the provider of the line when it has one, and the default of the client otherwise', async () => {
-    const { api, accounts } = withAccounts({ clients: BOTH_INSTALLED });
+  it('keeps the default name main when nothing is typed', async () => {
+    const { api, accounts } = withAccounts({ profiles: [] });
+    const screen = await atStep(api);
+    await screen.press('a');
+    await screen.press(ENTER);
+    await screen.seen('Added in this run: claude-code/main');
+    expect(accounts.added[0]).toMatchObject({ client: 'claude-code', name: 'main' });
+  });
+
+  it('only OpenCode asks for the provider; the others take their own', async () => {
+    const { api, accounts } = withAccounts({ clients: ALL_INSTALLED });
     const screen = await atStep(api);
     await screen.press(DOWN);
     await screen.press('a');
-    await screen.type('alt openrouter');
+    // Several clients ready: the cursor starts on the client, the one under the cursor chosen.
+    const codex = screen.frame();
+    expect(codex).toContain('›Client:  claude-code  [codex]  opencode');
+    expect(codex).toContain('Provider: openai (the only one of this client)');
+    // Space moves to the next client: OpenCode, which shows the field of the provider.
+    const opencode = await screen.press(' ');
+    expect(opencode).toContain('[opencode]');
+    expect(opencode).not.toContain('the only one of this client');
+    await screen.press(TAB);
+    await screen.type('alt');
+    await screen.press(TAB);
+    await screen.press(TAB);
+    await screen.type('openrouter');
     await screen.press(ENTER);
-    await screen.seen('Added in this run: codex/alt');
-    expect(accounts.added[0]).toMatchObject({
-      client: 'codex',
+    await screen.seen('Added in this run: opencode/alt');
+    expect(accounts.added[0]).toEqual({
+      client: 'opencode',
       name: 'alt',
+      kind: 'token_plan',
       provider: 'openrouter',
     });
   });
 
-  it('a line that is not <name> [provider] adds nothing', async () => {
+  it('OpenCode without a provider adds nothing and says what is missing', async () => {
+    const { api, accounts } = withAccounts({ clients: ALL_INSTALLED });
+    const screen = await atStep(api);
+    await screen.press(DOWN);
+    await screen.press(DOWN);
+    await screen.press('a');
+    await screen.press(ENTER);
+    expect(screen.frame()).toContain('Write the provider, such as openai or anthropic.');
+    expect(accounts.added).toEqual([]);
+  });
+
+  it('a wrong name adds nothing and says why', async () => {
     const { api, accounts } = withAccounts();
     const screen = await atStep(api);
     await screen.press('a');
-    await screen.type('a b c');
+    await screen.type('Work');
     await screen.press(ENTER);
-    expect(screen.frame()).toContain('Write <name> [provider].');
+    expect(screen.frame()).toContain('The name takes lowercase letters');
     expect(accounts.added).toEqual([]);
     expect(accounts.logins).toEqual([]);
+  });
+
+  it('adds an API account with its key, hidden, and does not log in', async () => {
+    const { api, accounts } = withAccounts();
+    const screen = await atStep(api);
+    await screen.press('a');
+    await screen.type('paid');
+    await screen.press(TAB);
+    const kind = await screen.press(' ');
+    expect(kind).toContain('[API]');
+    expect(kind).toContain('API key: ');
+    await screen.press(TAB);
+    await screen.type('sk-fake');
+    expect(screen.frame()).toContain('API key: •••••••▏');
+    expect(screen.frame()).not.toContain('sk-fake');
+    await screen.press(ENTER);
+    const done = await screen.seen('Account added: claude-code/paid.');
+    expect(done).not.toContain('sk-fake');
+    expect(accounts.added[0]).toMatchObject({ kind: 'api', apiKey: 'sk-fake' });
+    expect(accounts.logins).toEqual([]);
+  });
+
+  it('Esc drops the form and stays at the step', async () => {
+    const { api, accounts } = withAccounts();
+    const screen = await atStep(api);
+    await screen.press('a');
+    await screen.type('work');
+    const back = await screen.press(ESC);
+    expect(back).not.toContain('Name: ');
+    expect(back).toContain('Add an account of a client');
+    expect(screen.outcomes).toEqual([]);
+    expect(accounts.added).toEqual([]);
+  });
+
+  it('with no account yet, Enter opens the form and S skips with a notice (N326)', async () => {
+    const { api, accounts } = withAccounts({ profiles: [] });
+    const screen = await atStep(api);
+    expect(screen.frame()).toContain('No account yet: Enter opens the form');
+    expect(screen.frame()).toContain('S  No account');
+    expect(screen.frame()).toContain('Enter  Add account');
+    const form = await screen.press(ENTER);
+    expect(form).toContain('Name: main');
+    // The bar shows the keys of the form, not the ones of the step.
+    expect(form).toContain('Enter  Add   Tab  Next field   Space  Change   Esc  Cancel');
+    expect(form).not.toContain('S  No account');
+    await screen.press(ESC);
+    const skipped = await screen.press('s');
+    expect(skipped).toContain('Continuing without an account');
+    expect(skipped).toContain('Step 2 of 5');
+    expect(accounts.added).toEqual([]);
+  });
+
+  it('with no client ready, Enter says what to do and opens no form', async () => {
+    const { api } = withAccounts({
+      profiles: [],
+      clients: [{ client: 'claude-code', installed: false, reason: 'adapter_missing' }],
+    });
+    const screen = await atStep(api);
+    const frame = (await screen.press(ENTER)).replace(/[│\n]/g, ' ').replace(/\s+/g, ' ');
+    expect(frame).toContain('No client is ready on this machine yet.');
+    expect(frame).not.toContain('Name: ');
   });
 
   it('a login the daemon would run itself is cancelled and run in the terminal [proposta]', async () => {
@@ -606,6 +798,22 @@ describe('the setup screen: the step that adds an account (N274)', () => {
     expect(accounts.logins).toEqual([]);
   });
 
+  it('says in its own words that the daemon does not run the client (N326)', async () => {
+    const { api, accounts } = withAccounts();
+    accounts.failAdd = requestError('invalid_input', 400, 'Unknown client "claude-code"', {
+      reason: 'unknown_client',
+      client: 'claude-code',
+      known: ['codex', 'opencode'],
+    });
+    const screen = await atStep(api);
+    await screen.press('a');
+    await screen.press(ENTER);
+    const frame = (await screen.seen('is not a client the daemon runs'))
+      .replace(/[│\n]/g, ' ')
+      .replace(/\s+/g, ' ');
+    expect(frame).toContain('the clients are codex, opencode');
+  });
+
   it('asks before a second subscription of the same provider, and adds it with the notice accepted', async () => {
     const { api, accounts } = withAccounts();
     accounts.noticeFirst = true;
@@ -654,11 +862,13 @@ describe('the setup screen: the step that adds an account (N274)', () => {
     const { api, accounts } = withAccounts({ clients: BOTH_INSTALLED });
     const screen = await atStep(api);
     await screen.press('a');
+    await screen.press(TAB);
     await screen.type('work');
     await screen.press(ENTER);
     await screen.seen('Added in this run: claude-code/work');
     await screen.press(DOWN);
     await screen.press('a');
+    await screen.press(TAB);
     await screen.type('home');
     await screen.press(ENTER);
     await screen.seen('Added in this run: claude-code/work, codex/home');
@@ -674,6 +884,201 @@ describe('the setup screen: the step that adds an account (N274)', () => {
     const first = await screen.seen('Pick the account to bring into the roles.');
     expect(first).toContain('Step 1 of 3');
     expect(first).not.toContain('New account');
+  });
+});
+
+describe('the setup screen: the list of models after a login (N324, item 2)', () => {
+  const WORK = 'claude-code/work';
+  const OPUS = `claude-opus@${WORK}`;
+  const SONNET = `claude-sonnet@${WORK}`;
+
+  function model(id: string, extra: Partial<SetupModel> = {}): SetupModel {
+    return {
+      id,
+      name: null,
+      family: null,
+      efforts: [],
+      local: false,
+      contextWindow: null,
+      preset: [],
+      registered: [],
+      ...extra,
+    };
+  }
+
+  function listed(login: SetupModels['login'] = 'logged_in'): SetupModels {
+    return {
+      profileId: WORK,
+      kind: 'token_plan',
+      login,
+      preset: 'balanced',
+      catalog: 'listed',
+      reason: null,
+      models: [
+        model('claude-opus-4-1', { name: 'Opus 4.1', preset: [{ id: OPUS, effort: null }] }),
+        model('claude-sonnet-4-5', { preset: [{ id: SONNET, effort: null }] }),
+        model('claude-haiku-4-5'),
+        model('claude-old', { registered: ['claude-old@claude-code/work'] }),
+      ],
+      notes: [],
+    };
+  }
+
+  function discovered(id: string, modelId: string): SetupExecutor {
+    return {
+      id,
+      profileId: WORK,
+      model: modelId,
+      alias: modelId,
+      effort: null,
+      provider: 'anthropic',
+      source: 'discovered',
+      presetExpand: true,
+      local: null,
+    };
+  }
+
+  function withModels(answer: (call: number) => SetupModels): {
+    api: FakeSetupApi;
+    accounts: FakeSetupAccounts;
+  } {
+    const api = new FakeSetupApi({ profiles: PROFILES, withAccounts: true });
+    const accounts = api.accounts;
+    if (accounts === undefined) throw new Error('the fake has no accounts');
+    let call = 0;
+    accounts.modelsOf = () => answer(call++);
+    api.discovered = [discovered(OPUS, 'claude-opus-4-1'), discovered(SONNET, 'claude-sonnet-4-5')];
+    return { api, accounts };
+  }
+
+  async function addWork(api: FakeSetupApi, modelPick?: SetupModelPickMode): Promise<Mounted> {
+    const screen = mount('first_run', api, modelPick);
+    await screen.seen('Add an account of a client');
+    await screen.press('a');
+    await screen.type('work');
+    await screen.press(ENTER);
+    return screen;
+  }
+
+  it('opens after the login with the preset checked, and the step of the Executors starts with the choice', async () => {
+    const { api, accounts } = withModels(() => listed());
+    const screen = await addWork(api);
+    const list = await screen.seen('Models of claude-code/work');
+    expect(list).toContain('[x] claude-opus-4-1 (Opus 4.1)  in the preset');
+    expect(list).toContain('[x] claude-sonnet-4-5  in the preset');
+    expect(list).toContain('[ ] claude-haiku-4-5');
+    expect(list).toContain('[=] claude-old  already an Executor');
+    expect(list).toContain('Enter  Take   Space  Check   Esc  Keep the preset');
+    expect(accounts.logins).toEqual([`start:${WORK}`, `models:${WORK}`]);
+    // Space on Opus unchecks it; Haiku, two rows down, is checked.
+    await screen.press(' ');
+    await screen.press(DOWN);
+    await screen.press(DOWN);
+    await screen.press(' ');
+    // A registered model takes no mark.
+    await screen.press(DOWN);
+    const marked = await screen.press(' ');
+    expect(marked).toContain('[ ] claude-opus-4-1');
+    expect(marked).toContain('[x] claude-haiku-4-5');
+    expect(marked).toContain('[=] claude-old');
+    await screen.press(ENTER);
+    await screen.seen('claude-code/work: 2 models checked');
+
+    await screen.press(ENTER);
+    await screen.seen('Pick the accounts that take part');
+    await screen.press(ENTER);
+    await screen.seen('Pick the preset of the roles.');
+    await screen.press(ENTER);
+    const executors = await screen.seen('Register Executors by API or local model');
+    expect(executors).toContain('claude-code/work  claude-haiku-4-5');
+    expect(executors).toContain(`Left out of the preset: ${OPUS}`);
+    await screen.press(ENTER);
+    await screen.seen('This is what will be written.');
+    expect(api.submissions.at(-1)).toEqual({
+      step: 'executors',
+      input: {
+        executors: [{ profileId: WORK, model: 'claude-haiku-4-5' }],
+        budgets: [],
+        exclude: [OPUS],
+      },
+    });
+  });
+
+  it('starts with nothing checked under ui.setup.modelPick none, and Esc keeps the preset', async () => {
+    const { api } = withModels(() => listed());
+    const screen = await addWork(api, 'none');
+    const list = await screen.seen('Models of claude-code/work');
+    expect(list).toContain('[ ] claude-opus-4-1');
+    expect(list).toContain('[ ] claude-sonnet-4-5');
+    const left = await screen.press(ESC);
+    expect(left).toContain('the list was left; the preset decides its Executors');
+    expect(left).not.toContain('Models of');
+    await screen.press(ENTER);
+    await screen.press(ENTER);
+    await screen.press(ENTER);
+    await screen.seen('Register Executors by API or local model');
+    expect(screen.frame()).not.toContain('Left out of the preset');
+    await screen.press(ENTER);
+    await screen.seen('This is what will be written.');
+    expect(api.submissions.at(-1)).toEqual({
+      step: 'executors',
+      input: { executors: [], budgets: [] },
+    });
+  });
+
+  it('asks again when the client says the account is not logged in: L logs in once more', async () => {
+    const { api, accounts } = withModels((call) => listed(call === 0 ? 'logged_out' : 'logged_in'));
+    const screen = await addWork(api);
+    const check = await screen.seen('claude-code/work is not logged in yet');
+    expect(check).toContain('L logs in again · S goes on without the login');
+    expect(check).toContain('L  Log in again   S  Go on');
+    await screen.press('l');
+    await screen.seen('Models of claude-code/work');
+    expect(accounts.ran).toEqual([
+      `ot profile exec ${WORK} login`,
+      `ot profile exec ${WORK} login`,
+    ]);
+    expect(accounts.logins.filter((entry) => entry.startsWith('models:'))).toHaveLength(2);
+  });
+
+  it('goes on without the login with S, and the step stays as before', async () => {
+    const { api } = withModels(() => listed('logged_out'));
+    const screen = await addWork(api);
+    await screen.seen('claude-code/work is not logged in yet');
+    const on = await screen.press('s');
+    expect(on).toContain('claude-code/work goes on without the login');
+    expect(on).toContain('Added in this run: claude-code/work');
+    expect(on).not.toContain('Models of');
+  });
+
+  it('says why there is no list when the client could not list the models', async () => {
+    const { api } = withModels(() => ({
+      ...listed(),
+      catalog: 'unavailable',
+      reason: 'the client did not answer',
+      models: [],
+    }));
+    const screen = await addWork(api);
+    const frame = (await screen.seen('did not list its models'))
+      .replace(/[│\n]/g, ' ')
+      .replace(/\s+/g, ' ');
+    expect(frame).toContain('(the client did not answer)');
+    expect(frame).not.toContain('Models of');
+  });
+
+  it('keeps the sign-in message when there is nothing to choose, and says when the list fails', async () => {
+    const none = withModels(() => ({ ...listed(), catalog: 'none', models: [] }));
+    const quiet = await addWork(none.api);
+    const frame = await quiet.seen('The sign-in ended with code 0.');
+    expect(frame).not.toContain('Models of');
+    cleanup();
+    const failing = withModels(() => listed());
+    failing.accounts.failModels = new Error('daemon gone');
+    const loud = await addWork(failing.api);
+    const failed = (await loud.seen('Could not read the models'))
+      .replace(/[│\n]/g, ' ')
+      .replace(/\s+/g, ' ');
+    expect(failed).toContain('daemon gone');
   });
 });
 

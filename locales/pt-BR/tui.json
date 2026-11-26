@@ -168,7 +168,9 @@
       "remove": "Remover o Executor",
       "reload": "Procurar os clientes de novo e ler o passo de novo",
       "cancel": "Cancelar a execução (nada é gravado)",
-      "install": "Instalar o adaptador ACP do cliente sob o cursor"
+      "install": "Instalar o adaptador ACP do cliente sob o cursor",
+      "details": "Mostra ou dobra o detalhe das notas da revisão",
+      "skip": "Seguir sem conta"
     },
     "plugins": {
       "itemPrev": "Plugin anterior",
@@ -228,7 +230,30 @@
       "add": "Adicionar",
       "edit": "Teto",
       "cancel": "Cancelar",
-      "install": "Instalar adaptador"
+      "install": "Instalar adaptador",
+      "details": "Detalhe",
+      "skip": "Sem conta",
+      "openForm": "Adicionar conta"
+    },
+    "settings": {
+      "add": "Adicionar conta",
+      "login": "Login",
+      "assistant": "Assistente"
+    },
+    "accountForm": {
+      "submit": "Adicionar",
+      "next": "Próximo campo",
+      "change": "Trocar",
+      "cancel": "Cancelar"
+    },
+    "modelPick": {
+      "confirm": "Ficar",
+      "toggle": "Marcar",
+      "cancel": "Manter o preset"
+    },
+    "loginCheck": {
+      "retry": "Login de novo",
+      "skip": "Seguir"
     }
   },
   "keymap": {
@@ -664,7 +689,7 @@
     "loading": "Lendo as configurações...",
     "loadFailed": "Não foi possível ler as configurações: {{message}}",
     "empty": {
-      "profiles": "Nenhuma conta ainda. Adicione uma.",
+      "profiles": "Nenhuma conta ainda. {{add}} adiciona uma; {{assistant}} abre o assistente.",
       "executors": "Nenhum Executor.",
       "roles": "Nenhum papel.",
       "overrides": "Este projeto não sobrepõe nenhuma chave."
@@ -698,12 +723,9 @@
       }
     },
     "prompt": {
-      "add": "Adicionar conta como: <cliente> <nome> <token_plan|api> <provedor>",
-      "apiKey": "Chave de API de {{profile}} (vai ao cofre, nunca aparece)",
       "limit": "Novo valor de {{key}} ({{hint}})",
       "confirmRemove": "Remover {{profile}}? As sessões esvaziam, depois somem o diretório e a chave. s/n",
       "confirmNotice": "{{provider}} já tem {{existing}}. Adicionar outra? s/n",
-      "confirmLogin": "{{profile}} foi adicionada. Entrar agora? s/n",
       "hintEnter": "Enter confirma, Esc cancela",
       "hintConfirm": "s confirma, qualquer outra tecla cancela",
       "yes": "s"
@@ -762,10 +784,23 @@
       "readOnly": "O escopo do projeto é só de leitura: nenhuma rota grava a sobreposição de um projeto.",
       "badWhole": "{{key}} pede um número inteiro, {{min}} ou mais.",
       "badDuration": "{{key}} pede uma duração como 30m, 2h ou 45s.",
-      "badAdd": "Escreva <cliente> <nome> <token_plan|api> <provedor>.",
       "nothing": "Nada sob o cursor.",
+      "noAccounts": "Nenhuma conta ainda: {{add}} adiciona uma; {{assistant}} abre o assistente.",
       "noLogin": "Só uma conta de assinatura entra por login.",
-      "noAssistant": "O assistente precisa do daemon."
+      "noAssistant": "O assistente precisa do daemon.",
+      "noClient": "Nenhum cliente está pronto nesta máquina, então ainda não há conta para adicionar. {{assistant}} abre o assistente, que diz o que falta."
+    },
+    "models": {
+      "keys": "↑/↓ andam, Espaço marca, Enter grava os marcados como Executores, Esc não grava nada",
+      "saving": "Gravando os Executores de {{profile}}…",
+      "registered_one": "{{profile}}: {{count}} Executor gravado ({{ids}}).",
+      "registered_other": "{{profile}}: {{count}} Executores gravados ({{ids}}).",
+      "none": "{{profile}}: nenhum modelo marcado, então nenhum Executor foi gravado.",
+      "skipped": "{{profile}}: a lista ficou de lado, então nenhum Executor foi gravado.",
+      "busy": "Há um cadastro de conta aberto no assistente ({{assistant}}), então os Executores de {{profile}} não foram gravados: termine ou cancele esse cadastro lá.",
+      "writeFailed": "Os Executores de {{profile}} não foram gravados: {{message}}",
+      "failed": "Não deu para ler os modelos de {{profile}}: {{message}}. Nenhum Executor foi gravado.",
+      "unavailable": "O cliente de {{profile}} não listou os modelos ({{reason}}). Nenhum Executor foi gravado."
     }
   },
   "overview": {
@@ -1188,7 +1223,9 @@
       "budgetRow": "{{profile}}  dia {{daily}}  mês {{monthly}}",
       "budgetSuggested": "{{profile}}  sugerido: dia {{daily}}, mês {{monthly}}",
       "noCap": "sem teto",
-      "usd": "USD {{value}}"
+      "usd": "USD {{value}}",
+      "excluded_one": "Fica fora do preset: {{list}}",
+      "excluded_other": "Ficam fora do preset ({{count}}): {{list}}"
     },
     "prompt": {
       "executor": "Executor como: <conta> <modelo> [esforço]",
@@ -1199,8 +1236,6 @@
       "yes": "s",
       "badExecutor": "Escreva <conta> <modelo> [esforço].",
       "badBudget": "Escreva <dia> <mês>: números acima de zero, ou - para sem teto.",
-      "account": "Conta de {{client}} como: {{form}}",
-      "badAccount": "Escreva {{form}}.",
       "confirmNotice": "{{provider}} já tem {{existing}}. Adicionar outra? s/n"
     },
     "review": {
@@ -1217,7 +1252,11 @@
       "notes": "Notas",
       "info": "info",
       "warning": "aviso",
-      "none": "nenhuma"
+      "none": "nenhuma",
+      "noAccountFamily": "{{family}}: nenhuma conta deste computador tem {{models}}; fica fora de {{count}} papel(éis)",
+      "emptyRoles": "Nenhum Executor sobra em {{count}} papel(éis): {{roles}} (eles seguem o when_exhausted)",
+      "detailsHint": "{{key}} mostra cada nota",
+      "detailsHintAll": "{{key}} dobra as notas de novo"
     },
     "source": {
       "discovered": "achado",
@@ -1236,7 +1275,7 @@
       "clients": "Clientes",
       "row": "{{client}}{{state}}",
       "added": "Adicionadas nesta execução: {{list}}",
-      "keys": "{{add}} adiciona uma conta do cliente sob o cursor, {{next}} continua sem adicionar.",
+      "keys": "{{add}} adiciona outra conta, {{next}} continua.",
       "result": {
         "added": "Conta adicionada: {{profile}}.",
         "loggedIn": "Conta adicionada: {{profile}}. Ela já tem login.",
@@ -1245,7 +1284,10 @@
         "failed": "A conta não foi adicionada: {{message}}"
       },
       "state": "  ({{state}})",
-      "cannotAdd": "{{client}} não está pronto nesta máquina ({{why}}), então ainda não tem conta para adicionar. {{todo}}"
+      "cannotAdd": "{{client}} não está pronto nesta máquina ({{why}}), então ainda não tem conta para adicionar. {{todo}}",
+      "noReady": "Nenhum cliente está pronto nesta máquina ainda. {{install}} instala o adaptador do cliente sob o cursor, {{reload}} procura de novo, {{skip}} segue sem conta.",
+      "skipped": "Seguindo sem conta: os papéis ficam vazios até você adicionar uma na aba Configurações.",
+      "keysEmpty": "Nenhuma conta ainda: {{next}} abre o formulário do cliente sob o cursor, {{skip}} segue sem conta."
     },
     "reason": {
       "installed": "instalado",
@@ -1276,6 +1318,20 @@
     "redetect": {
       "added": "Encontrado agora: {{list}}.",
       "failed": "Não deu para procurar os clientes de novo: {{message}}"
+    },
+    "models": {
+      "title": "Modelos de {{profile}}: marque os que viram Executores",
+      "inPreset": "no preset",
+      "registered": "já é Executor",
+      "keys": "↑/↓ andam, Espaço marca, Enter fica com a lista, Esc mantém o preset",
+      "loggedOut": "{{profile}} ainda não está logada, então o cliente dela não lista os modelos.",
+      "loginCheckKeys": "L faz o login de novo · S segue sem o login",
+      "noLogin": "{{profile}} segue sem o login; faça depois com L em Configurações › Assinaturas.",
+      "chosen_one": "{{profile}}: {{count}} modelo marcado; o passo Executores começa com ele.",
+      "chosen_other": "{{profile}}: {{count}} modelos marcados; o passo Executores começa com eles.",
+      "skipped": "{{profile}}: a lista ficou de lado; o preset decide os Executores dela.",
+      "failed": "Não deu para ler os modelos de {{profile}}: {{message}}. O preset decide os Executores dela.",
+      "unavailable": "O cliente de {{profile}} não listou os modelos ({{reason}}). O preset decide os Executores dela."
     }
   },
   "plugins": {
@@ -1373,5 +1429,29 @@
       "disabledSame": "{{plugin}} não estava ativo em {{project}}.",
       "noAction": "O painel não tem ação para executar."
     }
+  },
+  "accountForm": {
+    "title": "Adicionar conta",
+    "field": {
+      "client": "Cliente",
+      "name": "Nome",
+      "kind": "Tipo",
+      "provider": "Provedor",
+      "apiKey": "Chave de API"
+    },
+    "kind": {
+      "token_plan": "Assinatura",
+      "api": "API"
+    },
+    "providerOwn": "Provedor: {{provider}} (o único deste cliente)",
+    "problem": {
+      "client": "Escolha um dos clientes prontos nesta máquina.",
+      "name": "O nome leva letras minúsculas, dígitos, - e _, começando por letra ou dígito.",
+      "provider": "Escreva o provedor, como openai ou anthropic.",
+      "apiKey": "Escreva a chave de API (ela vai ao cofre e nunca aparece)."
+    },
+    "keys": "Tab próximo campo · Espaço ou ←/→ troca · Enter adiciona · Esc cancela",
+    "keysLogin": "Tab próximo campo · Espaço ou ←/→ troca · Enter adiciona e abre o login · Esc cancela",
+    "unknownClient": "{{client}} não é um cliente que o daemon roda; os clientes são {{known}}."
   }
 }

@@ -86,6 +86,14 @@ Check (-not (Test-TaskExists)) "no task $TaskName yet"
 if ($failures.Count -gt 0) { throw 'The machine is not clean: not installing over it.' }
 $pathBefore = (Get-UserPathEntries) -join ';'
 
+Step 'An unknown PREFETCH_ADAPTERS stops the install before anything is done (N324)'
+# The launch condition refuses it: msiexec ends with 1603 (fatal error) and installs nothing.
+$code = Invoke-Msi @('/i', "`"$Msi`"", 'PREFETCH_ADAPTERS=gemini') 'msi-install-refused.log'
+Check ($code -eq 1603) "msiexec /i PREFETCH_ADAPTERS=gemini exited with 1603 (got $code)"
+Check (-not (Test-Path $InstallDir)) "still no $InstallDir"
+Check (-not (Test-TaskExists)) "still no task $TaskName"
+if ($failures.Count -gt 0) { throw 'The refused install left something behind: not installing over it.' }
+
 Step 'Install: msiexec /i /qn VAULT=encrypted-file PREFETCH_ADAPTERS=0'
 # The choices of the page of options (N322) as properties: the vault is written by `ot vault use`, and
 # the adapters are not downloaded (no npm registry in a test).

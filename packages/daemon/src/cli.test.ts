@@ -46,7 +46,9 @@ describe('ot: usage and information', () => {
       for (const flag of ['--help', '-h']) {
         const result = await ot([flag, '--data-dir', tmp.dir], tmp.dir);
         expect(result.code).toBe(0);
-        expect(result.out.join('\n')).toMatch(/^Usage: ot .*\n[\s\S]*restore <folder>/);
+        expect(result.out.join('\n')).toMatch(
+          /^OTheater: [\s\S]*^Usage:\n {2}ot <command>[\s\S]*^ {2}restore {2,}/m,
+        );
         expect(result.err).toEqual([]);
       }
     } finally {
@@ -69,15 +71,15 @@ describe('ot: usage and information', () => {
     try {
       const flags = ['--help', '--data-dir', tmp.dir];
       const system = await ot(flags, tmp.dir, { systemLocale: 'pt_BR.UTF-8' });
-      expect(system.out.join('\n')).toMatch(/^Uso: ot /);
+      expect(system.out.join('\n')).toMatch(/^Uso:\n {2}ot <comando>/m);
 
       await writeFile(join(tmp.dir, 'config.yaml'), 'ui:\n  locale: en\n');
       const forced = await ot(flags, tmp.dir, { systemLocale: 'pt_BR.UTF-8' });
-      expect(forced.out.join('\n')).toMatch(/^Usage: ot /);
+      expect(forced.out.join('\n')).toMatch(/^Usage:\n {2}ot <command>/m);
 
       await writeFile(join(tmp.dir, 'config.yaml'), 'ui:\n  locale: pt-BR\n');
       const pt = await ot(flags, tmp.dir, { systemLocale: 'en' });
-      expect(pt.out.join('\n')).toMatch(/^Uso: ot /);
+      expect(pt.out.join('\n')).toMatch(/^Uso:\n {2}ot <comando>/m);
     } finally {
       await tmp.dispose();
     }
@@ -270,9 +272,50 @@ describe('ot tui and ot with no command (Phase 7, P8)', () => {
     const tmp = await makeTempDataDir();
     try {
       const en = await ot(['--help', '--data-dir', tmp.dir], tmp.dir);
-      expect(en.out.join('\n')).toMatch(/^ {2}tui {10,}Open the terminal interface/m);
+      expect(en.out.join('\n')).toMatch(/^ {2}tui {2,}Open the terminal interface/m);
       const pt = await ot(['--help', '--data-dir', tmp.dir], tmp.dir, { systemLocale: 'pt_BR' });
-      expect(pt.out.join('\n')).toMatch(/^ {2}tui {10,}Abre a interface de terminal/m);
+      expect(pt.out.join('\n')).toMatch(/^ {2}tui {2,}Abre a interface de terminal/m);
+    } finally {
+      await tmp.dispose();
+    }
+  });
+
+  it('ot help <command> and ot <command> --help print the same page, with the valid clients (N325)', async () => {
+    const tmp = await makeTempDataDir();
+    try {
+      const help = await ot(['help', 'profile', '--data-dir', tmp.dir], tmp.dir);
+      const flag = await ot(['profile', '--help', '--data-dir', tmp.dir], tmp.dir);
+      expect(help.code).toBe(0);
+      expect(flag).toEqual(help);
+      expect(help.out.join('\n')).toContain('claude-code, codex, opencode');
+      expect(help.out.join('\n')).toMatch(/^Actions:\n {2}add <client> <name> {2,}/m);
+      const main = await ot(['help', '--data-dir', tmp.dir], tmp.dir);
+      expect(main.out).toEqual((await ot(['--help', '--data-dir', tmp.dir], tmp.dir)).out);
+    } finally {
+      await tmp.dispose();
+    }
+  });
+
+  it('ot help of an unknown command is a usage error (exit 2)', async () => {
+    const tmp = await makeTempDataDir();
+    try {
+      const result = await ot(['help', 'xyz', '--data-dir', tmp.dir], tmp.dir);
+      expect(result.code).toBe(2);
+      expect(result.err.join('\n')).toContain('xyz');
+      expect((await ot(['help', 'a', 'b', '--data-dir', tmp.dir], tmp.dir)).code).toBe(2);
+    } finally {
+      await tmp.dispose();
+    }
+  });
+
+  it('draws the help at ui.help_width', async () => {
+    const tmp = await makeTempDataDir();
+    try {
+      await writeFile(join(tmp.dir, 'config.yaml'), 'ui:\n  help_width: 60\n');
+      const result = await ot(['help', 'directives', '--data-dir', tmp.dir], tmp.dir);
+      expect(result.code).toBe(0);
+      const lines = result.out.join('\n').split('\n');
+      expect(Math.max(...lines.map((line) => line.length))).toBeLessThanOrEqual(60);
     } finally {
       await tmp.dispose();
     }

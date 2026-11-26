@@ -32,18 +32,30 @@ export type Draft =
       /** The caps the person set, by account; an account that is not here takes the suggested one. */
       readonly budgets: Readonly<Record<string, SetupBudget>>;
       readonly cursor: number;
+      /**
+       * N324: the Executors of the preset the person unchecked in the list of models after a login
+       * (the `exclude` of the step); none when absent.
+       */
+      readonly exclude?: readonly string[];
     }
   | { readonly kind: 'review' };
 
 /** The preset the cursor starts on when the configuration names none. [proposta] The middle one. */
 export const DEFAULT_PRESET = 'balanced';
 
+/** What the list of models after a login (N324) gives the step of the Executors to start with. */
+export interface ExecutorsSeed {
+  readonly executors: readonly SetupExecutorRequest[];
+  readonly exclude: readonly string[];
+}
+
 /**
  * The draft a step opens with. [proposta] Detection starts with every usable account taken in, in
  * the order the daemon lists them (the same the daemon would use if the step sent no list); the
- * preset starts on the one in force, or on {@link DEFAULT_PRESET}; nothing is registered by default.
+ * preset starts on the one in force, or on {@link DEFAULT_PRESET}; nothing is registered by default,
+ * except what the list of models after a login chose (`seed`, N324).
  */
-export function initialDraft(prompt: SetupPrompt | null): Draft {
+export function initialDraft(prompt: SetupPrompt | null, seed?: ExecutorsSeed): Draft {
   if (prompt === null) return { kind: 'review' };
   switch (prompt.step) {
     case 'detect':
@@ -64,7 +76,13 @@ export function initialDraft(prompt: SetupPrompt | null): Draft {
       return { kind: 'preset', cursor: Math.max(0, at) };
     }
     case 'executors':
-      return { kind: 'executors', executors: [], budgets: {}, cursor: 0 };
+      return {
+        kind: 'executors',
+        executors: [...(seed?.executors ?? [])],
+        budgets: {},
+        cursor: 0,
+        ...(seed === undefined || seed.exclude.length === 0 ? {} : { exclude: [...seed.exclude] }),
+      };
     case 'review':
       return { kind: 'review' };
   }
@@ -178,7 +196,11 @@ export function submissionOf(
     case 'executors':
       return {
         step: 'executors',
-        input: { executors: [...draft.executors], budgets: Object.values(draft.budgets) },
+        input: {
+          executors: [...draft.executors],
+          budgets: Object.values(draft.budgets),
+          ...(draft.exclude === undefined ? {} : { exclude: [...draft.exclude] }),
+        },
       };
     case 'review':
       return undefined;
@@ -241,12 +263,6 @@ export function draftKey(run: SetupRunView): string {
 /** The clients the step offers when the detection names none. */
 export const KNOWN_CLIENTS = ['claude-code', 'codex', 'opencode'] as const;
 
-/** [proposta] The provider of an account of a client that has only one possible provider (as `ot profile add`). */
-const DEFAULT_PROVIDER: Readonly<Record<string, string>> = {
-  'claude-code': 'anthropic',
-  codex: 'openai',
-};
-
 /**
  * The clients the step lists, in the order of the detection of the daemon (a client the machine
  * has is walked first only by the cursor start, not by the order).
@@ -288,32 +304,7 @@ export function accountsCursorMoved(
   return Math.min(last, Math.max(0, cursor + delta));
 }
 
-/**
- * `<name> [provider]` of a new subscription account of `client`. The provider is optional where the
- * client has one possible provider (`ot profile add` does the same); `undefined` when the line is
- * not that, or the client needs a provider and the line has none.
- */
-export function parseAccountLine(
-  client: string,
-  text: string,
-): { readonly name: string; readonly provider: string } | undefined {
-  const words = text
-    .trim()
-    .split(/\s+/)
-    .filter((word) => word !== '');
-  if (words.length < 1 || words.length > 2) return undefined;
-  const [name, given] = words;
-  const provider = given ?? DEFAULT_PROVIDER[client];
-  if (name === undefined || provider === undefined) return undefined;
-  return { name, provider };
-}
-
 /** The command that logs in to an account in a terminal (what the daemon answers as `local`). */
 export function loginCommandOf(profileId: string): string {
   return `ot profile exec ${profileId} login`;
-}
-
-/** What the prompt of the step shows as the form of the line: the provider is optional where it has a default. */
-export function accountFormOf(client: string): string {
-  return DEFAULT_PROVIDER[client] === undefined ? '<name> <provider>' : '<name> [provider]';
 }

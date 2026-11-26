@@ -22,7 +22,10 @@ const ESC = '\x1b';
 const F6 = '\x1b[15~';
 
 function settingsWith(open: 'auto' | 'never', readTimeoutMs = 5000): UiSettings {
-  return { ...TEST_UI_SETTINGS, setup: { open, readTimeoutMs } };
+  return {
+    ...TEST_UI_SETTINGS,
+    setup: { open, readTimeoutMs, reviewNotes: 'grouped', modelPick: 'preset' },
+  };
 }
 
 async function mount(
@@ -56,6 +59,7 @@ const settingsApi: SettingsApi = {
   startLogin: () => Promise.reject(new Error('not used')),
   submitLoginCode: () => Promise.resolve(),
   cancelLogin: () => Promise.resolve(),
+  clients: () => Promise.resolve([]),
 };
 
 const PROFILES = [profileOf('claude-code/main'), profileOf('codex/work')];

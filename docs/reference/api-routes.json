@@ -14079,6 +14079,9 @@
                     "null"
                   ]
                 },
+                "head": {
+                  "type": "string"
+                },
                 "message": {
                   "type": "string"
                 }
@@ -18675,11 +18678,20 @@
                                         "items": {
                                           "$ref": "#/$defs/__schema10"
                                         }
+                                      },
+                                      "exclude": {
+                                        "default": [],
+                                        "maxItems": 64,
+                                        "type": "array",
+                                        "items": {
+                                          "$ref": "#/$defs/__schema11"
+                                        }
                                       }
                                     },
                                     "required": [
                                       "executors",
-                                      "budgets"
+                                      "budgets",
+                                      "exclude"
                                     ],
                                     "additionalProperties": false
                                   },
@@ -19314,6 +19326,10 @@
                   }
                 ]
               },
+              "head": {
+                "type": "string",
+                "minLength": 1
+              },
               "message": {
                 "type": "string"
               }
@@ -19443,6 +19459,11 @@
               "monthlyUsd"
             ],
             "additionalProperties": false
+          },
+          "__schema11": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
           }
         }
       },
@@ -19703,11 +19724,20 @@
                           "items": {
                             "$ref": "#/$defs/__schema9"
                           }
+                        },
+                        "exclude": {
+                          "default": [],
+                          "maxItems": 64,
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/$defs/__schema10"
+                          }
                         }
                       },
                       "required": [
                         "executors",
-                        "budgets"
+                        "budgets",
+                        "exclude"
                       ],
                       "additionalProperties": false
                     },
@@ -20283,6 +20313,10 @@
                   }
                 ]
               },
+              "head": {
+                "type": "string",
+                "minLength": 1
+              },
               "message": {
                 "type": "string"
               }
@@ -20412,6 +20446,11 @@
               "monthlyUsd"
             ],
             "additionalProperties": false
+          },
+          "__schema10": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
           }
         }
       },
@@ -20707,11 +20746,20 @@
                           "items": {
                             "$ref": "#/$defs/__schema9"
                           }
+                        },
+                        "exclude": {
+                          "default": [],
+                          "maxItems": 64,
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/$defs/__schema10"
+                          }
                         }
                       },
                       "required": [
                         "executors",
-                        "budgets"
+                        "budgets",
+                        "exclude"
                       ],
                       "additionalProperties": false
                     },
@@ -21287,6 +21335,10 @@
                   }
                 ]
               },
+              "head": {
+                "type": "string",
+                "minLength": 1
+              },
               "message": {
                 "type": "string"
               }
@@ -21416,6 +21468,11 @@
               "monthlyUsd"
             ],
             "additionalProperties": false
+          },
+          "__schema10": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
           }
         }
       },
@@ -21710,11 +21767,20 @@
                           "items": {
                             "$ref": "#/$defs/__schema9"
                           }
+                        },
+                        "exclude": {
+                          "default": [],
+                          "maxItems": 64,
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/$defs/__schema10"
+                          }
                         }
                       },
                       "required": [
                         "executors",
-                        "budgets"
+                        "budgets",
+                        "exclude"
                       ],
                       "additionalProperties": false
                     },
@@ -22290,6 +22356,10 @@
                   }
                 ]
               },
+              "head": {
+                "type": "string",
+                "minLength": 1
+              },
               "message": {
                 "type": "string"
               }
@@ -22419,6 +22489,11 @@
               "monthlyUsd"
             ],
             "additionalProperties": false
+          },
+          "__schema10": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
           }
         }
       },
@@ -22713,11 +22788,20 @@
                           "items": {
                             "$ref": "#/$defs/__schema9"
                           }
+                        },
+                        "exclude": {
+                          "default": [],
+                          "maxItems": 64,
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/$defs/__schema10"
+                          }
                         }
                       },
                       "required": [
                         "executors",
-                        "budgets"
+                        "budgets",
+                        "exclude"
                       ],
                       "additionalProperties": false
                     },
@@ -23293,6 +23377,10 @@
                   }
                 ]
               },
+              "head": {
+                "type": "string",
+                "minLength": 1
+              },
               "message": {
                 "type": "string"
               }
@@ -23422,6 +23510,11 @@
               "monthlyUsd"
             ],
             "additionalProperties": false
+          },
+          "__schema10": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
           }
         }
       },
@@ -23716,11 +23809,20 @@
                           "items": {
                             "$ref": "#/$defs/__schema9"
                           }
+                        },
+                        "exclude": {
+                          "default": [],
+                          "maxItems": 64,
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/$defs/__schema10"
+                          }
                         }
                       },
                       "required": [
                         "executors",
-                        "budgets"
+                        "budgets",
+                        "exclude"
                       ],
                       "additionalProperties": false
                     },
@@ -24296,6 +24398,10 @@
                   }
                 ]
               },
+              "head": {
+                "type": "string",
+                "minLength": 1
+              },
               "message": {
                 "type": "string"
               }
@@ -24425,6 +24531,11 @@
               "monthlyUsd"
             ],
             "additionalProperties": false
+          },
+          "__schema10": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
           }
         }
       },
@@ -24584,6 +24695,14 @@
                     "items": {
                       "$ref": "#/$defs/__schema2"
                     }
+                  },
+                  "exclude": {
+                    "default": [],
+                    "maxItems": 64,
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/$defs/__schema3"
+                    }
                   }
                 },
                 "additionalProperties": false
@@ -24682,6 +24801,11 @@
               "monthlyUsd"
             ],
             "additionalProperties": false
+          },
+          "__schema3": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
           }
         }
       }
@@ -24824,6 +24948,282 @@
           }
         },
         "additionalProperties": {}
+      }
+    },
+    {
+      "id": "getSetupModels",
+      "method": "GET",
+      "path": "/v1/setup/models/:client/:name",
+      "kind": "json",
+      "summary": "Whether an account is logged in (asked to the client) and the models its catalog lists, marked with the Executors of the preset each fills",
+      "pathParams": [
+        "client",
+        "name"
+      ],
+      "response": {
+        "type": "object",
+        "properties": {
+          "profileId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 129
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "token_plan",
+              "api"
+            ]
+          },
+          "login": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "logged_in",
+                  "logged_out",
+                  "unknown"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "preset": {
+            "type": "string",
+            "enum": [
+              "quality",
+              "balanced",
+              "economical"
+            ]
+          },
+          "catalog": {
+            "type": "string",
+            "enum": [
+              "listed",
+              "assisted",
+              "unavailable",
+              "none"
+            ]
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "models": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "name": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "family": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "efforts": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "local": {
+                  "type": "boolean"
+                },
+                "contextWindow": {
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "preset": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "effort": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "effort"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "registered": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "family",
+                "efforts",
+                "local",
+                "contextWindow",
+                "preset",
+                "registered"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "notes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "severity": {
+                  "type": "string",
+                  "enum": [
+                    "info",
+                    "warning"
+                  ]
+                },
+                "code": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "role": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "enum": [
+                        "director",
+                        "consultant",
+                        "author",
+                        "reviewer",
+                        "scriptwriter",
+                        "actor",
+                        "critic"
+                      ]
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "head": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "message": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "severity",
+                "code",
+                "role",
+                "message"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "profileId",
+          "kind",
+          "login",
+          "preset",
+          "catalog",
+          "reason",
+          "models",
+          "notes"
+        ],
+        "additionalProperties": false
+      },
+      "errors": {
+        "400": [
+          "invalid_input"
+        ],
+        "401": [
+          "unauthorized"
+        ],
+        "403": [
+          "forbidden"
+        ],
+        "404": [
+          "not_found"
+        ],
+        "500": [
+          "internal"
+        ],
+        "503": [
+          "unavailable"
+        ]
+      },
+      "params": {
+        "type": "object",
+        "properties": {
+          "client": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          }
+        },
+        "required": [
+          "client",
+          "name"
+        ],
+        "additionalProperties": false
       }
     },
     {

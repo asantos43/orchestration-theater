@@ -6,6 +6,7 @@ import {
   InvalidInput,
   NotFound,
   ROLE_PRESET_NAMES,
+  parseProfileId,
   SETUP_FLOWS,
   isOTheaterError,
   tryParseExecutorId,
@@ -13,6 +14,7 @@ import {
   type JsonObject,
   type JsonValue,
   type ModelCatalog,
+  type ModelInfo,
   type ProfileFact,
   type RolePresetName,
   type SetupFlow,
@@ -32,6 +34,7 @@ import {
   type SetupDoneStep,
   type SetupExecutor,
   type SetupFlowStatus,
+  type SetupModels,
   type SetupNote,
   type SetupOverview,
   type SetupAdapterClient,
@@ -60,7 +63,7 @@ import {
   type ClientReasons,
   type InstalledClients,
 } from './detect.js';
-import { discoverForPreset } from './discover.js';
+import { discoverForPreset, matchPreset } from './discover.js';
 import { buildPlan, type PlanApply, type PlanResult } from './plan.js';
 
 /**
@@ -181,11 +184,15 @@ function factsOf(done: readonly SetupDoneStep[]): RunFacts {
         discovered = [...entry.output.discovered];
         notes.push(...entry.output.notes);
         break;
-      case 'executors':
+      case 'executors': {
+        // N324: the Executors of the preset the person unchecked stay out of the plan.
+        const excluded = new Set(entry.input.exclude);
+        discovered = discovered.filter((executor) => !excluded.has(executor.id));
         registered = [...entry.output.executors];
         givenBudgets = [...entry.input.budgets];
         notes.push(...entry.output.notes);
         break;
+      }
     }
   }
   return { accounts, preset, discovered, registered, givenBudgets, notes };
@@ -342,6 +349,66 @@ export class SetupService {
       failure: outcome.failure,
       added: [...added],
       clients: detectClients(this.#o.installedClients, this.#o.clientReasons),
+    };
+  }
+
+  /**
+   * After the login of an account (N324): whether the client says it is logged in, and the models
+   * its catalog lists, each marked with the Executors of the preset it fills and the ones the
+   * configuration already has. [proposta] Reads only: the choice goes in the `executors` step. A
+   * catalog that fails is said in the answer (`unavailable`), not thrown: the screen offers L.
+   */
+  async models(profileId: string): Promise<SetupModels> {
+    const ref = parseProfileId(profileId);
+    const summary = (await this.#o.profiles.list({ client: ref.client, checkLogin: true })).find(
+      (s) => s.profile.id === profileId,
+    );
+    if (summary === undefined) throw new NotFound(`There is no profile "${profileId}"`);
+    const config = await loadConfig(this.#o.configPath);
+    const preset = config.roles.preset ?? DEFAULT_ROLE_PRESET;
+    const base = {
+      profileId,
+      kind: summary.profile.kind,
+      login: summary.login ?? null,
+      preset,
+    };
+    const catalog = this.#o.catalogs(ref.client);
+    if (catalog === undefined) {
+      return { ...base, catalog: 'none', reason: null, models: [], notes: [] };
+    }
+    let listed: readonly ModelInfo[];
+    try {
+      listed = await catalog.list(ref);
+    } catch (error) {
+      return {
+        ...base,
+        catalog: 'unavailable',
+        reason: error instanceof Error ? error.message : String(error),
+        models: [],
+        notes: [],
+      };
+    }
+    const found = matchPreset({ profileId, listed, preset, presetExpand: true });
+    const registered = Object.entries(config.executors.entries).filter(
+      ([, entry]) => entry.client === ref.client && entry.profile === ref.profile,
+    );
+    return {
+      ...base,
+      catalog: catalog.discovery === 'automatic' ? 'listed' : 'assisted',
+      reason: null,
+      models: listed.map((info) => ({
+        id: info.id,
+        name: info.name ?? null,
+        family: info.family ?? null,
+        efforts: [...info.efforts],
+        local: info.local,
+        contextWindow: info.contextWindow ?? null,
+        preset: found.discovered
+          .filter((executor) => executor.model === info.id)
+          .map((executor) => ({ id: executor.id, effort: executor.effort })),
+        registered: registered.filter(([, entry]) => entry.model === info.id).map(([id]) => id),
+      })),
+      notes: found.notes,
     };
   }
 
@@ -660,7 +727,18 @@ export class SetupService {
     const accounts = await this.#accountsOf(run, facts);
     const known = await this.#o.profiles.list();
     const kindOf = new Map(known.map((s) => [s.profile.id, s.profile.kind]));
-    const taken = new Set(facts.discovered.map((executor) => executor.id));
+    const found = new Set(facts.discovered.map((executor) => executor.id));
+    const excluded = new Set<string>();
+    for (const id of input.exclude) {
+      if (!found.has(id)) {
+        throw new InvalidInput(
+          `The Executor ${id} is not one the catalogs found for this run: only those can be left out`,
+        );
+      }
+      if (excluded.has(id)) throw new InvalidInput(`The Executor ${id} is left out twice`);
+      excluded.add(id);
+    }
+    const taken = new Set([...found].filter((id) => !excluded.has(id)));
     const registered: SetupExecutor[] = [];
     const notes: SetupNote[] = [];
     for (const request of input.executors) {

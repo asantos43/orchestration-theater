@@ -4,7 +4,6 @@ import { describe, expect, it } from 'vitest';
 import { profileOf } from './fake-api.test-support.js';
 import {
   accountClients,
-  accountFormOf,
   accountsCursorMoved,
   accountsCursorStart,
   atFirstStep,
@@ -14,7 +13,6 @@ import {
   isFinished,
   itemCount,
   loginCommandOf,
-  parseAccountLine,
   parseBudgetLine,
   parseExecutorLine,
   reordered,
@@ -202,6 +200,35 @@ describe('the Executors and the caps', () => {
   });
 });
 
+describe('the seed of the list of models (N324)', () => {
+  it('opens the step of the Executors with the requests and the exclusions of the list', () => {
+    const draft = initialDraft(EXECUTORS, {
+      executors: [{ profileId: 'a/x', model: 'm-2' }],
+      exclude: ['m-1@a/x'],
+    });
+    expect(draft).toEqual({
+      kind: 'executors',
+      executors: [{ profileId: 'a/x', model: 'm-2' }],
+      budgets: {},
+      cursor: 0,
+      exclude: ['m-1@a/x'],
+    });
+    expect(submissionOf(draft, EXECUTORS)).toEqual({
+      step: 'executors',
+      input: { executors: [{ profileId: 'a/x', model: 'm-2' }], budgets: [], exclude: ['m-1@a/x'] },
+    });
+  });
+
+  it('sends no exclude when the list left nothing out', () => {
+    const draft = initialDraft(EXECUTORS, { executors: [], exclude: [] });
+    expect(draft).not.toHaveProperty('exclude');
+    expect(submissionOf(draft, EXECUTORS)).toEqual({
+      step: 'executors',
+      input: { executors: [], budgets: [] },
+    });
+  });
+});
+
 describe('the lines the person types', () => {
   it('reads <account> <model> [effort]', () => {
     expect(parseExecutorLine('a/b m')).toEqual({ profileId: 'a/b', model: 'm' });
@@ -283,27 +310,6 @@ describe('the step that adds an account (N274)', () => {
     expect(accountsCursorMoved(0, detect, -1)).toBe(0);
     expect(accountsCursorMoved(0, detect, 1)).toBe(1);
     expect(accountsCursorMoved(1, detect, 1)).toBe(1);
-  });
-
-  it('reads <name> [provider]: the provider is the default of the client when it has one', () => {
-    expect(parseAccountLine('claude-code', 'work')).toEqual({
-      name: 'work',
-      provider: 'anthropic',
-    });
-    expect(parseAccountLine('codex', '  alt  ')).toEqual({ name: 'alt', provider: 'openai' });
-    expect(parseAccountLine('codex', 'alt openrouter')).toEqual({
-      name: 'alt',
-      provider: 'openrouter',
-    });
-  });
-
-  it('asks for the provider of a client that has no default, and refuses what is not a line', () => {
-    expect(parseAccountLine('opencode', 'zen')).toBeUndefined();
-    expect(parseAccountLine('opencode', 'zen openai')).toEqual({ name: 'zen', provider: 'openai' });
-    expect(parseAccountLine('claude-code', '')).toBeUndefined();
-    expect(parseAccountLine('claude-code', 'a b c')).toBeUndefined();
-    expect(accountFormOf('opencode')).toBe('<name> <provider>');
-    expect(accountFormOf('codex')).toBe('<name> [provider]');
   });
 
   it('names the command that logs in to an account in a terminal', () => {

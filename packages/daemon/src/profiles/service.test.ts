@@ -371,6 +371,8 @@ describe('ProfileService.add (Phase 5, P2)', () => {
       { client: 'claude-code', name: '../x', kind: 'token_plan' as const, provider: 'anthropic' },
       { client: 'Claude', name: 'x', kind: 'token_plan' as const, provider: 'anthropic' },
       { client: 'claude-code', name: 'x', kind: 'token_plan' as const, provider: 'bad provider' },
+      // N326: a client the daemon cannot run.
+      { client: 'cursor', name: 'x', kind: 'token_plan' as const, provider: 'anthropic' },
     ];
     for (const input of bad) await expect(rig.service.add(input)).rejects.toThrow(InvalidInput);
     await expect(

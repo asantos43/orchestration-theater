@@ -59,26 +59,32 @@ function textBoxActions(): NonNullable<UiRegistryDefinition['actions']> {
  * because the tab has no text field open while they act; with a field open the shell hands every
  * key to it. They are not commands of the palette: they act on the item under the cursor.
  */
-const SETTINGS_KEYS: readonly (readonly [name: string, keys: readonly string[]])[] = [
+const SETTINGS_KEYS: readonly (readonly [
+  name: string,
+  keys: readonly string[],
+  bar?: readonly [textKey: string, order: number],
+])[] = [
   ['itemPrev', ['K']],
   ['itemNext', ['J']],
   ['moveUp', ['Shift+Up']],
   ['moveDown', ['Shift+Down']],
-  ['login', ['L']],
-  ['add', ['A']],
+  // In the bar (N324, the owner's test on Windows: "L" did nothing on an empty list and no key
+  // said how to add an account). [proposta] Which keys go to the bar, and their order.
+  ['login', ['L'], ['bar.settings.login', 17]],
+  ['add', ['A'], ['bar.settings.add', 16]],
   ['remove', ['X']],
   ['edit', ['E']],
   ['unset', ['U']],
   ['scope', ['S']],
   // The setup assistant (P17), opened from the tab: add an account, change the preset, or resume
   // (or redo) the first run. [proposta] `W` for the wizard; no tab key takes it.
-  ['assistantAccount', ['W']],
+  ['assistantAccount', ['W'], ['bar.settings.assistant', 18]],
   ['assistantPreset', ['P']],
   ['assistantFirstRun', ['Shift+W']],
 ];
 
 function settingsActions(): NonNullable<UiRegistryDefinition['actions']> {
-  return SETTINGS_KEYS.map(([name, keys]) => ({
+  return SETTINGS_KEYS.map(([name, keys, bar]) => ({
     id: `settings.${name}`,
     textKey: `actions.settings.${name}`,
     group: 'settings',
@@ -86,6 +92,7 @@ function settingsActions(): NonNullable<UiRegistryDefinition['actions']> {
     surfaces: ['tui' as const],
     palette: false,
     keys: terminalKeys(keys),
+    ...(bar === undefined ? {} : { bar: { textKey: bar[0], order: bar[1] } }),
   }));
 }
 
@@ -145,6 +152,10 @@ const SETUP_KEYS: readonly (readonly [
   ['install', ['I'], ['bar.setup.install', 17]],
   ['reload', ['R']],
   ['cancel', ['C'], ['bar.setup.cancel', 20]],
+  // N324: at the review, the detail of the notes the screen folds (`ui.setup.reviewNotes`). [proposta] D.
+  ['details', ['D'], ['bar.setup.details', 19]],
+  // N326: at the step that adds an account, continue without one. [proposta] S.
+  ['skip', ['S'], ['bar.setup.skip', 15]],
 ];
 
 function setupActions(): NonNullable<UiRegistryDefinition['actions']> {

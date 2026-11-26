@@ -135,6 +135,11 @@ export const SetupNoteSchema = z.strictObject({
   severity: z.enum(['info', 'warning']),
   code: z.string().min(1),
   role: z.enum(ROLE_IDS).nullable(),
+  /**
+   * The `<model>-<effort>` of the preset a `no_account` note is about (N324): the screens fold the
+   * notes of one family of models into one line. Absent on the other notes and from older daemons.
+   */
+  head: z.string().min(1).optional(),
   message: z.string(),
 });
 export type SetupNote = z.infer<typeof SetupNoteSchema>;
@@ -215,6 +220,12 @@ export type SetupExecutorRequest = z.infer<typeof SetupExecutorRequestSchema>;
 export const SetupExecutorsInputSchema = z.strictObject({
   executors: z.array(SetupExecutorRequestSchema).max(32).default([]),
   budgets: z.array(SetupBudgetSchema).max(32).default([]),
+  /**
+   * N324 [proposta]: the ids of the Executors the catalogs found for the preset (the `discovered`
+   * of the `account` or `preset` step) that the person unchecked: they are left out of the plan.
+   * An id that is not one of them is refused.
+   */
+  exclude: z.array(z.string().min(1).max(512)).max(64).default([]),
 });
 export const SetupExecutorsOutputSchema = z.strictObject({
   executors: z.array(SetupExecutorSchema),
@@ -372,6 +383,58 @@ export const SetupAdapterInstallResultSchema = z.strictObject({
 });
 export type SetupAdapterInstallResult = z.infer<typeof SetupAdapterInstallResultSchema>;
 
+// ---- the models of an account (N324) ----------------------------------------------------------
+
+/**
+ * How the catalog of the client answered: `listed` (it lists the models of the account),
+ * `assisted` (it cannot list them, as OpenCode: the person types the model), `unavailable` (the
+ * read failed: `reason` says why) and `none` (the client is not installed).
+ */
+export const SETUP_MODEL_CATALOG_STATES = ['listed', 'assisted', 'unavailable', 'none'] as const;
+export type SetupModelCatalogState = (typeof SETUP_MODEL_CATALOG_STATES)[number];
+
+/** One model the catalog lists for the account, with what the preset and the configuration say of it. */
+export const SetupModelSchema = z.strictObject({
+  /** The model id as the catalog lists it (what `SetupExecutorRequest.model` takes). */
+  id: z.string().min(1),
+  name: z.string().min(1).nullable(),
+  family: z.string().min(1).nullable(),
+  efforts: z.array(z.string().min(1)),
+  local: z.boolean(),
+  contextWindow: z.int().min(0).nullable(),
+  /**
+   * The Executors of the preset this model fills on the account (the `discovered` the `account`
+   * step would give): empty when the preset does not name it. Unchecking the model is putting
+   * these ids in `exclude`.
+   */
+  preset: z.array(z.strictObject({ id: z.string().min(1), effort: z.string().min(1).nullable() })),
+  /** The ids of `executors.<id>` of the configuration that already run this model on the account. */
+  registered: z.array(z.string().min(1)),
+});
+export type SetupModel = z.infer<typeof SetupModelSchema>;
+
+/**
+ * `GET /v1/setup/models/:client/:name` (N324): after the login of an account, whether the client
+ * says it is logged in and the models its catalog lists, so a screen asks which ones enter.
+ * [proposta] `login` is asked to the client now (the same probe as the `detect` step); `null` for
+ * an API account. Nothing is written: the choice goes in the `executors` step (requests and
+ * `exclude`).
+ */
+export const SetupModelsSchema = z.strictObject({
+  profileId,
+  kind: z.enum(PROFILE_KINDS),
+  login: z.enum(['logged_in', 'logged_out', 'unknown']).nullable(),
+  /** The preset the marks of `preset` follow: `roles.preset`, or the default one. */
+  preset: z.enum(ROLE_PRESET_NAMES),
+  catalog: z.enum(SETUP_MODEL_CATALOG_STATES),
+  /** Why the catalog is `unavailable`; null otherwise. */
+  reason: z.string().min(1).nullable(),
+  models: z.array(SetupModelSchema),
+  /** What the match with the preset said (an effort the model does not take, say). */
+  notes: z.array(SetupNoteSchema),
+});
+export type SetupModels = z.infer<typeof SetupModelsSchema>;
+
 // ---- the routes -------------------------------------------------------------------------------
 
 const FlowParamsSchema = z.strictObject({ flow: SetupFlowSchema });
@@ -406,6 +469,17 @@ export const installSetupAdapter = defineRoute({
   headers: IdempotencyHeadersSchema,
   response: SetupAdapterInstallResultSchema,
   errors: ['unavailable'],
+});
+
+export const getSetupModels = defineRoute({
+  id: 'getSetupModels',
+  method: 'GET',
+  path: '/v1/setup/models/:client/:name',
+  summary:
+    'Whether an account is logged in (asked to the client) and the models its catalog lists, marked with the Executors of the preset each fills',
+  params: z.strictObject({ client: z.string().min(1).max(64), name: z.string().min(1).max(128) }),
+  response: SetupModelsSchema,
+  errors: ['not_found', 'unavailable'],
 });
 
 export const startSetup = defineRoute({
@@ -468,6 +542,7 @@ export const SETUP_ROUTES = defineRoutes(
   getSetup,
   redetectSetupClients,
   installSetupAdapter,
+  getSetupModels,
   startSetup,
   submitSetupStep,
   backSetup,

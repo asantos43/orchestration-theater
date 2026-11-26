@@ -75,4 +75,12 @@ describe('setupApiOf', () => {
     ]);
     expect(calls[1]?.options?.params).toEqual({ client: 'claude-code', name: 'work' });
   });
+
+  it('reads the models of an account after its login, with no Idempotency-Key (N324)', async () => {
+    const { api, calls } = recorder();
+    await api.accounts?.models?.('codex/main');
+    expect(calls[0]?.route).toBe(API_ROUTES.getSetupModels);
+    expect(calls[0]?.options?.params).toEqual({ client: 'codex', name: 'main' });
+    expect(calls[0]?.options?.headers).toBeUndefined();
+  });
 });

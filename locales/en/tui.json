@@ -168,7 +168,9 @@
       "remove": "Remove the Executor",
       "reload": "Look for the clients again and read the step again",
       "cancel": "Cancel the run (nothing is written)",
-      "install": "Install the ACP adapter of the client under the cursor"
+      "install": "Install the ACP adapter of the client under the cursor",
+      "details": "Show or fold the detail of the notes of the review",
+      "skip": "Continue without an account"
     },
     "plugins": {
       "itemPrev": "Previous plugin",
@@ -228,7 +230,30 @@
       "add": "Add",
       "edit": "Cap",
       "cancel": "Cancel run",
-      "install": "Install adapter"
+      "install": "Install adapter",
+      "details": "Detail",
+      "skip": "No account",
+      "openForm": "Add account"
+    },
+    "settings": {
+      "add": "Add account",
+      "login": "Log in",
+      "assistant": "Assistant"
+    },
+    "accountForm": {
+      "submit": "Add",
+      "next": "Next field",
+      "change": "Change",
+      "cancel": "Cancel"
+    },
+    "modelPick": {
+      "confirm": "Take",
+      "toggle": "Check",
+      "cancel": "Keep the preset"
+    },
+    "loginCheck": {
+      "retry": "Log in again",
+      "skip": "Go on"
     }
   },
   "keymap": {
@@ -664,7 +689,7 @@
     "loading": "Reading the settings...",
     "loadFailed": "Could not read the settings: {{message}}",
     "empty": {
-      "profiles": "No account yet. Add one.",
+      "profiles": "No account yet. {{add}} adds one; {{assistant}} opens the assistant.",
       "executors": "No Executor.",
       "roles": "No role.",
       "overrides": "This project overrides no key."
@@ -698,12 +723,9 @@
       }
     },
     "prompt": {
-      "add": "Add an account as: <client> <name> <token_plan|api> <provider>",
-      "apiKey": "API key of {{profile}} (kept in the vault, never shown)",
       "limit": "New value of {{key}} ({{hint}})",
       "confirmRemove": "Remove {{profile}}? Its sessions drain, then its directory and key go. y/n",
       "confirmNotice": "{{provider}} already has {{existing}}. Add another? y/n",
-      "confirmLogin": "{{profile}} was added. Log in now? y/n",
       "hintEnter": "Enter confirms, Esc cancels",
       "hintConfirm": "y confirms, any other key cancels",
       "yes": "y"
@@ -762,10 +784,23 @@
       "readOnly": "The project scope is read only: no route writes the override of a project.",
       "badWhole": "{{key}} takes a whole number, {{min}} or more.",
       "badDuration": "{{key}} takes a duration such as 30m, 2h or 45s.",
-      "badAdd": "Write <client> <name> <token_plan|api> <provider>.",
       "nothing": "Nothing under the cursor.",
+      "noAccounts": "No account yet: {{add}} adds one; {{assistant}} opens the assistant.",
       "noLogin": "Only a subscription account signs in.",
-      "noAssistant": "The assistant needs the daemon."
+      "noAssistant": "The assistant needs the daemon.",
+      "noClient": "No client is ready on this machine, so there is no account to add yet. {{assistant}} opens the assistant, which says what is missing."
+    },
+    "models": {
+      "keys": "↑/↓ walk, Space checks, Enter writes the checked ones as Executors, Esc writes nothing",
+      "saving": "Writing the Executors of {{profile}}…",
+      "registered_one": "{{profile}}: {{count}} Executor written ({{ids}}).",
+      "registered_other": "{{profile}}: {{count}} Executors written ({{ids}}).",
+      "none": "{{profile}}: no model checked, so no Executor was written.",
+      "skipped": "{{profile}}: the list was left, so no Executor was written.",
+      "busy": "An account run is open in the assistant ({{assistant}}), so the Executors of {{profile}} were not written: finish or cancel that run there.",
+      "writeFailed": "The Executors of {{profile}} were not written: {{message}}",
+      "failed": "Could not read the models of {{profile}}: {{message}}. No Executor was written.",
+      "unavailable": "The client of {{profile}} did not list its models ({{reason}}). No Executor was written."
     }
   },
   "overview": {
@@ -1188,7 +1223,9 @@
       "budgetRow": "{{profile}}  day {{daily}}  month {{monthly}}",
       "budgetSuggested": "{{profile}}  suggested: day {{daily}}, month {{monthly}}",
       "noCap": "no cap",
-      "usd": "USD {{value}}"
+      "usd": "USD {{value}}",
+      "excluded_one": "Left out of the preset: {{list}}",
+      "excluded_other": "Left out of the preset ({{count}}): {{list}}"
     },
     "prompt": {
       "executor": "Executor as: <account> <model> [effort]",
@@ -1199,8 +1236,6 @@
       "yes": "y",
       "badExecutor": "Write <account> <model> [effort].",
       "badBudget": "Write <day> <month>: numbers above zero, or - for no cap.",
-      "account": "Account of {{client}} as: {{form}}",
-      "badAccount": "Write {{form}}.",
       "confirmNotice": "{{provider}} already has {{existing}}. Add another? y/n"
     },
     "review": {
@@ -1217,7 +1252,11 @@
       "notes": "Notes",
       "info": "info",
       "warning": "warning",
-      "none": "none"
+      "none": "none",
+      "noAccountFamily": "{{family}}: no account of this machine has {{models}}; left out of {{count}} role(s)",
+      "emptyRoles": "No Executor left in {{count}} role(s): {{roles}} (they fall back to when_exhausted)",
+      "detailsHint": "{{key}} shows each note",
+      "detailsHintAll": "{{key}} folds the notes again"
     },
     "source": {
       "discovered": "found",
@@ -1236,7 +1275,7 @@
       "clients": "Clients",
       "row": "{{client}}{{state}}",
       "added": "Added in this run: {{list}}",
-      "keys": "{{add}} adds an account of the client under the cursor, {{next}} continues without adding.",
+      "keys": "{{add}} adds another account, {{next}} continues.",
       "result": {
         "added": "Account added: {{profile}}.",
         "loggedIn": "Account added: {{profile}}. It already has a login.",
@@ -1245,7 +1284,10 @@
         "failed": "The account was not added: {{message}}"
       },
       "state": "  ({{state}})",
-      "cannotAdd": "{{client}} is not ready on this machine ({{why}}), so it has no account to add yet. {{todo}}"
+      "cannotAdd": "{{client}} is not ready on this machine ({{why}}), so it has no account to add yet. {{todo}}",
+      "noReady": "No client is ready on this machine yet. {{install}} installs the adapter of the client under the cursor, {{reload}} looks again, {{skip}} continues without an account.",
+      "skipped": "Continuing without an account: the roles stay empty until you add one in the Settings tab.",
+      "keysEmpty": "No account yet: {{next}} opens the form for the client under the cursor, {{skip}} continues without one."
     },
     "reason": {
       "installed": "installed",
@@ -1276,6 +1318,20 @@
     "redetect": {
       "added": "Found now: {{list}}.",
       "failed": "Could not look for the clients again: {{message}}"
+    },
+    "models": {
+      "title": "Models of {{profile}}: check the ones that become Executors",
+      "inPreset": "in the preset",
+      "registered": "already an Executor",
+      "keys": "↑/↓ walk, Space checks, Enter takes the list, Esc keeps the preset",
+      "loggedOut": "{{profile}} is not logged in yet, so its client does not list its models.",
+      "loginCheckKeys": "L logs in again · S goes on without the login",
+      "noLogin": "{{profile}} goes on without the login; log in later with L in Settings › Subscriptions.",
+      "chosen_one": "{{profile}}: {{count}} model checked; the step of the Executors starts with it.",
+      "chosen_other": "{{profile}}: {{count}} models checked; the step of the Executors starts with them.",
+      "skipped": "{{profile}}: the list was left; the preset decides its Executors.",
+      "failed": "Could not read the models of {{profile}}: {{message}}. The preset decides its Executors.",
+      "unavailable": "The client of {{profile}} did not list its models ({{reason}}). The preset decides its Executors."
     }
   },
   "plugins": {
@@ -1373,5 +1429,29 @@
       "disabledSame": "{{plugin}} was not on in {{project}}.",
       "noAction": "The panel has no action to run."
     }
+  },
+  "accountForm": {
+    "title": "Add an account",
+    "field": {
+      "client": "Client",
+      "name": "Name",
+      "kind": "Kind",
+      "provider": "Provider",
+      "apiKey": "API key"
+    },
+    "kind": {
+      "token_plan": "Subscription",
+      "api": "API"
+    },
+    "providerOwn": "Provider: {{provider}} (the only one of this client)",
+    "problem": {
+      "client": "Pick one of the clients ready on this machine.",
+      "name": "The name takes lowercase letters, digits, - and _, starting with a letter or digit.",
+      "provider": "Write the provider, such as openai or anthropic.",
+      "apiKey": "Write the API key (it goes to the vault and is never shown)."
+    },
+    "keys": "Tab next field · Space or ←/→ change · Enter adds · Esc cancels",
+    "keysLogin": "Tab next field · Space or ←/→ change · Enter adds and opens the sign-in · Esc cancels",
+    "unknownClient": "{{client}} is not a client the daemon runs; the clients are {{known}}."
   }
 }

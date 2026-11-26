@@ -707,6 +707,8 @@ function ShellBody(props: ShellProps): ReactNode {
         flow={assistant}
         api={setupApi}
         keymap={tuiKeymap}
+        reviewNotes={settings.setup.reviewNotes}
+        modelPick={settings.setup.modelPick}
         onClose={() => {
           setAssistant(undefined);
         }}

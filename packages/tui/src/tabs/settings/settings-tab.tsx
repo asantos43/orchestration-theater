@@ -41,6 +41,22 @@ import {
   type OpenPorts,
 } from '../../open-url.js';
 import { useStoreValue } from '../../use-store-value.js';
+import {
+  accountFormKey,
+  accountFormLines,
+  accountFormStart,
+  unknownClientText,
+  type AccountForm,
+} from '../../setup/account-form.js';
+import {
+  choiceOf,
+  modelPickKey,
+  modelPickLines,
+  modelPickStart,
+  seedOfChoices,
+  type ModelChoice,
+  type ModelPick,
+} from '../../setup/model-pick.js';
 import { apiOf, type SettingsApi } from './api.js';
 import { fieldStep } from './field.js';
 import {
@@ -55,7 +71,6 @@ import {
   limitValueText,
   moved,
   nextChoice,
-  parseAddForm,
   parseLimit,
   quotaLine,
   reorderEdit,
@@ -116,6 +131,14 @@ export interface SettingsTabOptions {
 export const LOGIN_OPEN_KEY = 'Ctrl+O';
 export const LOGIN_COPY_KEY = 'Ctrl+Y';
 
+/** The keys that add an account, as the keymap has them, for the texts of an empty list (N324). */
+function addKeysOf(keymap: Parameters<typeof keyLabel>[0]): { add: string; assistant: string } {
+  return {
+    add: keyLabel(keymap, 'settings.add') ?? 'A',
+    assistant: keyLabel(keymap, 'settings.assistantAccount') ?? 'W',
+  };
+}
+
 /** The id that ties the rows of one address into one hyperlink (OSC 8). */
 const LOGIN_LINK_ID = 'otheater-login';
 
@@ -138,10 +161,11 @@ interface Loaded {
   readonly config: ApiConfig;
 }
 
-type Prompt =
-  | { readonly purpose: 'add' }
-  | { readonly purpose: 'apiKey'; readonly draft: AddProfileBody }
-  | { readonly purpose: 'limit'; readonly spec: LimitKey };
+/** What a typed line is for: the value of a key of `limits` (the account has its form, N326). */
+interface Prompt {
+  readonly purpose: 'limit';
+  readonly spec: LimitKey;
+}
 
 type Mode =
   | { readonly kind: 'idle' }
@@ -152,6 +176,8 @@ type Mode =
       readonly secret: boolean;
       readonly value: string;
     }
+  /** The form that adds an account (N326). */
+  | { readonly kind: 'form'; readonly form: AccountForm }
   | {
       readonly kind: 'confirm';
       readonly question: string;
@@ -163,7 +189,11 @@ type Mode =
       readonly info: Extract<StartProfileLoginResult, { status: 'started' }>;
       readonly value: string;
       readonly sent: boolean;
-    };
+    }
+  /** N324, part B2: the models of an account added with A, after its login. */
+  | { readonly kind: 'models'; readonly pick: ModelPick }
+  /** N324, part B2: the client says the new account is not logged in; L tries again, S goes on. */
+  | { readonly kind: 'loginCheck'; readonly profileId: string };
 
 const IDLE: Mode = { kind: 'idle' };
 
@@ -263,6 +293,9 @@ function SettingsTab({ content, options }: TabProps): ReactNode {
   const busy = useRef(false);
   const reloadTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const endedLogins = useRef(new Map<string, Message>());
+  // N324, part B2: the accounts added with A whose login, once it ends, opens the list of models.
+  const pickAfterLogin = useRef(new Set<string>());
+  const modelPick = settings.setup.modelPick;
   const loadedRef = useRef<Loaded | undefined>(undefined);
   loadedRef.current = loaded;
   const quotas = useStoreValue(stores.quotas, (state) => state.byProfile);
@@ -349,6 +382,7 @@ function SettingsTab({ content, options }: TabProps): ReactNode {
         setMessage(end);
       }
       reloadSoon();
+      void loginEnded(profileId);
       return;
     }
     if (
@@ -438,27 +472,24 @@ function SettingsTab({ content, options }: TabProps): ReactNode {
         return;
       }
       say(t('settings.result.added', { profile: result.profile.id }), 'ok');
-      // `profiles.add.login`: a subscription account with no login yet is offered one (or gets it at
-      // once), the same login as the key `L`. Read before the reload, from the config the tab holds.
+      // `profiles.add.login`: a subscription account with no login yet gets it at once, the same
+      // login as the key `L` (N326: the Enter of the form is the yes, so `ask` logs in as `auto`
+      // does here [proposta]); `off` never does. Read before the reload, from the config the tab holds.
       const mode = addLoginModeOf(loadedRef.current?.config.config ?? {});
-      const wantsLogin =
-        result.profile.kind === 'token_plan' && result.login !== 'logged_in' && mode !== 'off';
+      const subscription = result.profile.kind === 'token_plan';
+      const wantsLogin = subscription && result.login !== 'logged_in' && mode !== 'off';
       await reload();
-      if (!wantsLogin) return;
-      const profileId = result.profile.id;
-      if (mode === 'auto') {
-        await startLogin(profileId);
-        return;
+      if (wantsLogin) {
+        pickAfterLogin.current.add(result.profile.id);
+        await startLogin(result.profile.id);
+      } else if (subscription && result.login === 'logged_in') {
+        // Logged in already: the list opens at once (N324, part B2).
+        await afterLogin(result.profile.id);
       }
-      setMode({
-        kind: 'confirm',
-        question: t('settings.prompt.confirmLogin', { profile: profileId }),
-        then: () => {
-          void startLogin(profileId);
-        },
-      });
     } catch (error) {
-      failed(error);
+      const unknown = unknownClientText(error, t);
+      if (unknown === undefined) failed(error);
+      else say(unknown, 'error');
     }
   };
 
@@ -536,19 +567,134 @@ function SettingsTab({ content, options }: TabProps): ReactNode {
           );
         }
         reloadSoon();
+        await loginEnded(profileId);
         return;
       }
       const ended = endedLogins.current.get(profileId);
       if (ended !== undefined) {
         // The end came before the answer that opens the panel.
         setMessage(ended);
+        await loginEnded(profileId);
         return;
       }
       setMode({ kind: 'login', profileId, info: result, value: '', sent: false });
       // `ui.login.browser: auto`: the way the official clients do it, the browser opens on its own, once.
       if (loginBrowser === 'auto') void openAddress(result.url, 'auto');
     } catch (error) {
+      pickAfterLogin.current.delete(profileId);
       failed(error);
+    }
+  };
+
+  /** The login of an account added with A ended (or the client ran it): the list of models comes. */
+  const loginEnded = async (profileId: string): Promise<void> => {
+    if (!pickAfterLogin.current.delete(profileId)) return;
+    await afterLogin(profileId);
+  };
+
+  /**
+   * N324, part B2 (the owner on 2026-11-26, "Também"): after the login of an account added with A,
+   * the same list as the assistant's. The client says whether the account is logged in; when it is
+   * not, L logs in again and S goes on. With no route of the assistant, nothing changes.
+   */
+  const afterLogin = async (profileId: string): Promise<void> => {
+    const setup = api.setup;
+    if (setup === undefined) return;
+    let found;
+    try {
+      found = await setup.models(profileId);
+    } catch (error) {
+      say(t('settings.models.failed', { profile: profileId, message: errorText(error) }), 'warn');
+      return;
+    }
+    if (!mounted.current) return;
+    if (found.login === 'logged_out') {
+      setMode({ kind: 'loginCheck', profileId });
+      say(t('setup.models.loggedOut', { profile: profileId }), 'warn');
+      return;
+    }
+    const pick = modelPickStart(found, modelPick);
+    if (pick === undefined) {
+      if (found.catalog === 'unavailable') {
+        say(
+          t('settings.models.unavailable', { profile: profileId, reason: found.reason ?? '' }),
+          'warn',
+        );
+      }
+      return;
+    }
+    setMode({ kind: 'models', pick });
+  };
+
+  /**
+   * Writes the checked models as Executors at once, through a run of the flow `add_account`
+   * (N324, part B2): the account, then the step of the Executors with the requests and `exclude`
+   * that the choice gives, then the confirmation. [proposta] A run of that flow already open (in the
+   * assistant) is left as it is: nothing is written and the message says so. A run this started
+   * and that fails is cancelled.
+   */
+  const registerModels = async (choice: ModelChoice): Promise<void> => {
+    const setup = api.setup;
+    const profileId = choice.profileId;
+    if (setup === undefined) return;
+    if (choice.checked.length === 0) {
+      say(t('settings.models.none', { profile: profileId }), 'warn');
+      return;
+    }
+    say(t('settings.models.saving', { profile: profileId }), 'ok');
+    let runId: string | undefined;
+    try {
+      runId = (await setup.start('add_account')).id;
+    } catch (error) {
+      if (error instanceof ApiRequestError && error.code === 'conflict') {
+        say(
+          t('settings.models.busy', {
+            profile: profileId,
+            assistant: keyLabel(keymap, 'settings.assistantAccount') ?? '',
+          }),
+          'warn',
+        );
+      } else {
+        say(
+          t('settings.models.writeFailed', { profile: profileId, message: errorText(error) }),
+          'error',
+        );
+      }
+      return;
+    }
+    try {
+      const atAccount = await setup.submit(runId, {
+        step: 'account',
+        input: { profileId },
+      });
+      const seed = seedOfChoices(atAccount, { [profileId]: choice });
+      const atReview = await setup.submit(runId, {
+        step: 'executors',
+        input: { executors: [...seed.executors], exclude: [...seed.exclude], budgets: [] },
+      });
+      const plan = atReview.prompt?.step === 'review' ? atReview.prompt.plan : undefined;
+      if (plan?.executors.length === 0) {
+        await setup.cancel(runId);
+        say(t('settings.models.none', { profile: profileId }), 'warn');
+        return;
+      }
+      const done = await setup.confirm(runId);
+      const ids = done.result?.executors ?? [];
+      say(
+        t('settings.models.registered', {
+          profile: profileId,
+          count: ids.length,
+          ids: ids.join(', '),
+        }),
+        'ok',
+      );
+      await reload();
+    } catch (error) {
+      void setup.cancel(runId).catch(() => undefined);
+      say(
+        t('settings.models.writeFailed', { profile: profileId, message: errorText(error) }),
+        'error',
+      );
     }
   };
 
@@ -575,49 +721,26 @@ function SettingsTab({ content, options }: TabProps): ReactNode {
   const submitPrompt = (current: Extract<Mode, { kind: 'prompt' }>): void => {
     const { prompt, value } = current;
     setMode(IDLE);
-    switch (prompt.purpose) {
-      case 'add': {
-        const form = parseAddForm(value);
-        if (form === undefined) {
-          say(t('settings.result.badAdd'), 'warn');
-          return;
-        }
-        if (form.kind === 'api') {
-          openPrompt(
-            { purpose: 'apiKey', draft: form },
-            t('settings.prompt.apiKey', { profile: `${form.client}/${form.name}` }),
-            true,
-          );
-          return;
-        }
-        void addProfile(form);
-        return;
-      }
-      case 'apiKey':
-        if (value === '') return;
-        void addProfile({ ...prompt.draft, apiKey: value });
-        return;
-      case 'limit': {
-        const parsed = parseLimit(prompt.spec, value);
-        if (parsed === undefined) {
-          say(
-            t(
-              prompt.spec.kind === 'count'
-                ? 'settings.result.badWhole'
-                : 'settings.result.badDuration',
-              { key: prompt.spec.key, min: prompt.spec.min ?? 0 },
-            ),
-            'warn',
-          );
-          return;
-        }
-        void write(limitEdit(prompt.spec.key, parsed));
-        return;
-      }
+    const parsed = parseLimit(prompt.spec, value);
+    if (parsed === undefined) {
+      say(
+        t(
+          prompt.spec.kind === 'count' ? 'settings.result.badWhole' : 'settings.result.badDuration',
+          {
+            key: prompt.spec.key,
+            min: prompt.spec.min ?? 0,
+          },
+        ),
+        'warn',
+      );
+      return;
     }
+    void write(limitEdit(prompt.spec.key, parsed));
   };
 
   const endLogin = (current: Extract<Mode, { kind: 'login' }>): void => {
+    // Esc gave up the login: no list comes after it.
+    pickAfterLogin.current.delete(current.profileId);
     setMode(IDLE);
     setMessage({ text: t('settings.login.cancelled'), tone: 'warn' });
     void api.cancelLogin(current.profileId).catch((error: unknown) => {
@@ -625,7 +748,74 @@ function SettingsTab({ content, options }: TabProps): ReactNode {
     });
   };
 
+  /**
+   * Opens the form that adds an account (N326) over the clients ready on the machine; with none
+   * ready it says so and what opens the assistant, which installs an adapter.
+   */
+  const openForm = async (): Promise<void> => {
+    if (busy.current) return;
+    busy.current = true;
+    try {
+      const clients = await api.clients();
+      const form = accountFormStart(
+        clients.filter((entry) => entry.installed).map((entry) => entry.client),
+      );
+      if (!mounted.current) return;
+      if (form === undefined) {
+        say(
+          t('settings.result.noClient', {
+            assistant: keyLabel(keymap, 'settings.assistantAccount') ?? '',
+          }),
+          'warn',
+        );
+        return;
+      }
+      setMode({ kind: 'form', form });
+    } catch (error) {
+      failed(error);
+    } finally {
+      busy.current = false;
+    }
+  };
+
   const handleMode = (event: KeyEvent, current: Exclude<Mode, { kind: 'idle' }>): void => {
+    if (current.kind === 'models') {
+      const step = modelPickKey(current.pick, event.combo);
+      if (step.done === undefined) {
+        setMode({ kind: 'models', pick: step.pick });
+      } else if (step.done === 'confirm') {
+        setMode(IDLE);
+        void registerModels(choiceOf(step.pick));
+      } else {
+        setMode(IDLE);
+        say(t('settings.models.skipped', { profile: current.pick.profileId }), 'warn');
+      }
+      return;
+    }
+    if (current.kind === 'loginCheck') {
+      const pressed = (event.combo ?? '').toUpperCase();
+      if (pressed === 'L') {
+        setMode(IDLE);
+        pickAfterLogin.current.add(current.profileId);
+        void startLogin(current.profileId);
+      } else if (pressed === 'S' || event.combo === 'Esc') {
+        setMode(IDLE);
+        say(t('setup.models.noLogin', { profile: current.profileId }), 'warn');
+      }
+      return;
+    }
+    if (current.kind === 'form') {
+      const step = accountFormKey(current.form, event.combo, event.data);
+      if (step.done === 'cancel') {
+        setMode(IDLE);
+      } else if (step.done === 'submit') {
+        setMode(IDLE);
+        void addProfile(step.body);
+      } else {
+        setMode({ kind: 'form', form: step.form });
+      }
+      return;
+    }
     if (current.kind === 'confirm') {
       setMode(IDLE);
       const yes = t('settings.prompt.yes').toUpperCase();
@@ -692,7 +882,7 @@ function SettingsTab({ content, options }: TabProps): ReactNode {
       return;
     }
     if (name === 'add') {
-      openPrompt({ purpose: 'add' }, t('settings.prompt.add'));
+      void openForm();
       return;
     }
     // The setup assistant (P17): the same screen, on the flow that fits the key.
@@ -721,7 +911,13 @@ function SettingsTab({ content, options }: TabProps): ReactNode {
     if (section === 'settings.subscriptions') {
       const profile = data.profiles[at];
       if (profile === undefined) {
-        say(t('settings.result.nothing'), 'warn');
+        // An empty list says which keys add an account (N324), not "nothing under the cursor".
+        say(
+          data.profiles.length === 0
+            ? t('settings.result.noAccounts', addKeysOf(keymap))
+            : t('settings.result.nothing'),
+          'warn',
+        );
         return;
       }
       if (name === 'login') {
@@ -820,7 +1016,12 @@ function SettingsTab({ content, options }: TabProps): ReactNode {
       right: String(loaded.profiles.length),
     });
     if (loaded.profiles.length === 0) {
-      lines.push({ key: 'e.subs', kind: 'row', text: t('settings.empty.profiles'), dim: true });
+      lines.push({
+        key: 'e.subs',
+        kind: 'row',
+        text: t('settings.empty.profiles', addKeysOf(keymap)),
+        dim: true,
+      });
     }
     loaded.profiles.forEach((entry, index) => {
       const id = entry.profile.id;
@@ -963,6 +1164,37 @@ function SettingsTab({ content, options }: TabProps): ReactNode {
       text: `> ${mode.secret ? '•'.repeat(Array.from(mode.value).length) : mode.value}▏`,
     });
     head.push({ key: 'p.hint', kind: 'row', text: t('settings.prompt.hintEnter'), dim: true });
+  } else if (mode.kind === 'form') {
+    const login = addLoginModeOf(loaded?.config.config ?? {}) !== 'off';
+    for (const line of accountFormLines(mode.form, t, { login })) {
+      head.push({
+        key: line.key,
+        kind: 'row',
+        text: line.text,
+        color:
+          line.tone === 'accent' ? TOKEN.accent : line.tone === 'warn' ? TOKEN.warn : undefined,
+        dim: line.dim === true,
+        selected: line.selected === true,
+      });
+    }
+  } else if (mode.kind === 'models') {
+    for (const line of modelPickLines(mode.pick, t, 'settings.models.keys')) {
+      head.push({
+        key: line.key,
+        kind: 'row',
+        text: line.text,
+        color: line.tone === 'accent' ? TOKEN.accent : undefined,
+        dim: line.dim === true,
+        selected: line.selected === true,
+      });
+    }
+  } else if (mode.kind === 'loginCheck') {
+    head.push({
+      key: 'k.keys',
+      kind: 'row',
+      text: t('setup.models.loginCheckKeys'),
+      color: TOKEN.accent,
+    });
   } else if (mode.kind === 'confirm') {
     head.push({ key: 'c.q', kind: 'row', text: mode.question, color: TOKEN.warn });
     head.push({ key: 'c.hint', kind: 'row', text: t('settings.prompt.hintConfirm'), dim: true });

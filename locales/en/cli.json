@@ -1,6 +1,5 @@
 {
   "usage": {
-    "text": "Usage: ot [options] <command>\n\nCommands:\n  daemon                       Start the OTheater daemon in this terminal\n  backup                       Make a backup of the data now\n  restore <folder>             Put a backup back (the daemon must be stopped)\n  directives <action> [...]    Orders (the daemon must be stopped); actions:\n                                 list, show <id>, add <text>, extend <id>,\n                                 suspend <id> --scenario <s> [text], revoke <id> --reason <text>\n  chat                         Talk to the Director of a repository (the daemon must be running)\n  tui                          Open the terminal interface (the daemon must be running)\n  profile <action> [...]       Accounts of the clients (the daemon must be stopped); actions:\n                                 add <client> <name>, list, drain <client>/<name>, remove <client>/<name>,\n                                 exec <client>/<name> [-- <args>] (also with the daemon running),\n                                 shims sync, shims path [--install|--uninstall] (the commands by profile)\n  executor <action> [...]      Executors of the models (the daemon must be stopped); actions:\n                                 models <profile>, add <profile> <model>, list, check [id], remove <id>\n  plugin <action> [...]        Plugins (work with the daemon stopped or running); actions:\n                                 install <origin>, list, update <id> [<origin>], remove <id>,\n                                 enable <id> --project <p>, disable <id> --project <p>,\n                                 secret set <id> <NAME> [--project <p>]\n                                 (origin: a folder, npm:<pkg>@<version> or git:<url>#<ref>)\n  api rotate-token              Swap the API token (works with the daemon stopped or running)\n  trajectory export <play>      Write the ATIF trajectory of a play to a file (works with the daemon stopped or running)\n  analysis                      The analysis of the system: times, waits, cost and coverage over the daily aggregates (works with the daemon stopped or running)\n  service <action>             The logon service of the daemon: install, uninstall, status, start, stop (works with the daemon stopped or running)\n  uninstall [--purge-data]     Remove the logon service and keep the data (--purge-data also deletes it, after asking)\n  init [--no-tui]              First setup with no questions: install the logon service, start the daemon, look for the commands of the Executors (it shows the clients that are missing, with the npm command, and installs the ACP adapters as clients.adapters.install says) and open the terminal interface\n  adapters <action> [...]      The ACP adapters OTheater installs for Claude Code and Codex (work with the daemon stopped or running); actions:\n                                 status, install [claude-code|codex]\n  vault <action>               The vault of the secrets (adapters.vault; works with the daemon stopped or running); actions:\n                                 status, use <keyring|encrypted-file|auto>\n\nOptions:\n  --data-dir <dir>  Data directory (default: OT_DATA_DIR, else the user data folder)\n  --non-interactive  Ask nothing on the terminal (the service and the daemon OTheater starts use it; a locked vault stays locked)\n  -h, --help        Show this help\n  -v, --version     Show the version\n\nOptions of \"ot directives\":\n  --scenario <id>   Local order for this scenario (without it, add makes a global one)\n  --kind <kind>     instruction (default), rule or suspension\n  --role <role>     Only for this role (repeat it for more roles)\n  --rule-key <key> --rule-value <value>   The configuration key a rule overrides, and its value\n  --suspends <id>   The global order a suspension takes out of the scenario\n  --replaces <id>   Revoke this order and put the new one in its place\n  --from <date> --until <date> --for <duration>   Validity (YYYY-MM-DD [HH:mm]; 30m, 2h, 3d)\n  --forever         extend: take the end away\n  --reason <text>   revoke: why\n  --all             list: also expired and revoked orders\n\nOptions of \"ot chat\":\n  --repo <folder>   The repository (default: the current folder)\n  --base <branch>   The branch plays start from and deliver to (default: main)\n  --name <name>     A name for the scenario (default: the folder name; a chat is identified by it)\n  --type <type>     project (default, needs a repository) or chat (a generic chat, no repository)\n  --new-project     Create the project in --repo (a folder that does not exist or is empty) with the structure of the software profile\n\nOptions of \"ot profile\":\n  --kind <kind>     add: token_plan (default, a subscription) or api (a key)\n  --provider <p>    add: the provider of the account (default: anthropic for claude-code, openai for codex)\n  --api-key-env <NAME>   add --kind api: the NAME of the environment variable that holds the key (never type the key as an argument)\n  --api-key-stdin   add --kind api: read the key from the first line of the standard input\n  --accept-notice   add: go on after the notice about a second subscription account of the same provider\n  --login           add: log in to the new subscription account right away (like profiles.add.login: auto; needs a terminal)\n  --no-login        add: do not log in now, whatever profiles.add.login says (ask, the default, asks in a terminal; auto logs in; off does not offer it)\n  --client <client> list: only this client\n  --all             list: also the removed profiles\n  --check-login     list: ask each client whether the profile has a login\n  --json            Print JSON instead of text\n  exec runs the client's own CLI inside the profile, in this terminal. The common words\n  login, logout, status, run and --model (and those of profiles.commands and profiles.options)\n  become the client's own; after \"--\" the arguments go as they are.\n  shims sync writes one command per profile (codex-personal) in the bin folder of the data;\n  shims path says how to put that folder in PATH:\n  --install / --uninstall   shims path: write or take out the line in the rc file of the shell (asks first)\n  --shell <s>       shims path: zsh, bash or fish (default: the one of SHELL)\n  -y, --yes         shims path --install: do not ask\n\nOptions of \"ot executor\":\n  --effort <e>      add: low, medium or high (default: what the catalog suggests)\n  --family <f>      add: the family (provider) of a model whose catalog gives none\n  --as <name>       add: the name of the model inside the Executor id (default: derived)\n  --local-url <url> add: URL of the local model server (default: the one in the catalog)\n  --local-server <s> add: llama-cpp (default) or ollama\n  --role <r>[:<n>]  add: also put it in this role, at position n (repeat it for more roles)\n  --test-session    add: run the short test session (it calls the model); --no-test-session skips it\n  --dry-run         add: report the fields and the checks, write nothing\n  --profile <id>    list: only the Executors of this profile\n  --all             list: also the removed ones\n\nOptions of \"ot plugin\":\n  --project <p>     enable, disable: the project; list: only the plugins that project has; secret set: the value is only for that project\n  -y, --yes         enable: do not ask (what the plugin asks for is printed all the same)\n  --json            Print JSON instead of text\n  secret set reads the value from the standard input (hidden in a terminal) and never prints it.\n  install and update never turn a plugin on, and run no script of the package or of the repository.\n  A plugin whose plugin.yaml changed stays off in every project until \"enable\" approves it again.\n\nOptions of \"ot analysis\":\n  --from <day> --to <day>   The period, YYYY-MM-DD (default: analysis.report.default_days days up to the last day ready)\n  --group-by <g>    day (default), scenario, executor or role\n  --scenario <id>   Only this scenario\n  --compare-from <day> --compare-to <day>   Compare with this other period\n  --compare-scenario <id>   Compare with this other scenario over the same days (needs --scenario)\n  --json            Print the report as JSON\n\nOptions of \"ot trajectory\":\n  --unit <u>        play (one file, the attempts embedded), attempt (one file per attempt) or play_files (the play and one file per attempt); default: atif.export.unit (with the daemon running, only play)\n  --content <c>     full (default: atif.export.content; the secrets are masked all the same) or redacted (no text)\n  --out <dir>       The folder of the files (default: atif.export.dir, \"trajectories\" in the data folder)\n\nOptions of \"ot service\" and \"ot uninstall\":\n  --no-start        service install: do not start the daemon now\n  --json            service status: print JSON instead of text\n  --purge-data      uninstall: also delete the whole data folder (asks first; it cannot be undone; the keyring is not touched)\n  -y, --yes         uninstall --purge-data: do not ask\n  The service is the user's own and runs only while the user is logged on. The service.* keys of the\n  configuration (restart, autostart, console) are read at the install. \"ot tui\" starts the daemon when\n  none is running (tui.start_daemon).\n\nOptions of \"ot adapters\":\n  --json            status: print JSON instead of text\n  install downloads the pinned version from the npm registry (clients.adapters.registry), checks its sha512\n  and puts it in the data folder: no sudo, no change to PATH. It never installs the official client.\n\nOptions of \"ot vault\":\n  --json            status: print JSON instead of text\n  use changes only adapters.vault in config.yaml (the comments stay) and moves no secret.\n\nOptions of \"ot init\":\n  --no-tui          do the steps up to the commands and exit, without opening the interface (for scripts)\n\nIn the chat, \"/attach <file>\" attaches a file (copied; \"/attach --ref <file>\" keeps it in place):\nthe next message you send names it as A<n> for the Director.\n\nWithout a command, \"ot\" opens the terminal interface when the input and the output are a terminal\n(ui.bare_command: tui, the default); with ui.bare_command: help, or without a terminal, it shows this help.\n\nExit codes: 0 success, 1 the command failed, 2 wrong usage.",
     "hint": "Run \"ot --help\" for usage.",
     "unknownCommand": "Unknown command \"{{command}}\".",
     "missingCommand": "No command given.",
@@ -81,7 +80,8 @@
     "missingVaultAction": "Missing action for \"ot vault\". Use status or use.",
     "unknownVaultAction": "Unknown action \"{{action}}\" for \"ot vault\". Use status or use.",
     "missingVaultMode": "Missing vault for \"ot vault use\". Use keyring, encrypted-file or auto.",
-    "unknownVaultMode": "Unknown vault \"{{mode}}\" for \"ot vault use\". Use keyring, encrypted-file or auto."
+    "unknownVaultMode": "Unknown vault \"{{mode}}\" for \"ot vault use\". Use keyring, encrypted-file or auto.",
+    "profileUnknownClient": "\"ot profile add\": unknown client \"{{client}}\"; the clients are {{known}}."
   },
   "daemon": {
     "running": "OTheater daemon running (pid {{pid}}), data in {{dataDir}}. Press Ctrl+C to stop.",
@@ -566,5 +566,546 @@
     "unchanged": "The vault of the secrets is already {{mode}}; nothing changed.",
     "changed": "The vault of the secrets is now {{mode}} (it was {{before}}), in {{path}}. Secrets saved before stay in the vault they were saved in.",
     "restartHint": "A running daemon uses the new vault when it restarts."
+  },
+  "help": {
+    "about": "OTheater: multi-agent, multi-account orchestration that runs the official clients (Claude Code, Codex, OpenCode) as Executors.",
+    "mainUsage": "ot <command> [action] [options]",
+    "section": {
+      "usage": "Usage:",
+      "actions": "Actions:",
+      "options": "Options:",
+      "notes": "Notes:",
+      "globalOptions": "Global options:",
+      "learnMore": "Learn more:"
+    },
+    "group": {
+      "start": "Getting started:",
+      "accounts": "Accounts and models:",
+      "work": "Work:",
+      "system": "System:"
+    },
+    "global": {
+      "data-dir": {
+        "value": "<dir>",
+        "summary": "Data directory (default: OT_DATA_DIR, else the user data folder)"
+      },
+      "non-interactive": {
+        "summary": "Ask nothing on the terminal (the service and the daemon OTheater starts use it; a locked vault stays locked)"
+      },
+      "help": {
+        "summary": "Show the help (of a command, when it comes after one)"
+      },
+      "version": {
+        "summary": "Show the version"
+      }
+    },
+    "learnMore": {
+      "commandHelp": "ot help <command>",
+      "commandHelpText": "The usage, the actions and the options of a command (the same as ot <command> --help)",
+      "bare": "ot",
+      "bareText": "Without a command: the terminal interface when the input and the output are a terminal (ui.bare_command: tui, the default); with ui.bare_command: help, or without a terminal, this help"
+    },
+    "exitCodes": "Exit codes: 0 success, 1 the command failed, 2 wrong usage.",
+    "commands": {
+      "init": {
+        "summary": "First setup: service, daemon, clients and adapters",
+        "description": "First setup with no questions: install the logon service, start the daemon, look for the commands of the Executors (it shows the clients that are missing, with the npm command, and installs the ACP adapters as clients.adapters.install says) and open the terminal interface.",
+        "usage": "ot init [--no-tui]",
+        "options": {
+          "no-tui": {
+            "summary": "Do the steps up to the commands and exit, without opening the interface (for scripts)"
+          }
+        }
+      },
+      "tui": {
+        "summary": "Open the terminal interface",
+        "description": "Open the terminal interface. It starts the daemon when none is running (tui.start_daemon).",
+        "usage": "ot tui"
+      },
+      "chat": {
+        "summary": "Talk to the Director of a repository",
+        "description": "Talk to the Director of a repository (the daemon must be running).",
+        "usage": "ot chat [options]",
+        "options": {
+          "repo": {
+            "summary": "The repository (default: the current folder)",
+            "value": "<folder>"
+          },
+          "base": {
+            "summary": "The branch plays start from and deliver to (default: main)",
+            "value": "<branch>"
+          },
+          "name": {
+            "summary": "A name for the scenario (default: the folder name; a chat is identified by it)",
+            "value": "<name>"
+          },
+          "type": {
+            "summary": "project (default, needs a repository) or chat (a generic chat, no repository)",
+            "value": "<type>"
+          },
+          "new-project": {
+            "summary": "Create the project in --repo (a folder that does not exist or is empty) with the structure of the software profile"
+          }
+        },
+        "notes": "In the chat, \"/attach <file>\" attaches a file (copied; \"/attach --ref <file>\" keeps it in place): the next message you send names it as A<n> for the Director."
+      },
+      "daemon": {
+        "summary": "Start the daemon in this terminal",
+        "description": "Start the OTheater daemon in this terminal.",
+        "usage": "ot daemon"
+      },
+      "profile": {
+        "summary": "Accounts of the clients",
+        "description": "The accounts (profiles) of the clients (the daemon must be stopped; exec also works with it running).",
+        "usage": "ot profile <action> [arguments] [options]",
+        "actions": {
+          "add": {
+            "summary": "Add an account of a client",
+            "args": "<client> <name>"
+          },
+          "list": {
+            "summary": "List the accounts"
+          },
+          "drain": {
+            "summary": "Drain the account: no new work goes to it",
+            "args": "<client>/<name>"
+          },
+          "remove": {
+            "summary": "Remove the account",
+            "args": "<client>/<name>"
+          },
+          "exec": {
+            "summary": "Run the client's own CLI inside the account, in this terminal",
+            "args": "<client>/<name> [-- <args>]"
+          },
+          "shims sync": {
+            "summary": "Write one command per account (codex-personal) in the bin folder of the data"
+          },
+          "shims path": {
+            "summary": "Say how to put that folder in PATH"
+          }
+        },
+        "options": {
+          "kind": {
+            "summary": "add: token_plan (default, a subscription) or api (a key)",
+            "value": "<kind>"
+          },
+          "provider": {
+            "summary": "add: the provider of the account (default: anthropic for claude-code, openai for codex)",
+            "value": "<p>"
+          },
+          "api-key-env": {
+            "summary": "add --kind api: the NAME of the environment variable that holds the key (never type the key as an argument)",
+            "value": "<NAME>"
+          },
+          "api-key-stdin": {
+            "summary": "add --kind api: read the key from the first line of the standard input"
+          },
+          "accept-notice": {
+            "summary": "add: go on after the notice about a second subscription account of the same provider"
+          },
+          "login": {
+            "summary": "add: log in to the new subscription account right away (like profiles.add.login: auto; needs a terminal)"
+          },
+          "no-login": {
+            "summary": "add: do not log in now, whatever profiles.add.login says"
+          },
+          "client": {
+            "summary": "list: only this client",
+            "value": "<client>"
+          },
+          "all": {
+            "summary": "list: also the removed accounts"
+          },
+          "check-login": {
+            "summary": "list: ask each client whether the account has a login"
+          },
+          "json": {
+            "summary": "Print JSON instead of text"
+          },
+          "install": {
+            "summary": "shims path: write the line in the rc file of the shell (asks first)"
+          },
+          "uninstall": {
+            "summary": "shims path: take that line out (asks first)"
+          },
+          "shell": {
+            "summary": "shims path: zsh, bash or fish (default: the one of SHELL)",
+            "value": "<s>"
+          },
+          "yes": {
+            "summary": "shims path --install: do not ask"
+          }
+        },
+        "notes": "The clients: {{clients}}. The name is yours (main, work...): \"ot profile add claude-code main\".\n\nexec turns the common words login, logout, status, run and --model (and those of profiles.commands and profiles.options) into the client's own; after \"--\" the arguments go as they are."
+      },
+      "executor": {
+        "summary": "Executors of the models",
+        "description": "The Executors: an account and a model (the daemon must be stopped).",
+        "usage": "ot executor <action> [arguments] [options]",
+        "actions": {
+          "models": {
+            "summary": "List the models of a profile",
+            "args": "<profile>"
+          },
+          "add": {
+            "summary": "Add an Executor",
+            "args": "<profile> <model>"
+          },
+          "list": {
+            "summary": "List the Executors"
+          },
+          "check": {
+            "summary": "Check the Executors, or one",
+            "args": "[id]"
+          },
+          "remove": {
+            "summary": "Remove an Executor",
+            "args": "<id>"
+          }
+        },
+        "options": {
+          "effort": {
+            "summary": "add: low, medium or high (default: what the catalog suggests)",
+            "value": "<e>"
+          },
+          "family": {
+            "summary": "add: the family (provider) of a model whose catalog gives none",
+            "value": "<f>"
+          },
+          "as": {
+            "summary": "add: the name of the model inside the Executor id (default: derived)",
+            "value": "<name>"
+          },
+          "local-url": {
+            "summary": "add: URL of the local model server (default: the one in the catalog)",
+            "value": "<url>"
+          },
+          "local-server": {
+            "summary": "add: llama-cpp (default) or ollama",
+            "value": "<s>"
+          },
+          "role": {
+            "summary": "add: also put it in this role, at position n (repeat it for more roles)",
+            "value": "<r>[:<n>]"
+          },
+          "test-session": {
+            "summary": "add: run the short test session (it calls the model)"
+          },
+          "no-test-session": {
+            "summary": "add: skip the test session"
+          },
+          "dry-run": {
+            "summary": "add: report the fields and the checks, write nothing"
+          },
+          "profile": {
+            "summary": "list: only the Executors of this profile",
+            "value": "<id>"
+          },
+          "all": {
+            "summary": "list: also the removed ones"
+          },
+          "json": {
+            "summary": "Print JSON instead of text"
+          }
+        }
+      },
+      "adapters": {
+        "summary": "ACP adapters of Claude Code and Codex",
+        "description": "The ACP adapters OTheater installs for Claude Code and Codex (with the daemon stopped or running).",
+        "usage": "ot adapters <action> [options]",
+        "actions": {
+          "status": {
+            "summary": "Show the state of the adapters"
+          },
+          "install": {
+            "summary": "Install the adapters, or the one of a client",
+            "args": "[claude-code|codex]"
+          }
+        },
+        "options": {
+          "json": {
+            "summary": "status: print JSON instead of text"
+          }
+        },
+        "notes": "install downloads the pinned version from the npm registry (clients.adapters.registry), checks its sha512 and puts it in the data folder: no sudo, no change to PATH. It never installs the official client."
+      },
+      "vault": {
+        "summary": "Vault of the secrets",
+        "description": "The vault of the secrets (adapters.vault; with the daemon stopped or running).",
+        "usage": "ot vault <action> [options]",
+        "actions": {
+          "status": {
+            "summary": "Show the vault in use"
+          },
+          "use": {
+            "summary": "Choose the vault",
+            "args": "<keyring|encrypted-file|auto>"
+          }
+        },
+        "options": {
+          "json": {
+            "summary": "status: print JSON instead of text"
+          }
+        },
+        "notes": "use changes only adapters.vault in config.yaml (the comments stay) and moves no secret."
+      },
+      "directives": {
+        "summary": "Orders, global or of a scenario",
+        "description": "The orders, global or of a scenario (the daemon must be stopped).",
+        "usage": "ot directives <action> [arguments] [options]",
+        "actions": {
+          "list": {
+            "summary": "List the orders"
+          },
+          "show": {
+            "summary": "Show an order",
+            "args": "<id>"
+          },
+          "add": {
+            "summary": "Add an order (global, or of --scenario)",
+            "args": "<text>"
+          },
+          "extend": {
+            "summary": "Change the validity of an order",
+            "args": "<id>"
+          },
+          "suspend": {
+            "summary": "Take a global order out of a scenario",
+            "args": "<id> --scenario <s> [text]"
+          },
+          "revoke": {
+            "summary": "Revoke an order",
+            "args": "<id> --reason <text>"
+          }
+        },
+        "options": {
+          "scenario": {
+            "summary": "Local order for this scenario (without it, add makes a global one)",
+            "value": "<id>"
+          },
+          "kind": {
+            "summary": "instruction (default), rule or suspension",
+            "value": "<kind>"
+          },
+          "role": {
+            "summary": "Only for this role (repeat it for more roles)",
+            "value": "<role>"
+          },
+          "rule-key": {
+            "summary": "The configuration key a rule overrides",
+            "value": "<key>"
+          },
+          "rule-value": {
+            "summary": "The value of that key",
+            "value": "<value>"
+          },
+          "suspends": {
+            "summary": "The global order a suspension takes out of the scenario",
+            "value": "<id>"
+          },
+          "replaces": {
+            "summary": "Revoke this order and put the new one in its place",
+            "value": "<id>"
+          },
+          "from": {
+            "summary": "Start of the validity (YYYY-MM-DD [HH:mm])",
+            "value": "<date>"
+          },
+          "until": {
+            "summary": "End of the validity (YYYY-MM-DD [HH:mm])",
+            "value": "<date>"
+          },
+          "for": {
+            "summary": "Validity as a duration (30m, 2h, 3d)",
+            "value": "<duration>"
+          },
+          "forever": {
+            "summary": "extend: take the end away"
+          },
+          "reason": {
+            "summary": "revoke: why",
+            "value": "<text>"
+          },
+          "all": {
+            "summary": "list: also expired and revoked orders"
+          }
+        }
+      },
+      "plugin": {
+        "summary": "Install and manage plugins",
+        "description": "The plugins (with the daemon stopped or running).",
+        "usage": "ot plugin <action> [arguments] [options]",
+        "actions": {
+          "install": {
+            "summary": "Install a plugin (it stays off)",
+            "args": "<origin>"
+          },
+          "list": {
+            "summary": "List the plugins"
+          },
+          "update": {
+            "summary": "Update a plugin",
+            "args": "<id> [<origin>]"
+          },
+          "remove": {
+            "summary": "Remove a plugin",
+            "args": "<id>"
+          },
+          "enable": {
+            "summary": "Turn a plugin on in a project",
+            "args": "<id> --project <p>"
+          },
+          "disable": {
+            "summary": "Turn a plugin off in a project",
+            "args": "<id> --project <p>"
+          },
+          "secret set": {
+            "summary": "Save a secret of the plugin, read from the standard input",
+            "args": "<id> <NAME>"
+          }
+        },
+        "options": {
+          "project": {
+            "summary": "enable, disable: the project; list: only the plugins of that project; secret set: the value is only for that project",
+            "value": "<p>"
+          },
+          "yes": {
+            "summary": "enable: do not ask (what the plugin asks for is printed all the same)"
+          },
+          "json": {
+            "summary": "Print JSON instead of text"
+          }
+        },
+        "notes": "The origin: a folder, npm:<pkg>@<version> or git:<url>#<ref>.\n\nsecret set reads the value from the standard input (hidden in a terminal) and never prints it. install and update never turn a plugin on, and run no script of the package or of the repository. A plugin whose plugin.yaml changed stays off in every project until \"enable\" approves it again."
+      },
+      "trajectory": {
+        "summary": "Export the ATIF trajectory of a play",
+        "description": "Write the ATIF trajectory of a play to files (with the daemon stopped or running).",
+        "usage": "ot trajectory export <play> [options]",
+        "actions": {
+          "export": {
+            "summary": "Write the trajectory of the play",
+            "args": "<play>"
+          }
+        },
+        "options": {
+          "unit": {
+            "summary": "play (one file, the attempts embedded), attempt (one file per attempt) or play_files (the play and one file per attempt); default: atif.export.unit (with the daemon running, only play)",
+            "value": "<u>"
+          },
+          "content": {
+            "summary": "full (default: atif.export.content; the secrets are masked all the same) or redacted (no text)",
+            "value": "<c>"
+          },
+          "out": {
+            "summary": "The folder of the files (default: atif.export.dir, \"trajectories\" in the data folder)",
+            "value": "<dir>"
+          }
+        }
+      },
+      "analysis": {
+        "summary": "Times, waits, cost and coverage of the system",
+        "description": "The analysis of the system: times, waits, cost and coverage over the daily aggregates (with the daemon stopped or running).",
+        "usage": "ot analysis [options]",
+        "options": {
+          "from": {
+            "summary": "First day of the period, YYYY-MM-DD (default: analysis.report.default_days days up to the last day ready)",
+            "value": "<day>"
+          },
+          "to": {
+            "summary": "Last day of the period",
+            "value": "<day>"
+          },
+          "group-by": {
+            "summary": "day (default), scenario, executor or role",
+            "value": "<g>"
+          },
+          "scenario": {
+            "summary": "Only this scenario",
+            "value": "<id>"
+          },
+          "compare-from": {
+            "summary": "Compare with another period: its first day",
+            "value": "<day>"
+          },
+          "compare-to": {
+            "summary": "The last day of the other period",
+            "value": "<day>"
+          },
+          "compare-scenario": {
+            "summary": "Compare with this other scenario over the same days (needs --scenario)",
+            "value": "<id>"
+          },
+          "json": {
+            "summary": "Print the report as JSON"
+          }
+        }
+      },
+      "service": {
+        "summary": "The logon service of the daemon",
+        "description": "The logon service of the daemon (with the daemon stopped or running).",
+        "usage": "ot service <action> [options]",
+        "actions": {
+          "install": {
+            "summary": "Install the service and start the daemon"
+          },
+          "uninstall": {
+            "summary": "Remove the service"
+          },
+          "status": {
+            "summary": "Show the state of the service and of the daemon"
+          },
+          "start": {
+            "summary": "Start the daemon through the service"
+          },
+          "stop": {
+            "summary": "Stop the daemon"
+          }
+        },
+        "options": {
+          "no-start": {
+            "summary": "install: do not start the daemon now"
+          },
+          "json": {
+            "summary": "status: print JSON instead of text"
+          }
+        },
+        "notes": "The service is the user's own and runs only while the user is logged on. The service.* keys of the configuration (restart, autostart, console) are read at the install. \"ot tui\" starts the daemon when none is running (tui.start_daemon)."
+      },
+      "uninstall": {
+        "summary": "Remove the logon service (the data stays)",
+        "description": "Remove the logon service and keep the data (--purge-data also deletes it, after asking).",
+        "usage": "ot uninstall [--purge-data [-y]]",
+        "options": {
+          "purge-data": {
+            "summary": "Also delete the whole data folder (asks first; it cannot be undone; the keyring is not touched)"
+          },
+          "yes": {
+            "summary": "--purge-data: do not ask"
+          }
+        }
+      },
+      "backup": {
+        "summary": "Make a backup of the data now",
+        "description": "Make a backup of the data now.",
+        "usage": "ot backup"
+      },
+      "restore": {
+        "summary": "Put a backup back",
+        "description": "Put a backup back (the daemon must be stopped).",
+        "usage": "ot restore <folder>"
+      },
+      "api": {
+        "summary": "The token of the local API",
+        "description": "The token of the local API (with the daemon stopped or running).",
+        "usage": "ot api rotate-token",
+        "actions": {
+          "rotate-token": {
+            "summary": "Swap the API token"
+          }
+        }
+      }
+    }
   }
 }

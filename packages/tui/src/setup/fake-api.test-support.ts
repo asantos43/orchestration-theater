@@ -8,6 +8,10 @@ import type {
   SetupAdapterInstallResult,
   SetupDetectedClient,
   SetupDetectedProfile,
+  SetupDoneStep,
+  SetupExecutor,
+  SetupModels,
+  SetupNote,
   SetupOverview,
   SetupPlan,
   SetupPrompt,
@@ -49,8 +53,14 @@ export function profileOf(
   };
 }
 
-export function requestError(code: string, status: number, message: string): ApiRequestError {
-  return new ApiRequestError({ status, body: { code, message } } as never, {
+export function requestError(
+  code: string,
+  status: number,
+  message: string,
+  details?: Readonly<Record<string, unknown>>,
+): ApiRequestError {
+  const body = { code, message, ...(details === undefined ? {} : { details }) };
+  return new ApiRequestError({ status, body } as never, {
     routeId: 'setup',
   });
 }
@@ -75,6 +85,25 @@ export class FakeSetupAccounts implements SetupAccounts {
   exitCode: number | null = 0;
   failAdd: Error | undefined;
   failRun: Error | undefined;
+  /**
+   * The models the client of an account lists (N324, item 2); absent: an old daemon, with no list
+   * after the login. Each call is recorded in `logins` as `models:<id>`.
+   */
+  modelsOf: ((profileId: string) => SetupModels) | undefined;
+
+  /** A list that fails to be read, once (the client did not answer). */
+  failModels: Error | undefined;
+
+  get models(): ((profileId: string) => Promise<SetupModels>) | undefined {
+    const of = this.modelsOf;
+    if (of === undefined) return undefined;
+    return (profileId) => {
+      this.logins.push(`models:${profileId}`);
+      const failure = this.failModels;
+      this.failModels = undefined;
+      return failure === undefined ? Promise.resolve(of(profileId)) : Promise.reject(failure);
+    };
+  }
   /** What the terminal showed while the command ran (a test sets it to see the mouse go off and on). */
   onRun: (command: string) => void = () => undefined;
   readonly #host: FakeSetupApi;
@@ -166,6 +195,10 @@ export class FakeSetupApi implements SetupApi {
   current: 'quality' | 'balanced' | 'economical' | null;
   /** The next command fails with this error. */
   failNext: Error | undefined;
+  /** The notes of the plan of the review (N324). */
+  notes: SetupNote[] = [];
+  /** What the catalogs "found" for the preset, in the `discovered` of the done `preset` step (N324). */
+  discovered: SetupExecutor[] = [];
   /** An `overview` that never answers (a daemon that hangs). */
   hang = false;
   /** The routes of the step that adds an account; absent unless the test asked for them. */
@@ -408,7 +441,7 @@ export class FakeSetupApi implements SetupApi {
       ...(preset === null ? [] : ['roles.preset']),
       ...executors.map((executor) => `executors.${executor.id}`),
     ];
-    return { flow, preset, roles: [], executors, budgets: [], writes, notes: [] };
+    return { flow, preset, roles: [], executors, budgets: [], writes, notes: [...this.notes] };
   }
 
   #prompt(
@@ -440,6 +473,37 @@ export class FakeSetupApi implements SetupApi {
     }
   }
 
+  /** The steps answered before `step`, as the daemon lists them (only what the screen reads). */
+  #done(
+    steps: readonly SetupStepId[],
+    step: SetupStepId,
+    entry: { inputs: Map<SetupStepId, unknown> } | undefined,
+  ): SetupDoneStep[] {
+    const done: SetupDoneStep[] = [];
+    for (const id of steps.slice(0, Math.max(0, steps.indexOf(step)))) {
+      const input = entry?.inputs.get(id);
+      if (input === undefined) continue;
+      if (id === 'detect') {
+        const accounts =
+          (input as { accounts?: string[] }).accounts ??
+          this.profiles.filter((profile) => profile.usable).map((profile) => profile.profileId);
+        done.push({
+          step: 'detect',
+          input: { accounts },
+          output: { clients: [...this.clients], profiles: this.profiles, accounts },
+        });
+      } else if (id === 'preset') {
+        const { preset } = input as { preset: 'quality' | 'balanced' | 'economical' };
+        done.push({
+          step: 'preset',
+          input: { preset },
+          output: { preset, discovered: [...this.discovered], roles: [], notes: [] },
+        });
+      }
+    }
+    return done;
+  }
+
   #view(
     flow: SetupFlow,
     steps: readonly SetupStepId[],
@@ -455,7 +519,7 @@ export class FakeSetupApi implements SetupApi {
       state,
       step,
       steps: [...steps],
-      done: [],
+      done: this.#done(steps, step, entry),
       prompt: state === 'active' ? this.#prompt(step, entry, flow) : null,
       result,
       createdAt: 0,
