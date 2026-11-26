@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: MPL-2.0
 import { ApiRequestError, deriveShortcutBar, type UiBarItem } from '@otheater/client';
-import type { AddProfileBody, SetupAdapterClient, SetupRunView } from '@otheater/protocol';
+import type {
+  AddProfileBody,
+  SetupAdapterClient,
+  SetupModels,
+  SetupRunView,
+} from '@otheater/protocol';
 import { Box, useWindowSize } from 'ink';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -15,7 +20,7 @@ import { useSuspendTerminal } from '../mouse/index.js';
 import { useRenderControl } from '../render-control.js';
 import { fieldStep } from '../tabs/settings/field.js';
 import { errorText, runInTerminal } from '../tabs/settings/index.js';
-import type { SetupReviewNotesMode } from '../settings.js';
+import type { SetupModelPickMode, SetupReviewNotesMode } from '../settings.js';
 import type { SetupApi, SetupFlow } from './api.js';
 import {
   accountFormKey,
@@ -25,6 +30,15 @@ import {
   type AccountForm,
 } from './account-form.js';
 import { clientStateText, clientTodoText, setupLines, type SetupLine } from './lines.js';
+import {
+  choiceOf,
+  modelPickKey,
+  modelPickLines,
+  modelPickStart,
+  seedOfChoices,
+  type ModelChoice,
+  type ModelPick,
+} from './model-pick.js';
 import {
   accountClients,
   accountsCursorMoved,
@@ -71,6 +85,8 @@ export interface SetupScreenProps {
   readonly onClose: (outcome: SetupOutcome) => void;
   /** `ui.setup.reviewNotes` (N324): how the review shows its notes at first; `grouped` by default. */
   readonly reviewNotes?: SetupReviewNotesMode | undefined;
+  /** `ui.setup.modelPick` (N324): which models the list after a login starts checked; `preset`. */
+  readonly modelPick?: SetupModelPickMode | undefined;
 }
 
 type Tone = 'ok' | 'warn' | 'error';
@@ -87,6 +103,10 @@ type Mode =
   /** The form "Adicionar conta" (N326): the same one the tab Settings opens with A. */
   | { readonly kind: 'form'; readonly form: AccountForm }
   | { readonly kind: 'confirmCancel' }
+  /** The list of models after a login (N324, item 2). */
+  | { readonly kind: 'models'; readonly pick: ModelPick }
+  /** The client says the account is not logged in after the login (N324): L again, S goes on. */
+  | { readonly kind: 'loginCheck'; readonly profileId: string }
   /** A second subscription of one provider: the daemon wants the notice accepted (N127). */
   | {
       readonly kind: 'confirmNotice';
@@ -113,6 +133,8 @@ interface State {
   readonly installing: { readonly client: string; readonly since: number } | undefined;
   /** The review shows every note (N324); otherwise it folds them. */
   readonly details: boolean;
+  /** What the list of models after each login chose, by account (N324), for the Executors step. */
+  readonly choices: Readonly<Record<string, ModelChoice>>;
 }
 
 const IDLE: Mode = { kind: 'idle' };
@@ -135,6 +157,7 @@ const FIRST: State = {
   added: [],
   installing: undefined,
   details: false,
+  choices: {},
 };
 
 /** An account exists already: added in this run, or found by the detection. */
@@ -149,6 +172,19 @@ const FORM_BAR: readonly UiBarItem[] = [
   { id: 'accountForm.next', label: 'Tab', text: { key: 'bar.accountForm.next' } },
   { id: 'accountForm.change', label: 'Space', text: { key: 'bar.accountForm.change' } },
   { id: 'accountForm.cancel', label: 'Esc', text: { key: 'bar.accountForm.cancel' } },
+];
+
+/** The bar while the list of models after a login is open (N324): its own keys. */
+const MODELS_BAR: readonly UiBarItem[] = [
+  { id: 'modelPick.confirm', label: 'Enter', text: { key: 'bar.modelPick.confirm' } },
+  { id: 'modelPick.toggle', label: 'Space', text: { key: 'bar.modelPick.toggle' } },
+  { id: 'modelPick.cancel', label: 'Esc', text: { key: 'bar.modelPick.cancel' } },
+];
+
+/** The bar while the account is not logged in after the login (N324). */
+const LOGIN_CHECK_BAR: readonly UiBarItem[] = [
+  { id: 'loginCheck.retry', label: 'L', text: { key: 'bar.loginCheck.retry' } },
+  { id: 'loginCheck.skip', label: 'S', text: { key: 'bar.loginCheck.skip' } },
 ];
 
 function relevantBar(
@@ -218,7 +254,8 @@ export function SetupScreen(props: SetupScreenProps): ReactNode {
   /** Shows the view the daemon gave: the draft is the one remembered for the step, or a fresh one. */
   const show = (run: SetupRunView, message?: State['message']): void => {
     const remembered = memory.current.get(draftKey(run));
-    const fresh = initialDraft(run.prompt);
+    // N324: the step of the Executors opens with what the lists of models after the logins chose.
+    const fresh = initialDraft(run.prompt, seedOfChoices(run, ref.current.choices));
     update({
       load: 'ready',
       loadError: undefined,
@@ -521,12 +558,19 @@ export function SetupScreen(props: SetupScreenProps): ReactNode {
       }
       const profileId = result.profile.id;
       update({ added: [...ref.current.added, profileId] });
-      message =
-        body.kind === 'api'
-          ? { text: t('setup.accounts.result.added', { profile: profileId }), tone: 'ok' }
-          : result.login === 'logged_in'
-            ? { text: t('setup.accounts.result.loggedIn', { profile: profileId }), tone: 'ok' }
+      if (body.kind === 'api') {
+        message = { text: t('setup.accounts.result.added', { profile: profileId }), tone: 'ok' };
+      } else {
+        const loggedIn =
+          result.login === 'logged_in'
+            ? {
+                text: t('setup.accounts.result.loggedIn', { profile: profileId }),
+                tone: 'ok' as const,
+              }
             : await loginOf(profileId);
+        await afterLogin(profileId, loggedIn);
+        return;
+      }
     } catch (error) {
       if (!alive.current) return;
       update({
@@ -541,6 +585,103 @@ export function SetupScreen(props: SetupScreenProps): ReactNode {
       return;
     }
     await refresh(message);
+  };
+
+  /**
+   * After the login of a subscription (N324, item 2): asks the client whether the account is logged
+   * in, then opens the list of the models its client lists. Not logged in: L logs in again, S goes
+   * on without it. No list to choose from (no catalog, or every model registered already): the
+   * step goes on, and the daemon's default stands.
+   */
+  const afterLogin = async (
+    profileId: string,
+    message: NonNullable<State['message']>,
+  ): Promise<void> => {
+    const models = api.accounts?.models;
+    if (models === undefined) {
+      await refresh(message);
+      return;
+    }
+    update({ busy: true });
+    let found: SetupModels;
+    try {
+      found = await models(profileId);
+    } catch (error) {
+      if (!alive.current) return;
+      await refresh({
+        text: t('setup.models.failed', { profile: profileId, message: errorText(error) }),
+        tone: 'warn',
+      });
+      return;
+    }
+    if (!alive.current) return;
+    if (found.login === 'logged_out') {
+      update({
+        busy: false,
+        mode: { kind: 'loginCheck', profileId },
+        message: { text: t('setup.models.loggedOut', { profile: profileId }), tone: 'warn' },
+      });
+      return;
+    }
+    const pick = modelPickStart(found, props.modelPick ?? 'preset');
+    if (pick === undefined) {
+      await refresh(
+        found.catalog === 'unavailable'
+          ? {
+              text: t('setup.models.unavailable', {
+                profile: profileId,
+                reason: found.reason ?? '',
+              }),
+              tone: 'warn',
+            }
+          : message,
+      );
+      return;
+    }
+    update({ busy: false, mode: { kind: 'models', pick }, message });
+  };
+
+  /** The keys while the account is not logged in after its login (N324): L again, S or Esc go on. */
+  const onLoginCheckKey = (profileId: string, combo: string | undefined): void => {
+    const key = (combo ?? '').toUpperCase();
+    if (key === 'L') {
+      update({ busy: true, mode: IDLE, message: undefined });
+      void (async () => {
+        const message = await loginOf(profileId);
+        if (alive.current) await afterLogin(profileId, message);
+      })();
+      return;
+    }
+    if (key === 'S' || combo === 'Esc') {
+      update({ busy: true, mode: IDLE });
+      void refresh({ text: t('setup.models.noLogin', { profile: profileId }), tone: 'warn' });
+    }
+  };
+
+  /** The keys of the list of models (N324): Enter keeps the choice for the step of the Executors. */
+  const onModelsKey = (pick: ModelPick, combo: string | undefined): void => {
+    const step = modelPickKey(pick, combo);
+    if (step.done === undefined) {
+      update({ mode: { kind: 'models', pick: step.pick } });
+      return;
+    }
+    const others = Object.fromEntries(
+      Object.entries(ref.current.choices).filter(([profileId]) => profileId !== pick.profileId),
+    );
+    if (step.done === 'confirm') {
+      const choice = choiceOf(step.pick);
+      update({ busy: true, mode: IDLE, choices: { ...others, [pick.profileId]: choice } });
+      void refresh({
+        text: t('setup.models.chosen', {
+          profile: pick.profileId,
+          count: choice.checked.length,
+        }),
+        tone: 'ok',
+      });
+      return;
+    }
+    update({ busy: true, mode: IDLE, choices: others });
+    void refresh({ text: t('setup.models.skipped', { profile: pick.profileId }), tone: 'warn' });
   };
 
   const submitPrompt = (current: Extract<Mode, { kind: 'prompt' }>, draft: Draft): void => {
@@ -690,6 +831,14 @@ export function SetupScreen(props: SetupScreenProps): ReactNode {
       }
       return;
     }
+    if (mode.kind === 'models') {
+      onModelsKey(mode.pick, event.combo);
+      return;
+    }
+    if (mode.kind === 'loginCheck') {
+      onLoginCheckKey(mode.profileId, event.combo);
+      return;
+    }
     if (mode.kind === 'form') {
       const step = accountFormKey(mode.form, event.combo, event.data);
       if (step.done === 'cancel') update({ mode: IDLE });
@@ -806,6 +955,19 @@ export function SetupScreen(props: SetupScreenProps): ReactNode {
       });
     }
     head.push({ key: 'f.gap', text: '' });
+  } else if (mode.kind === 'models') {
+    for (const line of modelPickLines(mode.pick, t)) {
+      head.push({
+        key: line.key,
+        text: line.text,
+        ...(line.tone === 'accent' ? { color: TOKEN.accent } : {}),
+        ...(line.dim === true ? { dim: true } : {}),
+        ...(line.selected === true ? { selected: true } : {}),
+      });
+    }
+    head.push({ key: 'mp.gap', text: '' });
+  } else if (mode.kind === 'loginCheck') {
+    head.push({ key: 'lc.hint', text: t('setup.models.loginCheckKeys'), dim: true });
   } else if (mode.kind === 'confirmNotice') {
     head.push({
       key: 'n.q',
@@ -856,7 +1018,7 @@ export function SetupScreen(props: SetupScreenProps): ReactNode {
             ? {
                 active: onAccounts,
                 // While the form is open, its field holds the cursor.
-                cursor: mode.kind === 'form' ? -1 : state.accountsCursor,
+                cursor: mode.kind === 'form' || mode.kind === 'models' ? -1 : state.accountsCursor,
                 added: state.added,
                 addKey: keyLabel(keymap, 'setup.add') ?? '',
                 nextKey: keyLabel(keymap, 'setup.advance') ?? '',
@@ -908,14 +1070,18 @@ export function SetupScreen(props: SetupScreenProps): ReactNode {
   const bar =
     mode.kind === 'form'
       ? FORM_BAR
-      : deriveShortcutBar(keymap.registry, keymap.keymap, ['setup'])
-          .filter((item) => relevantBar(item, run?.step, finished, onAccounts, hasAccountNow))
-          .map((item) =>
-            // N326: with no account yet, Enter at the step opens the form instead of going on.
-            onAccounts && !hasAccountNow && item.id === 'setup.advance'
-              ? { ...item, text: { key: 'bar.setup.openForm' } }
-              : item,
-          );
+      : mode.kind === 'models'
+        ? MODELS_BAR
+        : mode.kind === 'loginCheck'
+          ? LOGIN_CHECK_BAR
+          : deriveShortcutBar(keymap.registry, keymap.keymap, ['setup'])
+              .filter((item) => relevantBar(item, run?.step, finished, onAccounts, hasAccountNow))
+              .map((item) =>
+                // N326: with no account yet, Enter at the step opens the form instead of going on.
+                onAccounts && !hasAccountNow && item.id === 'setup.advance'
+                  ? { ...item, text: { key: 'bar.setup.openForm' } }
+                  : item,
+              );
 
   return (
     <Box flexDirection="column" width={columns} height={rows}>

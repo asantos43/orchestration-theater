@@ -6,6 +6,7 @@ import {
   type AddProfileResult,
   type SetupAdapterClient,
   type SetupAdapterInstallResult,
+  type SetupModels,
   type SetupOverview,
   type SetupRedetectResult,
   type SetupRunView,
@@ -27,6 +28,11 @@ export interface SetupAccounts {
   addProfile(body: AddProfileBody): Promise<AddProfileResult>;
   startLogin(profileId: string): Promise<StartProfileLoginResult>;
   cancelLogin(profileId: string): Promise<void>;
+  /**
+   * N324: whether the account is logged in now and the models its client lists, with the preset's
+   * marked. Optional: without it the step goes on after the login as before.
+   */
+  models?: ((profileId: string) => Promise<SetupModels>) | undefined;
   /**
    * Runs a command in the terminal of the person, with it handed over (default: the command as the
    * tab Settings runs it). Tests put a fake in its place: no client is ever run by a test.
@@ -75,6 +81,12 @@ export function setupApiOf(client: ApiClient): SetupApi {
       addProfile: (body) => settings.addProfile(body),
       startLogin: (profileId) => settings.startLogin(profileId),
       cancelLogin: (profileId) => settings.cancelLogin(profileId),
+      models: (profileId) => {
+        const at = profileId.indexOf('/');
+        return client.call(API_ROUTES.getSetupModels, {
+          params: { client: profileId.slice(0, at), name: profileId.slice(at + 1) },
+        });
+      },
     },
     overview: () => client.call(API_ROUTES.getSetup, {}),
     start: (flow) => client.call(API_ROUTES.startSetup, { params: { flow }, headers: key() }),

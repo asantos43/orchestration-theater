@@ -200,6 +200,35 @@ describe('the Executors and the caps', () => {
   });
 });
 
+describe('the seed of the list of models (N324)', () => {
+  it('opens the step of the Executors with the requests and the exclusions of the list', () => {
+    const draft = initialDraft(EXECUTORS, {
+      executors: [{ profileId: 'a/x', model: 'm-2' }],
+      exclude: ['m-1@a/x'],
+    });
+    expect(draft).toEqual({
+      kind: 'executors',
+      executors: [{ profileId: 'a/x', model: 'm-2' }],
+      budgets: {},
+      cursor: 0,
+      exclude: ['m-1@a/x'],
+    });
+    expect(submissionOf(draft, EXECUTORS)).toEqual({
+      step: 'executors',
+      input: { executors: [{ profileId: 'a/x', model: 'm-2' }], budgets: [], exclude: ['m-1@a/x'] },
+    });
+  });
+
+  it('sends no exclude when the list left nothing out', () => {
+    const draft = initialDraft(EXECUTORS, { executors: [], exclude: [] });
+    expect(draft).not.toHaveProperty('exclude');
+    expect(submissionOf(draft, EXECUTORS)).toEqual({
+      step: 'executors',
+      input: { executors: [], budgets: [] },
+    });
+  });
+});
+
 describe('the lines the person types', () => {
   it('reads <account> <model> [effort]', () => {
     expect(parseExecutorLine('a/b m')).toEqual({ profileId: 'a/b', model: 'm' });
