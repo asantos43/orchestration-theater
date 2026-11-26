@@ -29,7 +29,7 @@ export const REQUIRE_PTY = process.env.OT_REQUIRE_PTY === '1';
 /** The terminals the tests can run on; `OT_TUI_TEST_BACKEND` picks one, or `all`. */
 export const TERMINAL_BACKENDS = ['alacritty', 'xtermjs', 'ghostty'] as const;
 export type TerminalBackend = (typeof TERMINAL_BACKENDS)[number] & Backend;
-/** The terminal when `OT_TUI_TEST_BACKEND` is not set [proposta, N320]. */
+/** The terminal when `OT_TUI_TEST_BACKEND` is not set (N320, decided by the owner on 2026-11-26). */
 export const DEFAULT_TERMINAL_BACKEND: TerminalBackend = 'alacritty';
 
 /** The terminals of `OT_TUI_TEST_BACKEND` (`alacritty`, `xtermjs`, `ghostty` or `all`). A typo fails. */

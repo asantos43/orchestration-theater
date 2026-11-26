@@ -27,7 +27,7 @@ import { SIGNAL_EXIT_CODES } from './terminal.js';
  * was). Each terminal of `OT_TUI_TEST_BACKEND` runs the whole suite.
  *
  * The colours are written here as they are, not read from the palette, so that a colour changed by
- * mistake fails this test [proposta, N320].
+ * mistake fails this test (N320, decided by the owner on 2026-11-26).
  */
 
 const TEST_TIMEOUT = 120_000;
