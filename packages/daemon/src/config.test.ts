@@ -179,13 +179,30 @@ describe('parseConfig', () => {
   });
 
   it('has the default of ui.settingsTab, takes its modes and refuses bad values (2026-11-26)', () => {
-    expect(parseConfig('').ui.settingsTab).toEqual({ limits: 'folded', roles: 'line' });
-    const both = parseConfig('ui:\n  settingsTab:\n    limits: open\n    roles: list\n');
-    expect(both.ui.settingsTab).toEqual({ limits: 'open', roles: 'list' });
+    expect(parseConfig('').ui.settingsTab).toEqual({
+      limits: 'folded',
+      roles: 'line',
+      modelsAfterLogin: 'empty',
+    });
+    const both = parseConfig(
+      'ui:\n  settingsTab:\n    limits: open\n    roles: list\n    modelsAfterLogin: always\n',
+    );
+    expect(both.ui.settingsTab).toEqual({
+      limits: 'open',
+      roles: 'list',
+      modelsAfterLogin: 'always',
+    });
     expect(() => parseConfig('ui:\n  settingsTab:\n    limits: hidden\n')).toThrow(
       /ui\.settingsTab\.limits/,
     );
     expect(() => parseConfig('ui:\n  settingsTab:\n    other: 1\n')).toThrow();
+  });
+
+  it('has the default of ui.quota, takes its other mode and refuses bad values (N330, [proposta])', () => {
+    expect(parseConfig('').ui.quota).toEqual({ show: 'remaining' });
+    expect(parseConfig('ui:\n  quota:\n    show: used\n').ui.quota.show).toBe('used');
+    expect(() => parseConfig('ui:\n  quota:\n    show: left\n')).toThrow(/ui\.quota\.show/);
+    expect(() => parseConfig('ui:\n  quota:\n    other: 1\n')).toThrow();
   });
 
   it('has the default of ui.newProject, takes its other modes and refuses bad values (P22)', () => {

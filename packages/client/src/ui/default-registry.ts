@@ -71,6 +71,9 @@ const SETTINGS_KEYS: readonly (readonly [
   // In the bar (N324, the owner's test on Windows: "L" did nothing on an empty list and no key
   // said how to add an account). [proposta] Which keys go to the bar, and their order.
   ['login', ['L'], ['bar.settings.login', 17]],
+  // N330 [proposta] (the owner on Windows: the Codex account had no Executor and no key listed its
+  // models): the list of models of the account under the cursor. `M` for models.
+  ['models', ['M'], ['bar.settings.models', 19]],
   ['add', ['A'], ['bar.settings.add', 16]],
   ['remove', ['X']],
   ['edit', ['E']],

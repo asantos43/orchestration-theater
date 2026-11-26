@@ -76,8 +76,8 @@ describe('comfortable: the margins of the mockup', () => {
 
   it('draws the quota bars over the whole width inside the margin', async () => {
     const lines = rows(await open('comfortable'));
-    expect(areas(lines[11]).side).toBe(`│ ${'█'.repeat(16)}${'░'.repeat(10)} │`);
-    expect(areas(lines[12]).side).toBe(`│ ${'━'.repeat(8)}${'─'.repeat(18)} │`);
+    expect(areas(lines[11]).side).toBe(`│ ${'█'.repeat(10)}${'░'.repeat(16)} │`);
+    expect(areas(lines[12]).side).toBe(`│ ${'━'.repeat(18)}${'─'.repeat(8)} │`);
   });
 
   it('starts the underline of the panel tabs with the rule and drops the blank cells of the hints', async () => {
@@ -100,7 +100,7 @@ describe('comfortable: the margins of the mockup', () => {
     // The quota rows reach the margin on the right.
     const quota = panel.find((line) => line.includes('claude-main')) ?? '';
     expect(quota.startsWith('│   claude-main')).toBe(true);
-    expect(quota.endsWith('7d 31% │')).toBe(true);
+    expect(quota.endsWith('7d 69% │')).toBe(true);
   });
 
   it('reserves the line of the footer of the Director in the chat, blank or not', async () => {
@@ -129,7 +129,7 @@ describe('compact: the screen as it was', () => {
     expect(first.chat.startsWith('│Billing API')).toBe(true);
     expect(first.panel.startsWith('│ Overview')).toBe(true);
     expect(areas(lines[3]).panel.startsWith('│━')).toBe(true);
-    expect(areas(lines[11]).side).toBe(`│${'█'.repeat(16)}${'░'.repeat(10)}  │`);
+    expect(areas(lines[11]).side).toBe(`│${'█'.repeat(10)}${'░'.repeat(16)}  │`);
   });
 
   it('has the sections of the panel one after the other, with no indent', async () => {

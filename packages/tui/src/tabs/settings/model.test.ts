@@ -47,6 +47,8 @@ describe('the model of the tab Settings', () => {
       ],
     } as unknown as ApiQuotaStatus;
     expect(quotaLine(quota, 1_000)).toEqual({ state: 'near_limit', percent: 84, resetsIn: 8_000 });
+    // ui.quota.show: remaining (N330): the same worst window, as what is left of it.
+    expect(quotaLine(quota, 1_000, 'remaining').percent).toBe(16);
     expect(quotaLine(null, 0)).toEqual({
       state: 'unknown',
       percent: undefined,
@@ -169,6 +171,8 @@ describe('the columns of the tab', () => {
     expect(windowColumns([null, read, undefined])).toEqual(['5h', '7d', 'weekly_opus']);
     expect(windowColumns([])).toEqual(['5h', '7d']);
     expect(windowCell(read, 'weekly_opus')).toBe('12%');
+    expect(windowCell(read, 'weekly_opus', 'remaining')).toBe('88%');
+    expect(windowCell(read, '7d', 'remaining')).toBe('—');
     expect(windowCell(read, '7d')).toBe('—');
     expect(windowCell(null, '5h')).toBe('—');
   });

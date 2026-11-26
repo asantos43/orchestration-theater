@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0
 import type { ApiQuotaStatus, ApiRoles, ConfigEditBody } from '@otheater/protocol';
+import { shownQuotaPercent } from '../../layout/scenario-rows.js';
 import { cellWidth, clip } from '../../layout/text.js';
+import type { QuotaShowMode } from '../../settings.js';
 
 /**
  * The pure part of the tab Settings (P16 of Phase 7): what its rows say and what its commands
@@ -85,13 +87,20 @@ export function formatSpan(ms: number): string {
 /** What the quota of an account says on a line: its state, how much it used and when it comes back. */
 export interface QuotaLine {
   readonly state: ApiQuotaStatus['state'];
-  /** The window the account used most, in percent; `undefined` with no reading. */
+  /**
+   * The window the account used most, in percent, left or used as `ui.quota.show` says (N330);
+   * `undefined` with no reading.
+   */
   readonly percent: number | undefined;
   /** Milliseconds until the reset (never negative); `undefined` when no source says. */
   readonly resetsIn: number | undefined;
 }
 
-export function quotaLine(quota: ApiQuotaStatus | null | undefined, now: number): QuotaLine {
+export function quotaLine(
+  quota: ApiQuotaStatus | null | undefined,
+  now: number,
+  show: QuotaShowMode = 'used',
+): QuotaLine {
   if (quota === null || quota === undefined) {
     return { state: 'unknown', percent: undefined, resetsIn: undefined };
   }
@@ -105,7 +114,7 @@ export function quotaLine(quota: ApiQuotaStatus | null | undefined, now: number)
       : (worst?.resetsAt ?? undefined);
   return {
     state: quota.state,
-    percent: worst === undefined ? undefined : Math.round(worst.usedPercent),
+    percent: worst === undefined ? undefined : shownQuotaPercent(worst.usedPercent, show),
     resetsIn: until === undefined ? undefined : Math.max(0, until - now),
   };
 }
@@ -125,10 +134,17 @@ export function windowColumns(
   return [...QUOTA_COLUMNS, ...[...others].sort()];
 }
 
-/** The used percent of a window, rounded (`12%`), or `—` when the account has no reading of it. */
-export function windowCell(quota: ApiQuotaStatus | null | undefined, name: string): string {
+/**
+ * The percent of a window, rounded (`88%`), left or used as `ui.quota.show` says (N330), or `—`
+ * when the account has no reading of it.
+ */
+export function windowCell(
+  quota: ApiQuotaStatus | null | undefined,
+  name: string,
+  show: QuotaShowMode = 'used',
+): string {
   const window = quota?.windows.find((candidate) => candidate.window === name);
-  return window === undefined ? '—' : `${String(Math.round(window.usedPercent))}%`;
+  return window === undefined ? '—' : `${String(shownQuotaPercent(window.usedPercent, show))}%`;
 }
 
 /** One line of the section Roles: the rule of the role, or one Executor of its list. */

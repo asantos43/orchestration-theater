@@ -489,12 +489,38 @@ export const UI_SETTINGS_TAB_LIMITS_MODES = ['folded', 'open'] as const;
  */
 export const UI_SETTINGS_TAB_ROLES_MODES = ['line', 'list'] as const;
 
+/**
+ * `ui.settingsTab.modelsAfterLogin` [proposta] (N330, the owner's test on Windows: "Fiz o login e
+ * nada"): when the list of models opens after a login. `empty` (default) opens it after the login
+ * of an account added with A and after any login of an account with no Executor; `added` only after
+ * the login of an account added with A (as before); `always` after every login (the list shows only
+ * the models that are not Executors yet, so it opens only when there is one).
+ */
+export const UI_SETTINGS_TAB_MODELS_AFTER_LOGIN_MODES = ['empty', 'added', 'always'] as const;
+
 /** `ui.settingsTab` [proposta] (2026-11-26, the owner's "Seções de hoje, em tabela"). */
 export const UiSettingsTabConfigSchema = z.strictObject({
   limits: z.enum(UI_SETTINGS_TAB_LIMITS_MODES).default('folded'),
   roles: z.enum(UI_SETTINGS_TAB_ROLES_MODES).default('line'),
+  modelsAfterLogin: z.enum(UI_SETTINGS_TAB_MODELS_AFTER_LOGIN_MODES).default('empty'),
 });
 export type UiSettingsTabConfig = z.output<typeof UiSettingsTabConfigSchema>;
+
+// ---- The quota of the accounts in the terminal interface ----------------------------------------
+
+/**
+ * `ui.quota.show` [proposta] (N330, the owner on 2026-11-26: "melhor seria ver quanto falta para
+ * 0"): what the percent of a quota window says, in the side bar, the Overview and the tab Settings.
+ * `remaining` (default) is what is left of the window (100 minus the used part); `used` is the part
+ * used, as before.
+ */
+export const UI_QUOTA_SHOW_MODES = ['remaining', 'used'] as const;
+
+/** `ui.quota` [proposta] (N330). */
+export const UiQuotaConfigSchema = z.strictObject({
+  show: z.enum(UI_QUOTA_SHOW_MODES).default('remaining'),
+});
+export type UiQuotaConfig = z.output<typeof UiQuotaConfigSchema>;
 
 // ---- The colours of the terminal interface ------------------------------------------------------
 

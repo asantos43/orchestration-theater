@@ -125,7 +125,8 @@
       "scope": "Switch between the global and the project scope",
       "assistantAccount": "Bring an account into the roles (setup assistant)",
       "assistantPreset": "Change the preset (setup assistant)",
-      "assistantFirstRun": "Run the first-run assistant (resumes it if it was left midway)"
+      "assistantFirstRun": "Run the first-run assistant (resumes it if it was left midway)",
+      "models": "List the account's models and write Executors"
     },
     "overview": {
       "pausePlay": "Pause the play of the scenario (Overview tab)",
@@ -238,7 +239,8 @@
     "settings": {
       "add": "Add account",
       "login": "Log in",
-      "assistant": "Assistant"
+      "assistant": "Assistant",
+      "models": "Models"
     },
     "accountForm": {
       "submit": "Add",
@@ -485,7 +487,8 @@
           "stored": "The Director will use {{what}} ({{source}}) when its session opens.",
           "unchanged": "The Director already ran {{what}} ({{source}}).",
           "override": "your choice",
-          "default": "the default"
+          "default": "the default",
+          "defaultExecutor": "the role's default Executor"
         },
         "recovery": "After the restart: {{resumed}} resumed, {{settled}} settled, {{waiting}} waiting.",
         "generatedNone": "The Director answered with no action.",
@@ -691,7 +694,11 @@
       "subscriptions": "Subscriptions",
       "executors": "Executors",
       "roles": "Roles",
-      "limits": "Limits"
+      "limits": "Limits",
+      "subscriptionsQuota": {
+        "remaining": "Subscriptions · quota left",
+        "used": "Subscriptions · quota used"
+      }
     },
     "scope": {
       "global": "Scope: global ({{key}} switches)",
@@ -823,7 +830,9 @@
       "busy": "An account run is open in the assistant ({{assistant}}), so the Executors of {{profile}} were not written: finish or cancel that run there.",
       "writeFailed": "The Executors of {{profile}} were not written: {{message}}",
       "failed": "Could not read the models of {{profile}}: {{message}}. No Executor was written.",
-      "unavailable": "The client of {{profile}} did not list its models ({{reason}}). No Executor was written."
+      "unavailable": "The client of {{profile}} did not list its models ({{reason}}). No Executor was written.",
+      "noCatalog": "{{profile}}: this account's client does not list its models; its Executors come through the assistant ({{assistant}}).",
+      "allRegistered": "{{profile}}: every listed model is already an Executor."
     }
   },
   "overview": {

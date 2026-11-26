@@ -208,7 +208,7 @@ function OverviewTab(props: TabContentProps): ReactNode {
   // The clock ticks only while an Actor is on the list: that is the one thing that counts time.
   const hasActors = useStoreValue(host.stores.activity, (s) => Object.keys(s.actors).length > 0);
   const now = useNow(host.now, hasActors);
-  const data = useOverviewData(host.stores, scenarioId, settings, now);
+  const data = useOverviewData(host.stores, scenarioId, settings, now, host.settings.quota.show);
   const runner = useControlRunner(host.client, settings.confirm, scenarioId);
 
   const selected = data.actors.find((row) => row.key === actorKey) ?? data.actors[0];

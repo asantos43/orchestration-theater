@@ -17,6 +17,7 @@ import { useQuotaRows } from '../../layout/data.js';
 import type { QuotaRow } from '../../layout/scenario-rows.js';
 import { useStoreValue } from '../../use-store-value.js';
 import type { OverviewSettings } from '../settings.js';
+import type { QuotaShowMode } from '../../settings.js';
 
 /** Everything the Overview shows of one scenario, worked out from the stores of the client. */
 export interface OverviewData {
@@ -59,6 +60,7 @@ export function useOverviewData(
   scenarioId: string | undefined,
   settings: OverviewSettings,
   now: number,
+  quotaShow: QuotaShowMode,
 ): OverviewData {
   const plays = useStoreValue(stores.plays, (s) => s.byId);
   const byPlay = useStoreValue(stores.demands, (s) => s.byPlay);
@@ -66,7 +68,7 @@ export function useOverviewData(
   const actors = useStoreValue(stores.activity, (s) => s.actors);
   const paused = useStoreValue(stores.activity, (s) => s.pausedPlays);
   const events = useStoreValue(stores.events, (s) => s.events);
-  const quotas = useQuotaRows(stores);
+  const quotas = useQuotaRows(stores, quotaShow);
 
   const own = useMemo(
     () =>

@@ -280,6 +280,8 @@ function SettingsTab({ content, options }: TabProps): ReactNode {
     [options.open],
   );
   const loginBrowser = settings.login.browser;
+  const quotaShow = settings.quota.show;
+  const modelsAfterLogin = settings.settingsTab.modelsAfterLogin;
 
   const [loaded, setLoaded] = useState<Loaded | undefined>(undefined);
   const [loadError, setLoadError] = useState<string | undefined>(undefined);
@@ -309,6 +311,8 @@ function SettingsTab({ content, options }: TabProps): ReactNode {
   const endedLogins = useRef(new Map<string, Message>());
   // N324, part B2: the accounts added with A whose login, once it ends, opens the list of models.
   const pickAfterLogin = useRef(new Set<string>());
+  // The logins given up with Esc: when one ends later anyway, no list of models comes after it.
+  const declinedLogins = useRef(new Set<string>());
   const modelPick = settings.setup.modelPick;
   const loadedRef = useRef<Loaded | undefined>(undefined);
   loadedRef.current = loaded;
@@ -396,7 +400,7 @@ function SettingsTab({ content, options }: TabProps): ReactNode {
         setMessage(end);
       }
       reloadSoon();
-      void loginEnded(profileId);
+      void loginEnded(profileId, type === 'profile.login.completed');
       return;
     }
     if (
@@ -560,6 +564,7 @@ function SettingsTab({ content, options }: TabProps): ReactNode {
 
   const startLogin = async (profileId: string): Promise<void> => {
     endedLogins.current.delete(profileId);
+    declinedLogins.current.delete(profileId);
     try {
       const result = await api.startLogin(profileId);
       if (result.status === 'local') {
@@ -581,14 +586,14 @@ function SettingsTab({ content, options }: TabProps): ReactNode {
           );
         }
         reloadSoon();
-        await loginEnded(profileId);
+        await loginEnded(profileId, problem === undefined && exit.code === 0);
         return;
       }
       const ended = endedLogins.current.get(profileId);
       if (ended !== undefined) {
         // The end came before the answer that opens the panel.
         setMessage(ended);
-        await loginEnded(profileId);
+        await loginEnded(profileId, ended.tone === 'ok');
         return;
       }
       setMode({ kind: 'login', profileId, info: result, value: '', sent: false });
@@ -600,10 +605,25 @@ function SettingsTab({ content, options }: TabProps): ReactNode {
     }
   };
 
-  /** The login of an account added with A ended (or the client ran it): the list of models comes. */
-  const loginEnded = async (profileId: string): Promise<void> => {
-    if (!pickAfterLogin.current.delete(profileId)) return;
+  /**
+   * A login ended (or the client ran it): the list of models comes as
+   * `ui.settingsTab.modelsAfterLogin` says (N330, [proposta]): after the login of an account added
+   * with A in every mode (`added` stops there); with `empty` (default) also after a login that worked
+   * of an account with no Executor (the owner on Windows: "Fiz o login e nada"); with `always` after
+   * every login that worked.
+   */
+  const loginEnded = async (profileId: string, worked: boolean): Promise<void> => {
+    const added = pickAfterLogin.current.delete(profileId);
+    if (declinedLogins.current.delete(profileId)) return;
+    if (!added && !(worked && wantsModelsAfter(profileId))) return;
     await afterLogin(profileId);
+  };
+
+  const wantsModelsAfter = (profileId: string): boolean => {
+    if (modelsAfterLogin === 'always') return true;
+    if (modelsAfterLogin === 'added') return false;
+    // Not loaded yet: no list, as before.
+    return loadedRef.current?.executors.every((item) => item.profileId !== profileId) ?? false;
   };
 
   /**
@@ -611,7 +631,7 @@ function SettingsTab({ content, options }: TabProps): ReactNode {
    * the same list as the assistant's. The client says whether the account is logged in; when it is
    * not, L logs in again and S goes on. With no route of the assistant, nothing changes.
    */
-  const afterLogin = async (profileId: string): Promise<void> => {
+  const afterLogin = async (profileId: string, asked = false): Promise<void> => {
     const setup = api.setup;
     if (setup === undefined) return;
     let found;
@@ -632,6 +652,20 @@ function SettingsTab({ content, options }: TabProps): ReactNode {
       if (found.catalog === 'unavailable') {
         say(
           t('settings.models.unavailable', { profile: profileId, reason: found.reason ?? '' }),
+          'warn',
+        );
+      } else if (asked) {
+        // The key M (N330) says why no list opened; after a login the silence stays.
+        say(
+          t(
+            found.catalog === 'none'
+              ? 'settings.models.noCatalog'
+              : 'settings.models.allRegistered',
+            {
+              profile: profileId,
+              assistant: keyLabel(keymap, 'settings.assistantAccount') ?? '',
+            },
+          ),
           'warn',
         );
       }
@@ -755,6 +789,7 @@ function SettingsTab({ content, options }: TabProps): ReactNode {
   const endLogin = (current: Extract<Mode, { kind: 'login' }>): void => {
     // Esc gave up the login: no list comes after it.
     pickAfterLogin.current.delete(current.profileId);
+    declinedLogins.current.add(current.profileId);
     setMode(IDLE);
     setMessage({ text: t('settings.login.cancelled'), tone: 'warn' });
     void api.cancelLogin(current.profileId).catch((error: unknown) => {
@@ -943,7 +978,11 @@ function SettingsTab({ content, options }: TabProps): ReactNode {
         );
         return;
       }
-      if (name === 'login') {
+      if (name === 'models') {
+        // N330 [proposta]: the list of models of the account under the cursor, at any time, to
+        // write the ones that are not Executors yet (before, it only came after a login with A).
+        void afterLogin(profile.profile.id, true);
+      } else if (name === 'login') {
         if (profile.profile.kind !== 'token_plan') {
           say(t('settings.result.noLogin'), 'warn');
           return;
@@ -1035,7 +1074,7 @@ function SettingsTab({ content, options }: TabProps): ReactNode {
       key: 'h.subs',
       kind: 'header',
       section: 'settings.subscriptions',
-      title: t('settings.sections.subscriptions'),
+      title: t(`settings.sections.subscriptionsQuota.${quotaShow}`),
       right: String(loaded.profiles.length),
     });
     if (loaded.profiles.length === 0) {
@@ -1061,7 +1100,7 @@ function SettingsTab({ content, options }: TabProps): ReactNode {
         ],
         ...loaded.profiles.map((entry) => {
           const quota = quotaOf(entry);
-          const line = quotaLine(quota, clock);
+          const line = quotaLine(quota, clock, quotaShow);
           const state: string[] = [];
           if (entry.profile.state !== 'active')
             state.push(t(`settings.profile.${entry.profile.state}`));
@@ -1082,7 +1121,7 @@ function SettingsTab({ content, options }: TabProps): ReactNode {
           return [
             entry.profile.id,
             t(`accountForm.kind.${entry.profile.kind}`),
-            ...windows.map((name) => windowCell(quota, name)),
+            ...windows.map((name) => windowCell(quota, name, quotaShow)),
             state.join(' · '),
           ];
         }),
@@ -1100,7 +1139,7 @@ function SettingsTab({ content, options }: TabProps): ReactNode {
       });
     }
     loaded.profiles.forEach((entry, index) => {
-      const line = quotaLine(quotaOf(entry), clock);
+      const line = quotaLine(quotaOf(entry), clock, quotaShow);
       lines.push({
         key: `s.${entry.profile.id}`,
         kind: 'row',
@@ -1111,6 +1150,8 @@ function SettingsTab({ content, options }: TabProps): ReactNode {
       });
     });
 
+    // A blank line between the sections (the owner on 2026-11-26, "um espaçamento entre as sessões").
+    lines.push({ key: 'gap.exec', kind: 'row', text: ' ' });
     lines.push({
       key: 'h.exec',
       kind: 'header',
@@ -1155,6 +1196,7 @@ function SettingsTab({ content, options }: TabProps): ReactNode {
       });
     });
 
+    lines.push({ key: 'gap.roles', kind: 'row', text: ' ' });
     lines.push({
       key: 'h.roles',
       kind: 'header',
@@ -1248,6 +1290,7 @@ function SettingsTab({ content, options }: TabProps): ReactNode {
       });
     });
 
+    lines.push({ key: 'gap.limits', kind: 'row', text: ' ' });
     lines.push({
       key: 'h.limits',
       kind: 'header',

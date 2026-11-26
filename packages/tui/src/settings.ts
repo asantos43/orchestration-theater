@@ -203,10 +203,24 @@ export type SettingsTabLimitsMode = (typeof SETTINGS_TAB_LIMITS_MODES)[number];
 export const SETTINGS_TAB_ROLES_MODES = ['line', 'list'] as const;
 export type SettingsTabRolesMode = (typeof SETTINGS_TAB_ROLES_MODES)[number];
 
+export const SETTINGS_TAB_MODELS_AFTER_LOGIN_MODES = ['empty', 'added', 'always'] as const;
+export type SettingsTabModelsAfterLoginMode =
+  (typeof SETTINGS_TAB_MODELS_AFTER_LOGIN_MODES)[number];
+
 /** `ui.settingsTab` [proposta] (2026-11-26): Limits folded or open; the roles on one line or whole. */
 export interface UiSettingsTabSettings {
   readonly limits: SettingsTabLimitsMode;
   readonly roles: SettingsTabRolesMode;
+  /** When the list of models opens after a login (N330): see `UiSettingsTabConfigSchema`. */
+  readonly modelsAfterLogin: SettingsTabModelsAfterLoginMode;
+}
+
+export const QUOTA_SHOW_MODES = ['remaining', 'used'] as const;
+export type QuotaShowMode = (typeof QUOTA_SHOW_MODES)[number];
+
+/** `ui.quota` [proposta] (N330): the percent of a quota window says what is left or what was used. */
+export interface UiQuotaSettings {
+  readonly show: QuotaShowMode;
 }
 
 export const LOGIN_BROWSER_MODES = ['auto', 'key', 'off'] as const;
@@ -242,6 +256,7 @@ export interface UiSettings {
   readonly sidebar: UiSidebarSettings;
   readonly login: UiLoginSettings;
   readonly settingsTab: UiSettingsTabSettings;
+  readonly quota: UiQuotaSettings;
 }
 
 export const DEFAULT_RENDER: UiRenderSettings = {
@@ -314,7 +329,13 @@ export const DEFAULT_SIDEBAR: UiSidebarSettings = { finishedPlays: 'collapsed', 
 
 export const DEFAULT_LOGIN: UiLoginSettings = { browser: 'auto' };
 
-export const DEFAULT_SETTINGS_TAB: UiSettingsTabSettings = { limits: 'folded', roles: 'line' };
+export const DEFAULT_SETTINGS_TAB: UiSettingsTabSettings = {
+  limits: 'folded',
+  roles: 'line',
+  modelsAfterLogin: 'empty',
+};
+
+export const DEFAULT_QUOTA: UiQuotaSettings = { show: 'remaining' };
 
 export const DEFAULT_UI_SETTINGS: UiSettings = {
   locale: 'auto',
@@ -337,6 +358,7 @@ export const DEFAULT_UI_SETTINGS: UiSettings = {
   sidebar: DEFAULT_SIDEBAR,
   login: DEFAULT_LOGIN,
   settingsTab: DEFAULT_SETTINGS_TAB,
+  quota: DEFAULT_QUOTA,
 };
 
 /** `value` as an object (an empty one when it is not an object). */
@@ -401,6 +423,7 @@ export function parseUiSettings(ui: unknown): UiSettings {
   const sidebar = record(field(source, 'sidebar'));
   const login = record(field(source, 'login'));
   const settingsTab = record(field(source, 'settingsTab'));
+  const quota = record(field(source, 'quota'));
   return {
     locale: oneOf(field(source, 'locale'), LOCALE_SETTINGS, DEFAULT_UI_SETTINGS.locale),
     render: {
@@ -577,6 +600,14 @@ export function parseUiSettings(ui: unknown): UiSettings {
         SETTINGS_TAB_ROLES_MODES,
         DEFAULT_SETTINGS_TAB.roles,
       ),
+      modelsAfterLogin: oneOf(
+        field(settingsTab, 'modelsAfterLogin'),
+        SETTINGS_TAB_MODELS_AFTER_LOGIN_MODES,
+        DEFAULT_SETTINGS_TAB.modelsAfterLogin,
+      ),
+    },
+    quota: {
+      show: oneOf(field(quota, 'show'), QUOTA_SHOW_MODES, DEFAULT_QUOTA.show),
     },
   };
 }

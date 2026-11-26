@@ -188,7 +188,7 @@ function ShellBody(props: ShellProps): ReactNode {
   );
 
   const scenarioRowsNow = useScenarioRows(stores);
-  const quotas = useQuotaRows(stores);
+  const quotas = useQuotaRows(stores, settings.quota.show);
   const decisions = usePendingDecisions(stores);
   const link = useLink(stores);
   const live = link === 'live';

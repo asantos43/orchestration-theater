@@ -37,6 +37,7 @@ import {
   UiRenderConfigSchema,
   UiRuntimeConfigSchema,
   UiNewProjectConfigSchema,
+  UiQuotaConfigSchema,
   UiSettingsTabConfigSchema,
   UiSetupConfigSchema,
   UiSidebarConfigSchema,
@@ -3296,6 +3297,8 @@ export const DaemonConfigSchema = z
         login: UiLoginConfigSchema.prefault({}),
         /** How the tab Settings draws its sections: Limits folded or open, the roles on one line or whole. */
         settingsTab: UiSettingsTabConfigSchema.prefault({}),
+        /** [proposta] (N330) The quota of the subscriptions as what is left (`remaining`) or as the use (`used`). */
+        quota: UiQuotaConfigSchema.prefault({}),
       })
       .prefault({}),
     /**

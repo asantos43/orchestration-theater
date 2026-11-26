@@ -125,7 +125,8 @@
       "scope": "Alternar entre o escopo global e o do projeto",
       "assistantAccount": "Trazer uma conta para os papéis (assistente de configuração)",
       "assistantPreset": "Mudar o preset (assistente de configuração)",
-      "assistantFirstRun": "Rodar o assistente da primeira execução (retoma se ficou no meio)"
+      "assistantFirstRun": "Rodar o assistente da primeira execução (retoma se ficou no meio)",
+      "models": "Listar os modelos da conta e gravar Executores"
     },
     "overview": {
       "pausePlay": "Pausar a peça do cenário (aba Visão geral)",
@@ -238,7 +239,8 @@
     "settings": {
       "add": "Adicionar conta",
       "login": "Login",
-      "assistant": "Assistente"
+      "assistant": "Assistente",
+      "models": "Modelos"
     },
     "accountForm": {
       "submit": "Adicionar",
@@ -485,7 +487,8 @@
           "stored": "O Diretor vai usar {{what}} ({{source}}) quando a sessão abrir.",
           "unchanged": "O Diretor já rodava {{what}} ({{source}}).",
           "override": "sua escolha",
-          "default": "o padrão"
+          "default": "o padrão",
+          "defaultExecutor": "o Executor padrão do papel"
         },
         "recovery": "Depois da reinicialização: {{resumed}} retomadas, {{settled}} resolvidas, {{waiting}} esperando.",
         "generatedNone": "O Diretor respondeu sem nenhuma ação.",
@@ -691,7 +694,11 @@
       "subscriptions": "Assinaturas",
       "executors": "Executores",
       "roles": "Papéis",
-      "limits": "Limites"
+      "limits": "Limites",
+      "subscriptionsQuota": {
+        "remaining": "Assinaturas · cota restante",
+        "used": "Assinaturas · cota usada"
+      }
     },
     "scope": {
       "global": "Escopo: global ({{key}} alterna)",
@@ -728,7 +735,7 @@
       "removed": "removida",
       "noSecret": "sem chave",
       "used": "{{percent}}% usado",
-      "resets": "volta em {{time}}"
+      "resets": "reinicia em {{time}}"
     },
     "executor": {
       "invalid": "inválido: {{reason}}",
@@ -823,7 +830,9 @@
       "busy": "Há um cadastro de conta aberto no assistente ({{assistant}}), então os Executores de {{profile}} não foram gravados: termine ou cancele esse cadastro lá.",
       "writeFailed": "Os Executores de {{profile}} não foram gravados: {{message}}",
       "failed": "Não deu para ler os modelos de {{profile}}: {{message}}. Nenhum Executor foi gravado.",
-      "unavailable": "O cliente de {{profile}} não listou os modelos ({{reason}}). Nenhum Executor foi gravado."
+      "unavailable": "O cliente de {{profile}} não listou os modelos ({{reason}}). Nenhum Executor foi gravado.",
+      "noCatalog": "{{profile}}: o cliente desta conta não lista os modelos; os Executores vêm pelo assistente ({{assistant}}).",
+      "allRegistered": "{{profile}}: todos os modelos listados já são Executores."
     }
   },
   "overview": {
