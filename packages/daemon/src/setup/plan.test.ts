@@ -186,6 +186,91 @@ describe('the plan of the assistant', () => {
     expect(plan.executors.map((item) => item.id)).toEqual([API.id]);
   });
 
+  describe('the roles given at the review (N333)', () => {
+    const EXTRA = executor('mystery-medium@opencode/key', 'opencode/key', 'mystery', 'medium');
+
+    it('puts the Executor at the end of the list of each role, and writes the lists (explicit)', () => {
+      const without = buildPlan(input({ registered: [API, EXTRA] }));
+      // The preset names no `mystery`: the Executor has no role.
+      expect(without.plan.roles.every((role) => !role.executors.includes(EXTRA.id))).toBe(true);
+      const { plan, apply } = buildPlan(
+        input({
+          registered: [API, EXTRA],
+          placements: [{ executorId: EXTRA.id, roles: ['critic', 'author'] }],
+        }),
+      );
+      for (const role of ['critic', 'author'] as const) {
+        const ids = plan.roles.find((entry) => entry.role === role)?.executors ?? [];
+        expect(ids.at(-1)).toBe(EXTRA.id);
+        expect(apply.lists.find((list) => list.role === role)?.executors.at(-1)).toBe(EXTRA.id);
+      }
+      expect(plan.roles.find((entry) => entry.role === 'actor')?.executors).not.toContain(EXTRA.id);
+    });
+
+    it('with role_lists: preset, only the role that was given is written, whole', () => {
+      const { plan, apply } = buildPlan(
+        input({
+          registered: [API, EXTRA],
+          settings: { ...SETTINGS, roleLists: 'preset' },
+          placements: [{ executorId: EXTRA.id, roles: ['critic'] }],
+        }),
+      );
+      expect(plan.roles.find((entry) => entry.role === 'critic')?.executors.at(-1)).toBe(EXTRA.id);
+      // The preset cannot hold the choice: that one role is written, as the plan shows it.
+      expect(apply.lists).toEqual([
+        {
+          role: 'critic',
+          executors: plan.roles.find((entry) => entry.role === 'critic')?.executors,
+        },
+      ]);
+    });
+
+    it('keeping the lists of the file: inserts at the end of a list, and writes a role with no list whole', () => {
+      const { plan, apply } = buildPlan(
+        input({
+          flow: 'add_account',
+          preset: null,
+          discovered: [],
+          registered: [EXTRA],
+          yaml: [
+            'roles:',
+            '  preset: quality',
+            '  actor:',
+            '    executors: [codex-sol-high@codex/main, claude-sonnet-medium@claude-code/main]',
+            '',
+          ].join('\n'),
+          placements: [{ executorId: EXTRA.id, roles: ['actor', 'critic'] }],
+        }),
+      );
+      // The list of the file takes an insertion at the end.
+      expect(apply.insertions).toEqual([{ role: 'actor', position: 2, id: EXTRA.id }]);
+      expect(plan.roles.find((entry) => entry.role === 'actor')?.executors.at(-1)).toBe(EXTRA.id);
+      // The Critic has no list in the file: it is written whole, with the Executor last.
+      const critic = apply.lists.find((list) => list.role === 'critic');
+      expect(critic?.executors.at(-1)).toBe(EXTRA.id);
+      expect(critic?.executors).toEqual(
+        plan.roles.find((entry) => entry.role === 'critic')?.executors,
+      );
+      expect(plan.writes).toContain('roles.critic.executors');
+      expect(plan.writes).toContain('roles.actor.executors');
+    });
+
+    it('ignores an Executor the plan does not have, and a role whose list already holds it', () => {
+      const { plan } = buildPlan(
+        input({
+          placements: [
+            { executorId: 'ghost-high@claude-code/main', roles: ['critic'] },
+            { executorId: OPUS.id, roles: ['author'] },
+          ],
+        }),
+      );
+      const author = plan.roles.find((entry) => entry.role === 'author')?.executors ?? [];
+      expect(author.filter((id) => id === OPUS.id)).toHaveLength(1);
+      for (const role of plan.roles)
+        expect(role.executors).not.toContain('ghost-high@claude-code/main');
+    });
+  });
+
   it('no account is a warning, not an error', () => {
     const { plan } = buildPlan(input({ profiles: [], discovered: [], registered: [] }));
     expect(plan.notes.map((note) => note.code)).toContain('no_accounts');

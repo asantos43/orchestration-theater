@@ -18735,12 +18735,21 @@
                                         "items": {
                                           "$ref": "#/$defs/__schema11"
                                         }
+                                      },
+                                      "roles": {
+                                        "default": [],
+                                        "maxItems": 64,
+                                        "type": "array",
+                                        "items": {
+                                          "$ref": "#/$defs/__schema12"
+                                        }
                                       }
                                     },
                                     "required": [
                                       "executors",
                                       "budgets",
-                                      "exclude"
+                                      "exclude",
+                                      "roles"
                                     ],
                                     "additionalProperties": false
                                   },
@@ -19520,6 +19529,41 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 512
+          },
+          "__schema12": {
+            "type": "object",
+            "properties": {
+              "executorId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              },
+              "roles": {
+                "minItems": 1,
+                "maxItems": 7,
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/__schema13"
+                }
+              }
+            },
+            "required": [
+              "executorId",
+              "roles"
+            ],
+            "additionalProperties": false
+          },
+          "__schema13": {
+            "type": "string",
+            "enum": [
+              "director",
+              "consultant",
+              "author",
+              "reviewer",
+              "scriptwriter",
+              "actor",
+              "critic"
+            ]
           }
         }
       },
@@ -19788,12 +19832,21 @@
                           "items": {
                             "$ref": "#/$defs/__schema10"
                           }
+                        },
+                        "roles": {
+                          "default": [],
+                          "maxItems": 64,
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/$defs/__schema11"
+                          }
                         }
                       },
                       "required": [
                         "executors",
                         "budgets",
-                        "exclude"
+                        "exclude",
+                        "roles"
                       ],
                       "additionalProperties": false
                     },
@@ -20514,6 +20567,41 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 512
+          },
+          "__schema11": {
+            "type": "object",
+            "properties": {
+              "executorId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              },
+              "roles": {
+                "minItems": 1,
+                "maxItems": 7,
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/__schema12"
+                }
+              }
+            },
+            "required": [
+              "executorId",
+              "roles"
+            ],
+            "additionalProperties": false
+          },
+          "__schema12": {
+            "type": "string",
+            "enum": [
+              "director",
+              "consultant",
+              "author",
+              "reviewer",
+              "scriptwriter",
+              "actor",
+              "critic"
+            ]
           }
         }
       },
@@ -20817,12 +20905,21 @@
                           "items": {
                             "$ref": "#/$defs/__schema10"
                           }
+                        },
+                        "roles": {
+                          "default": [],
+                          "maxItems": 64,
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/$defs/__schema11"
+                          }
                         }
                       },
                       "required": [
                         "executors",
                         "budgets",
-                        "exclude"
+                        "exclude",
+                        "roles"
                       ],
                       "additionalProperties": false
                     },
@@ -21543,6 +21640,41 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 512
+          },
+          "__schema11": {
+            "type": "object",
+            "properties": {
+              "executorId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              },
+              "roles": {
+                "minItems": 1,
+                "maxItems": 7,
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/__schema12"
+                }
+              }
+            },
+            "required": [
+              "executorId",
+              "roles"
+            ],
+            "additionalProperties": false
+          },
+          "__schema12": {
+            "type": "string",
+            "enum": [
+              "director",
+              "consultant",
+              "author",
+              "reviewer",
+              "scriptwriter",
+              "actor",
+              "critic"
+            ]
           }
         }
       },
@@ -21845,12 +21977,21 @@
                           "items": {
                             "$ref": "#/$defs/__schema10"
                           }
+                        },
+                        "roles": {
+                          "default": [],
+                          "maxItems": 64,
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/$defs/__schema11"
+                          }
                         }
                       },
                       "required": [
                         "executors",
                         "budgets",
-                        "exclude"
+                        "exclude",
+                        "roles"
                       ],
                       "additionalProperties": false
                     },
@@ -22571,6 +22712,41 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 512
+          },
+          "__schema11": {
+            "type": "object",
+            "properties": {
+              "executorId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              },
+              "roles": {
+                "minItems": 1,
+                "maxItems": 7,
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/__schema12"
+                }
+              }
+            },
+            "required": [
+              "executorId",
+              "roles"
+            ],
+            "additionalProperties": false
+          },
+          "__schema12": {
+            "type": "string",
+            "enum": [
+              "director",
+              "consultant",
+              "author",
+              "reviewer",
+              "scriptwriter",
+              "actor",
+              "critic"
+            ]
           }
         }
       },
@@ -22873,12 +23049,21 @@
                           "items": {
                             "$ref": "#/$defs/__schema10"
                           }
+                        },
+                        "roles": {
+                          "default": [],
+                          "maxItems": 64,
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/$defs/__schema11"
+                          }
                         }
                       },
                       "required": [
                         "executors",
                         "budgets",
-                        "exclude"
+                        "exclude",
+                        "roles"
                       ],
                       "additionalProperties": false
                     },
@@ -23599,6 +23784,41 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 512
+          },
+          "__schema11": {
+            "type": "object",
+            "properties": {
+              "executorId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              },
+              "roles": {
+                "minItems": 1,
+                "maxItems": 7,
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/__schema12"
+                }
+              }
+            },
+            "required": [
+              "executorId",
+              "roles"
+            ],
+            "additionalProperties": false
+          },
+          "__schema12": {
+            "type": "string",
+            "enum": [
+              "director",
+              "consultant",
+              "author",
+              "reviewer",
+              "scriptwriter",
+              "actor",
+              "critic"
+            ]
           }
         }
       },
@@ -23901,12 +24121,21 @@
                           "items": {
                             "$ref": "#/$defs/__schema10"
                           }
+                        },
+                        "roles": {
+                          "default": [],
+                          "maxItems": 64,
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/$defs/__schema11"
+                          }
                         }
                       },
                       "required": [
                         "executors",
                         "budgets",
-                        "exclude"
+                        "exclude",
+                        "roles"
                       ],
                       "additionalProperties": false
                     },
@@ -24627,6 +24856,41 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 512
+          },
+          "__schema11": {
+            "type": "object",
+            "properties": {
+              "executorId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              },
+              "roles": {
+                "minItems": 1,
+                "maxItems": 7,
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/__schema12"
+                }
+              }
+            },
+            "required": [
+              "executorId",
+              "roles"
+            ],
+            "additionalProperties": false
+          },
+          "__schema12": {
+            "type": "string",
+            "enum": [
+              "director",
+              "consultant",
+              "author",
+              "reviewer",
+              "scriptwriter",
+              "actor",
+              "critic"
+            ]
           }
         }
       },
@@ -24794,6 +25058,14 @@
                     "items": {
                       "$ref": "#/$defs/__schema3"
                     }
+                  },
+                  "roles": {
+                    "default": [],
+                    "maxItems": 64,
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/$defs/__schema4"
+                    }
                   }
                 },
                 "additionalProperties": false
@@ -24897,6 +25169,41 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 512
+          },
+          "__schema4": {
+            "type": "object",
+            "properties": {
+              "executorId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              },
+              "roles": {
+                "minItems": 1,
+                "maxItems": 7,
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/__schema5"
+                }
+              }
+            },
+            "required": [
+              "executorId",
+              "roles"
+            ],
+            "additionalProperties": false
+          },
+          "__schema5": {
+            "type": "string",
+            "enum": [
+              "director",
+              "consultant",
+              "author",
+              "reviewer",
+              "scriptwriter",
+              "actor",
+              "critic"
+            ]
           }
         }
       }

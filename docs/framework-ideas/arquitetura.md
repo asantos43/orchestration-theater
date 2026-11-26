@@ -840,7 +840,7 @@ No passo `executors` da TUI, os modelos dos catálogos aparecem numa lista por c
 - ←→ troca o esforço entre os que o modelo aceita;
 - `/` abre o campo de texto, para API ou modelo local.
 
-Na revisão, um Executor que nenhum papel cita ("sem papel") ganha uma tecla para escolher os papéis, e entra no fim da lista de cada papel escolhido.
+Na revisão, um Executor que nenhum papel cita ("sem papel") ganha uma tecla para escolher os papéis (`P` **[proposta]**), e entra no fim da lista de cada papel escolhido. A TUI volta ao passo `executors` e manda a mesma resposta com o campo `roles` (`[{executorId, roles[]}]`) **[proposta]**; quando o assistente já reescreve as listas (predefinição escolhida com `setup.role_lists: explicit`), o Executor entra nelas; senão, um papel com lista no arquivo ganha uma inserção no fim, e um papel sem lista é gravado com a lista que vale hoje mais o Executor. Mudar o passo depois apaga os papéis dados. A chave `ui.setup.executorsInput: list | prompt`, padrão `list` **[proposta]**, volta ao campo digitado de antes (`prompt`), sem ler os modelos.
 
 Predefinição padrão, `quality`, depois da primeira execução numa máquina com as contas `claude-code/empresa`, `codex/conta-1`, `opencode/minimax-api` e `opencode/local`:
 

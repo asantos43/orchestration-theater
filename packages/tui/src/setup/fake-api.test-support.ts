@@ -16,6 +16,7 @@ import type {
   SetupPlan,
   SetupPrompt,
   SetupRedetectResult,
+  SetupRoleList,
   SetupRunView,
   SetupStepId,
   SetupStepSubmission,
@@ -29,6 +30,8 @@ import type { SetupAccounts, SetupApi, SetupFlow } from './api.js';
  * for another step is a conflict, and nothing is "written" before confirm. It records what the
  * screen asked, so a test says which commands went and in which order.
  */
+
+type SetupExecutorsAnswer = Extract<SetupStepSubmission, { step: 'executors' }>['input'];
 
 export const FLOW_STEPS: Readonly<Record<SetupFlow, readonly SetupStepId[]>> = {
   first_run: ['detect', 'preset', 'executors', 'review'],
@@ -199,6 +202,15 @@ export class FakeSetupApi implements SetupApi {
   notes: SetupNote[] = [];
   /** What the catalogs "found" for the preset, in the `discovered` of the done `preset` step (N324). */
   discovered: SetupExecutor[] = [];
+  /**
+   * The Executors the preset gives in the plan (N333): what the daemon expands over the accounts.
+   * An id the `exclude` of the executors step names leaves the plan.
+   */
+  planExecutors: SetupExecutor[] = [];
+  /** The role lists of the plan before any placement (N333): the preset's, as the daemon resolves them. */
+  planRoles: SetupRoleList[] = [];
+  /** The `roles` of the output of the done `preset` step (N333: the roles beside the rows). */
+  presetRoles: SetupRoleList[] = [];
   /** An `overview` that never answers (a daemon that hangs). */
   hang = false;
   /** The routes of the step that adds an account; absent unless the test asked for them. */
@@ -421,27 +433,44 @@ export class FakeSetupApi implements SetupApi {
   #plan(flow: SetupFlow, inputs: Map<SetupStepId, unknown>): SetupPlan {
     const preset =
       (inputs.get('preset') as { preset?: SetupPlan['preset'] } | undefined)?.preset ?? null;
-    const executors = (
-      (
-        inputs.get('executors') as
-          { executors?: { profileId: string; model: string }[] } | undefined
-      )?.executors ?? []
-    ).map((executor) => ({
-      id: `${executor.model}@${executor.profileId}`,
-      profileId: executor.profileId,
-      model: executor.model,
-      alias: executor.model,
-      effort: null,
-      provider: 'fake',
-      source: 'registered' as const,
-      presetExpand: true,
-      local: null,
+    const answered = inputs.get('executors') as SetupExecutorsAnswer | undefined;
+    const fromPreset = this.planExecutors.filter(
+      (executor) => !(answered?.exclude ?? []).includes(executor.id),
+    );
+    const requested = (answered?.executors ?? []).map((executor) => {
+      const alias = executor.alias ?? executor.model;
+      const effort = executor.alias === undefined ? null : (executor.effort ?? null);
+      return {
+        id: `${alias}${effort === null ? '' : `-${effort}`}@${executor.profileId}`,
+        profileId: executor.profileId,
+        model: executor.model,
+        alias,
+        effort,
+        provider: 'fake',
+        source: 'registered' as const,
+        presetExpand: true,
+        local: null,
+      };
+    });
+    const executors = [...fromPreset, ...requested];
+    // N333: an Executor given roles goes at the end of the list of each one.
+    const roles = this.planRoles.map((list) => ({
+      ...list,
+      executors: [
+        ...list.executors.filter((id) => executors.some((executor) => executor.id === id)),
+        ...(answered?.roles ?? [])
+          .filter(
+            (place) =>
+              place.roles.includes(list.role) && !list.executors.includes(place.executorId),
+          )
+          .map((place) => place.executorId),
+      ],
     }));
     const writes = [
       ...(preset === null ? [] : ['roles.preset']),
       ...executors.map((executor) => `executors.${executor.id}`),
     ];
-    return { flow, preset, roles: [], executors, budgets: [], writes, notes: [...this.notes] };
+    return { flow, preset, roles, executors, budgets: [], writes, notes: [...this.notes] };
   }
 
   #prompt(
@@ -497,7 +526,34 @@ export class FakeSetupApi implements SetupApi {
         done.push({
           step: 'preset',
           input: { preset },
-          output: { preset, discovered: [...this.discovered], roles: [], notes: [] },
+          output: {
+            preset,
+            discovered: [...this.discovered],
+            roles: [...this.presetRoles],
+            notes: [],
+          },
+        });
+      } else if (id === 'account') {
+        const { profileId } = input as { profileId: string };
+        const profile = this.profiles.find((entry) => entry.profileId === profileId);
+        if (profile !== undefined) {
+          done.push({
+            step: 'account',
+            input: { profileId },
+            output: { profile, discovered: [...this.discovered], notes: [] },
+          });
+        }
+      } else if (id === 'executors') {
+        const answered = input as SetupExecutorsAnswer;
+        done.push({
+          step: 'executors',
+          input: {
+            executors: answered.executors ?? [],
+            budgets: answered.budgets ?? [],
+            exclude: answered.exclude ?? [],
+            roles: answered.roles ?? [],
+          },
+          output: { executors: [], budgets: [], notes: [] },
         });
       }
     }

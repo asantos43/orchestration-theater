@@ -13,7 +13,7 @@ import type {
   SetupModels,
   SetupNote,
 } from '@otheater/protocol';
-import type { SetupModelPickMode } from '../settings.js';
+import type { SetupExecutorsInputMode, SetupModelPickMode } from '../settings.js';
 import type { SetupFlow } from './api.js';
 import {
   FakeSetupApi,
@@ -40,6 +40,8 @@ const ENTER = '\r';
 const ESC = '\x1b';
 const DOWN = '\x1b[B';
 const UP = '\x1b[A';
+const LEFT = '\x1b[D';
+const RIGHT = '\x1b[C';
 const SHIFT_DOWN = '\x1b[1;2B';
 const TAB = '\t';
 
@@ -79,6 +81,7 @@ function mount(
   flow: SetupFlow,
   api: FakeSetupApi = new FakeSetupApi({ profiles: PROFILES }),
   modelPick?: SetupModelPickMode,
+  executorsInput?: SetupExecutorsInputMode,
 ): Mounted {
   const outcomes: SetupOutcome[] = [];
   const view = render(
@@ -88,6 +91,7 @@ function mount(
         api={api}
         keymap={keymap}
         modelPick={modelPick}
+        executorsInput={executorsInput}
         onClose={(o) => outcomes.push(o)}
       />
     </I18nextProvider>,
@@ -1013,7 +1017,11 @@ describe('the setup screen: the list of models after a login (N324, item 2)', ()
     const accounts = api.accounts;
     if (accounts === undefined) throw new Error('the fake has no accounts');
     let call = 0;
-    accounts.modelsOf = () => answer(call++);
+    // Only the new account has a client that lists models; the other accounts have none.
+    accounts.modelsOf = (profileId) =>
+      profileId === WORK
+        ? answer(call++)
+        : { ...answer(0), profileId, catalog: 'none', models: [] };
     api.discovered = [discovered(OPUS, 'claude-opus-4-1'), discovered(SONNET, 'claude-sonnet-4-5')];
     return { api, accounts };
   }
@@ -1056,15 +1064,17 @@ describe('the setup screen: the list of models after a login (N324, item 2)', ()
     await screen.press(ENTER);
     await screen.seen('Pick the preset of the roles.');
     await screen.press(ENTER);
-    const executors = await screen.seen('Register Executors by API or local model');
-    expect(executors).toContain('claude-code/work  claude-haiku-4-5');
-    expect(executors).toContain(`Left out of the preset: ${OPUS}`);
+    // N333: the list of the step has the choice made here: Opus off, Sonnet from the preset, Haiku on.
+    const executors = await screen.seen('Check the models that become Executors');
+    expect(executors).toContain('[ ] claude-opus-4-1');
+    expect(executors).toContain('[x] claude-sonnet-4-5');
+    expect(executors).toContain('[x] claude-haiku-4-5');
     await screen.press(ENTER);
     await screen.seen('This is what will be written.');
     expect(api.submissions.at(-1)).toEqual({
       step: 'executors',
       input: {
-        executors: [{ profileId: WORK, model: 'claude-haiku-4-5' }],
+        executors: [{ profileId: WORK, model: 'claude-haiku-4-5', effort: 'medium' }],
         budgets: [],
         exclude: [OPUS],
       },
@@ -1083,8 +1093,11 @@ describe('the setup screen: the list of models after a login (N324, item 2)', ()
     await screen.press(ENTER);
     await screen.press(ENTER);
     await screen.press(ENTER);
-    await screen.seen('Register Executors by API or local model');
-    expect(screen.frame()).not.toContain('Left out of the preset');
+    // N333: Esc kept the preset, so the list of the step has what the preset uses checked.
+    const executors = await screen.seen('Check the models that become Executors');
+    expect(executors).toContain('[x] claude-opus-4-1');
+    expect(executors).toContain('[x] claude-sonnet-4-5');
+    expect(executors).toContain('[ ] claude-haiku-4-5');
     await screen.press(ENTER);
     await screen.seen('This is what will be written.');
     expect(api.submissions.at(-1)).toEqual({
@@ -1271,5 +1284,336 @@ describe('SetupScreen looks for the clients and installs an adapter (P18b, N321)
     await screen.press('r');
     await screen.seen('Add an account of a client');
     expect(api.calls).not.toContain('redetect');
+  });
+});
+
+describe('the setup screen: the list of Executors and the roles of the review (N333)', () => {
+  const MAIN = 'claude-code/main';
+  const WORK = 'codex/work';
+  const SOL_HIGH = `codex-sol-high@${WORK}`;
+  const SONNET = `claude-sonnet@${MAIN}`;
+
+  function model(id: string, extra: Partial<SetupModel> = {}): SetupModel {
+    return {
+      id,
+      name: null,
+      family: null,
+      efforts: [],
+      local: false,
+      contextWindow: null,
+      floating: null,
+      preset: [],
+      registered: [],
+      ...extra,
+    };
+  }
+
+  function catalogOf(profileId: string): SetupModels {
+    const base = {
+      profileId,
+      kind: 'token_plan' as const,
+      login: 'logged_in' as const,
+      preset: 'balanced' as const,
+      reason: null,
+      notes: [],
+    };
+    if (profileId === MAIN) {
+      return {
+        ...base,
+        catalog: 'listed',
+        models: [
+          model('claude-sonnet-4-5', { preset: [{ id: SONNET, effort: null }] }),
+          model('claude-haiku-4-5'),
+        ],
+      };
+    }
+    return {
+      ...base,
+      catalog: 'listed',
+      models: [
+        model('gpt-sol', {
+          efforts: ['low', 'medium', 'high', 'xhigh'],
+          preset: [{ id: SOL_HIGH, effort: 'high' }],
+        }),
+        model('gpt-mini'),
+      ],
+    };
+  }
+
+  function executorOf(id: string, profileId: string, modelId: string, effort: string | null) {
+    return {
+      id,
+      profileId,
+      model: modelId,
+      alias: id.slice(0, id.indexOf('@')).replace(effort === null ? /$^/ : `-${effort}`, ''),
+      effort,
+      provider: 'fake',
+      source: 'discovered' as const,
+      presetExpand: true,
+      local: null,
+    } satisfies SetupExecutor;
+  }
+
+  /** A daemon where both accounts list their models, and the preset gives roles to two Executors. */
+  function listing(): FakeSetupApi {
+    const api = new FakeSetupApi({ profiles: PROFILES.slice(0, 2), withAccounts: true });
+    if (api.accounts === undefined) throw new Error('the fake has no accounts');
+    api.accounts.modelsOf = catalogOf;
+    api.planExecutors = [
+      executorOf(SOL_HIGH, WORK, 'gpt-sol', 'high'),
+      executorOf(SONNET, MAIN, 'claude-sonnet-4-5', null),
+    ];
+    const roles = (
+      [
+        ['director', [SONNET]],
+        ['author', [SOL_HIGH]],
+        ['reviewer', [SOL_HIGH, SONNET]],
+        ['actor', [SONNET]],
+      ] as const
+    ).map(([role, executors]) => ({
+      role,
+      executors: [...executors],
+      whenExhausted: 'next' as const,
+    }));
+    api.planRoles = roles;
+    api.presetRoles = roles;
+    return api;
+  }
+
+  async function atList(
+    api: FakeSetupApi = listing(),
+    executorsInput?: SetupExecutorsInputMode,
+  ): Promise<Mounted> {
+    const screen = mount('first_run', api, undefined, executorsInput);
+    await screen.seen('Add an account of a client');
+    await screen.press(ENTER);
+    await screen.seen('Pick the accounts that take part');
+    await screen.press(ENTER);
+    await screen.seen('Pick the preset of the roles.');
+    await screen.press(ENTER);
+    return screen;
+  }
+
+  it('lists the models of each account, with what the preset uses checked and its roles beside', async () => {
+    const api = listing();
+    const screen = await atList(api);
+    const frame = await screen.seen('Check the models that become Executors');
+    expect(api.accounts?.logins).toEqual([`models:${MAIN}`, `models:${WORK}`]);
+    expect(frame).toContain('[x] claude-sonnet-4-5  → director, reviewer, actor');
+    expect(frame).toContain('[ ] claude-haiku-4-5  ‹medium›');
+    expect(frame).toContain('[x] gpt-sol  ‹high›  → author, reviewer');
+    expect(frame).toContain('[ ] gpt-mini  ‹medium›');
+    expect(frame).toContain('/  Type');
+    expect(frame).toContain('Space  Pick');
+  });
+
+  it('Space checks and unchecks, and the arrows change the effort among the ones the model takes', async () => {
+    const api = listing();
+    const screen = await atList(api);
+    await screen.seen('Check the models that become Executors');
+    // Down to Haiku, check it; it starts at medium and goes to high with Right (it takes only the defaults).
+    await screen.press(DOWN);
+    await screen.press(' ');
+    await screen.press(RIGHT);
+    // Down to gpt-sol (row 3): high goes to xhigh and back to medium with two Left presses from high.
+    await screen.press(DOWN);
+    const sol = await screen.press(RIGHT);
+    expect(sol).toContain('[x] gpt-sol  ‹xhigh›');
+    await screen.press(LEFT);
+    await screen.press(LEFT);
+    // Down to gpt-mini, check it.
+    await screen.press(DOWN);
+    await screen.press(' ');
+    await screen.press(ENTER);
+    await screen.seen('This is what will be written.');
+    expect(api.submissions.at(-1)).toEqual({
+      step: 'executors',
+      input: {
+        executors: [
+          { profileId: MAIN, model: 'claude-haiku-4-5', effort: 'high' },
+          { profileId: WORK, model: 'gpt-sol', effort: 'medium', alias: 'codex-sol' },
+          { profileId: WORK, model: 'gpt-mini', effort: 'medium' },
+        ],
+        budgets: [],
+        exclude: [SOL_HIGH],
+      },
+    });
+  });
+
+  it('unchecking what the preset uses leaves it out, and the preset name stays when nothing changes', async () => {
+    const api = listing();
+    const screen = await atList(api);
+    await screen.seen('Check the models that become Executors');
+    await screen.press(' ');
+    await screen.press(ENTER);
+    await screen.seen('This is what will be written.');
+    expect(api.submissions.at(-1)).toEqual({
+      step: 'executors',
+      input: { executors: [], budgets: [], exclude: [SONNET] },
+    });
+  });
+
+  it('with the list on, A points to the / key, and / types the line as before', async () => {
+    const api = listing();
+    const screen = await atList(api);
+    await screen.seen('Check the models that become Executors');
+    const warned = await screen.press('a');
+    expect(warned).toContain('write the Executor with the / key');
+    expect(warned).not.toContain('Executor as:');
+    const prompt = await screen.press('/');
+    expect(prompt).toContain('Executor as: <account> <model> [effort]');
+    await screen.type('openrouter/key some-model high');
+    await screen.press(ENTER);
+    await screen.press(ENTER);
+    await screen.seen('This is what will be written.');
+    const sent = api.submissions.at(-1);
+    expect(sent).toMatchObject({
+      step: 'executors',
+      input: { executors: [{ profileId: 'openrouter/key', model: 'some-model', effort: 'high' }] },
+    });
+  });
+
+  it('ui.setup.executorsInput prompt keeps the typed line and never reads the models', async () => {
+    const api = listing();
+    const screen = await atList(api, 'prompt');
+    const frame = await screen.seen('Register Executors by API or local model');
+    expect(frame).not.toContain('Check the models');
+    expect(api.accounts?.logins).toEqual([]);
+    const prompt = await screen.press('a');
+    expect(prompt).toContain('Executor as: <account> <model> [effort]');
+  });
+
+  it('a client that does not list the models says so, and A still types the line', async () => {
+    const api = listing();
+    if (api.accounts === undefined) throw new Error('the fake has no accounts');
+    api.accounts.modelsOf = (profileId) => ({
+      ...catalogOf(profileId),
+      catalog: 'none',
+      models: [],
+    });
+    const screen = await atList(api);
+    const frame = await screen.seen('has no client that lists models');
+    expect(frame).toContain('Register Executors by API or local model');
+    const prompt = await screen.press('a');
+    expect(prompt).toContain('Executor as: <account> <model> [effort]');
+  });
+
+  it('a list that fails to be read is said, and the step goes on with the typed line', async () => {
+    const api = listing();
+    if (api.accounts === undefined) throw new Error('the fake has no accounts');
+    api.accounts.failModels = new Error('the client did not answer');
+    const screen = await atList(api);
+    const frame = await screen.seen('Could not read the models');
+    expect(frame).toContain('the client did not answer');
+    // The other account is listed all the same.
+    expect(frame).toContain('gpt-sol');
+  });
+
+  /** From the list to the review with Haiku checked: it enters the plan with no role. */
+  async function atReview(api: FakeSetupApi): Promise<Mounted> {
+    const screen = await atList(api);
+    await screen.seen('Check the models that become Executors');
+    await screen.press(DOWN);
+    await screen.press(' ');
+    await screen.press(ENTER);
+    await screen.seen('This is what will be written.');
+    return screen;
+  }
+
+  it('the review marks the Executor with no role and P gives it roles at the end of their lists', async () => {
+    const api = listing();
+    const screen = await atReview(api);
+    const review = screen.frame();
+    expect(review).toContain('no role');
+    expect(review).toContain('P gives roles');
+    expect(review).toContain('P  Give role');
+    const list = await screen.press('p');
+    expect(list).toContain('Roles of claude-haiku-4-5@claude-code/main');
+    for (const role of [
+      'director',
+      'consultant',
+      'author',
+      'reviewer',
+      'scriptwriter',
+      'critic',
+      'actor',
+    ]) {
+      expect(list).toContain(`[ ] ${role}`);
+    }
+    expect(list).toContain('Enter  Give the roles');
+    // Down twice to author, check it, down once and check the reviewer.
+    await screen.press(DOWN);
+    await screen.press(DOWN);
+    await screen.press(' ');
+    await screen.press(DOWN);
+    const checked = await screen.press(' ');
+    expect(checked).toContain('[x] author');
+    expect(checked).toContain('[x] reviewer');
+    const calls = api.calls.length;
+    await screen.press(ENTER);
+    const done = await screen.seen('joined the end of the list of: author, reviewer.');
+    expect(api.calls.slice(calls)).toEqual(['back', 'submit:executors']);
+    expect(api.submissions.at(-1)).toEqual({
+      step: 'executors',
+      input: {
+        executors: [{ profileId: MAIN, model: 'claude-haiku-4-5', effort: 'medium' }],
+        budgets: [],
+        exclude: [],
+        roles: [
+          {
+            executorId: 'claude-haiku-4-5@claude-code/main',
+            roles: ['author', 'reviewer'],
+          },
+        ],
+      },
+    });
+    // The Executor has roles now: it is no longer without one.
+    expect(done).not.toContain('P gives roles');
+    expect(done).toContain('author');
+  });
+
+  it('Esc closes the list of roles and sends nothing; Enter with none checked does the same', async () => {
+    const api = listing();
+    const screen = await atReview(api);
+    const calls = api.calls.length;
+    await screen.press('p');
+    const left = await screen.press(ESC);
+    expect(left).not.toContain('Roles of');
+    await screen.press('p');
+    await screen.press(ENTER);
+    expect(screen.frame()).not.toContain('Roles of');
+    expect(api.calls).toHaveLength(calls);
+  });
+
+  it('a daemon that refuses the roles shows why and leaves the run at the step of the Executors', async () => {
+    const api = listing();
+    const screen = await atReview(api);
+    const submit = api.submit.bind(api);
+    let first = true;
+    api.submit = (runId, body) => {
+      if (first && body.step === 'executors') {
+        first = false;
+        return Promise.reject(requestError('invalid_input', 400, 'The role is not accepted.'));
+      }
+      return submit(runId, body);
+    };
+    await screen.press('p');
+    await screen.press(' ');
+    await screen.press(ENTER);
+    const frame = await screen.seen('The role is not accepted.');
+    expect(frame).toContain('Check the models that become Executors');
+    // The choice of the step is still there: Haiku is checked.
+    expect(frame).toContain('[x] claude-haiku-4-5');
+  });
+
+  it('with no Executor without a role, P says so', async () => {
+    const api = listing();
+    const screen = await atList(api);
+    await screen.seen('Check the models that become Executors');
+    await screen.press(ENTER);
+    await screen.seen('This is what will be written.');
+    const frame = await screen.press('p');
+    expect(frame).toContain('No Executor with no role to give roles to.');
+    expect(frame).not.toContain('Roles of');
   });
 });

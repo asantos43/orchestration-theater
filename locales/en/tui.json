@@ -171,7 +171,11 @@
       "cancel": "Cancel the run (nothing is written)",
       "install": "Install the ACP adapter of the client under the cursor",
       "details": "Show or fold the detail of the notes of the review",
-      "skip": "Continue without an account"
+      "skip": "Continue without an account",
+      "effortPrev": "Previous effort of the model",
+      "effortNext": "Next effort of the model",
+      "type": "Type an Executor (account, model, effort)",
+      "role": "Give roles to the Executor with no role"
     },
     "plugins": {
       "itemPrev": "Previous plugin",
@@ -234,7 +238,10 @@
       "install": "Install adapter",
       "details": "Detail",
       "skip": "No account",
-      "openForm": "Add account"
+      "openForm": "Add account",
+      "effort": "Effort",
+      "type": "Type",
+      "role": "Give role"
     },
     "settings": {
       "add": "Add account",
@@ -256,6 +263,11 @@
     "loginCheck": {
       "retry": "Log in again",
       "skip": "Go on"
+    },
+    "rolePick": {
+      "confirm": "Give the roles",
+      "toggle": "Check",
+      "cancel": "Back"
     }
   },
   "keymap": {
@@ -1242,7 +1254,8 @@
       "preset": "Pick the preset of the roles.",
       "executors": "Register Executors by API or local model and set the spending cap of each API account.",
       "review": "This is what will be written. Nothing is written before you confirm.",
-      "accounts": "Add an account of a client (a subscription) and log in to it now, or continue without one: you can add accounts later in the Settings tab."
+      "accounts": "Add an account of a client (a subscription) and log in to it now, or continue without one: you can add accounts later in the Settings tab.",
+      "executorsList": "Check the models that become Executors (Space), change the effort with Left/Right and set the spending cap of each API account. The / key types an Executor by API or local model."
     },
     "detect": {
       "clients": "Clients on this machine: {{list}}",
@@ -1272,7 +1285,16 @@
       "noCap": "no cap",
       "usd": "USD {{value}}",
       "excluded_one": "Left out of the preset: {{list}}",
-      "excluded_other": "Left out of the preset ({{count}}): {{list}}"
+      "excluded_other": "Left out of the preset ({{count}}): {{list}}",
+      "loading": "Reading the models of the accounts...",
+      "rowRoles": "→ {{roles}}",
+      "noModels": "The client listed no model.",
+      "assisted": "The client does not list the models of this account; type with the / key or let the preset decide.",
+      "noClient": "This account has no client that lists models; type with the / key.",
+      "unavailable": "The client did not list the models ({{reason}}); type with the / key or let the preset decide.",
+      "listFailed": "Could not read the models: {{reason}}; type with the / key.",
+      "waitList": "Wait for the list of models to finish loading.",
+      "useType": "With the list on screen, write the Executor with the / key."
     },
     "prompt": {
       "executor": "Executor as: <account> <model> [effort]",
@@ -1325,7 +1347,10 @@
         "no_accounts": "no account takes part: the lists stay empty until one is added",
         "catalog_unavailable": "the model catalog of {{profiles}} could not be read: its models are not proposed",
         "effort_not_accepted": "{{profiles}}: the model does not accept the effort of {{heads}}; left out"
-      }
+      },
+      "giveRole": "{{key}} gives roles",
+      "rolesGiven": "{{executor}} joined the end of the list of: {{roles}}.",
+      "noRoleNone": "No Executor with no role to give roles to."
     },
     "source": {
       "discovered": "found",
@@ -1408,6 +1433,10 @@
       "skipped": "{{profile}}: the list was left; the preset decides its Executors.",
       "failed": "Could not read the models of {{profile}}: {{message}}. The preset decides its Executors.",
       "unavailable": "The client of {{profile}} did not list its models ({{reason}}). The preset decides its Executors."
+    },
+    "roles": {
+      "title": "Roles of {{executor}}: it joins the end of the list of each role checked",
+      "keys": "Up/Down move, Space checks, Enter gives the roles, Esc goes back"
     }
   },
   "plugins": {

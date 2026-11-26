@@ -171,7 +171,11 @@
       "cancel": "Cancelar a execução (nada é gravado)",
       "install": "Instalar o adaptador ACP do cliente sob o cursor",
       "details": "Mostra ou dobra o detalhe das notas da revisão",
-      "skip": "Seguir sem conta"
+      "skip": "Seguir sem conta",
+      "effortPrev": "Esforço anterior do modelo",
+      "effortNext": "Próximo esforço do modelo",
+      "type": "Digitar um Executor (conta, modelo, esforço)",
+      "role": "Dar papéis ao Executor sem papel"
     },
     "plugins": {
       "itemPrev": "Plugin anterior",
@@ -234,7 +238,10 @@
       "install": "Instalar adaptador",
       "details": "Detalhe",
       "skip": "Sem conta",
-      "openForm": "Adicionar conta"
+      "openForm": "Adicionar conta",
+      "effort": "Esforço",
+      "type": "Digitar",
+      "role": "Dar papel"
     },
     "settings": {
       "add": "Adicionar conta",
@@ -256,6 +263,11 @@
     "loginCheck": {
       "retry": "Login de novo",
       "skip": "Seguir"
+    },
+    "rolePick": {
+      "confirm": "Dar os papéis",
+      "toggle": "Marcar",
+      "cancel": "Voltar"
     }
   },
   "keymap": {
@@ -1242,7 +1254,8 @@
       "preset": "Escolha o preset dos papéis.",
       "executors": "Cadastre Executores por API ou modelo local e defina o teto de gasto de cada conta de API.",
       "review": "Isto é o que será gravado. Nada é gravado antes de você confirmar.",
-      "accounts": "Adicione uma conta de um cliente (uma assinatura) e entre nela agora, ou continue sem nenhuma: dá para adicionar contas depois na aba Configurações."
+      "accounts": "Adicione uma conta de um cliente (uma assinatura) e entre nela agora, ou continue sem nenhuma: dá para adicionar contas depois na aba Configurações.",
+      "executorsList": "Marque os modelos que viram Executores (Espaço), mude o esforço com ←/→ e defina o teto de gasto de cada conta de API. A tecla / digita um Executor por API ou modelo local."
     },
     "detect": {
       "clients": "Clientes nesta máquina: {{list}}",
@@ -1272,7 +1285,16 @@
       "noCap": "sem teto",
       "usd": "USD {{value}}",
       "excluded_one": "Fica fora do preset: {{list}}",
-      "excluded_other": "Ficam fora do preset ({{count}}): {{list}}"
+      "excluded_other": "Ficam fora do preset ({{count}}): {{list}}",
+      "loading": "Lendo os modelos das contas...",
+      "rowRoles": "→ {{roles}}",
+      "noModels": "O cliente não listou nenhum modelo.",
+      "assisted": "O cliente não lista os modelos desta conta; digite com a tecla / ou deixe o preset decidir.",
+      "noClient": "Esta conta não tem cliente que liste modelos; digite com a tecla /.",
+      "unavailable": "O cliente não listou os modelos ({{reason}}); digite com a tecla / ou deixe o preset decidir.",
+      "listFailed": "Não deu para ler os modelos: {{reason}}; digite com a tecla /.",
+      "waitList": "Espere a lista de modelos terminar de carregar.",
+      "useType": "Com a lista na tela, escreva o Executor com a tecla /."
     },
     "prompt": {
       "executor": "Executor como: <conta> <modelo> [esforço]",
@@ -1325,7 +1347,10 @@
         "no_accounts": "nenhuma conta participa: as listas ficam vazias até uma ser adicionada",
         "catalog_unavailable": "o catálogo de modelos de {{profiles}} não pôde ser lido: os modelos dela não são propostos",
         "effort_not_accepted": "{{profiles}}: o modelo não aceita o esforço de {{heads}}; fica fora"
-      }
+      },
+      "giveRole": "{{key}} dá papéis",
+      "rolesGiven": "{{executor}} entrou no fim da lista de: {{roles}}.",
+      "noRoleNone": "Nenhum Executor sem papel para receber papéis."
     },
     "source": {
       "discovered": "achado",
@@ -1408,6 +1433,10 @@
       "skipped": "{{profile}}: a lista ficou de lado; o preset decide os Executores dela.",
       "failed": "Não deu para ler os modelos de {{profile}}: {{message}}. O preset decide os Executores dela.",
       "unavailable": "O cliente de {{profile}} não listou os modelos ({{reason}}). O preset decide os Executores dela."
+    },
+    "roles": {
+      "title": "Papéis de {{executor}}: ele entra no fim da lista de cada papel marcado",
+      "keys": "↑/↓ andam, Espaço marca, Enter dá os papéis, Esc volta"
     }
   },
   "plugins": {
