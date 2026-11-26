@@ -29,6 +29,8 @@ import type { SetupApi } from './setup/index.js';
 export const KEYS = {
   ctrlQ: '\x11',
   ctrlC: '\x03',
+  /** Ctrl+C with the kitty keyboard protocol on (`disambiguateEscapeCodes`). */
+  ctrlCKitty: '\x1b[99;5u',
   enter: '\r',
   escape: '\x1b',
 } as const;

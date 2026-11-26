@@ -91,12 +91,18 @@ describe('startTuiApp, the terminal', () => {
     expect(session.err.output).toBe('');
   });
 
-  it('Ctrl+C is read as a key (Ink does not exit on it): it ends the same way', async () => {
-    const session = await open();
-    session.stdin.write(KEYS.ctrlC);
-    await expect(session.running.done).resolves.toBe(0);
-    expectRestored(session.tty);
-  });
+  it.each([
+    ['the control byte', KEYS.ctrlC],
+    ['the kitty keyboard protocol', KEYS.ctrlCKitty],
+  ])(
+    'Ctrl+C is read as a key (Ink does not exit on it), by %s: it ends the same way',
+    async (_how, key) => {
+      const session = await open();
+      session.stdin.write(key);
+      await expect(session.running.done).resolves.toBe(0);
+      expectRestored(session.tty);
+    },
+  );
 
   it.each([
     ['SIGINT', 130],

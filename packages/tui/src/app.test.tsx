@@ -116,8 +116,8 @@ describe('App, the keys', () => {
     expect(throttle.flushes()).toBe(0);
   });
 
-  it('Ctrl+Q and Ctrl+C leave the app (the terminal is not left to Ink: exitOnCtrlC is off)', async () => {
-    for (const key of [KEYS.ctrlQ, KEYS.ctrlC]) {
+  it('Ctrl+Q and Ctrl+C (as a byte or by the kitty protocol) leave the app (exitOnCtrlC is off)', async () => {
+    for (const key of [KEYS.ctrlQ, KEYS.ctrlC, KEYS.ctrlCKitty]) {
       const app = await renderApp({ connector: fixedConnector({ kind: 'offline' }) });
       await app.waitForText('No daemon');
       app.press(key);

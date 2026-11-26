@@ -49,8 +49,12 @@ export function terminalBackendsOf(
 }
 
 /** Where the trace (`trace.md`) and the text of the screen of a failed test go: `OT_TUI_TEST_ARTIFACTS`. */
-export const ARTIFACTS_DIR =
-  process.env.OT_TUI_TEST_ARTIFACTS?.trim() || join(tmpdir(), 'otheater-tui-test');
+export const ARTIFACTS_DIR = artifactsDir(process.env.OT_TUI_TEST_ARTIFACTS);
+
+function artifactsDir(value: string | undefined): string {
+  const dir = value?.trim() ?? '';
+  return dir === '' ? join(tmpdir(), 'otheater-tui-test') : dir;
+}
 
 type TuiTestModule = typeof import('@microsoft/tui-test');
 
@@ -88,7 +92,21 @@ export interface OpenTuiOptions {
   readonly rows?: number;
   /** The name of the test, for the folder of its artifacts. */
   readonly name: string;
+  /**
+   * More of `ui` for the TUI of `main` (it goes as `OT_TUI_UI`, over {@link SAFE_UI}). The launcher of
+   * `ot-tui` writes that variable from `config.yaml`, so a test of `ot-tui` puts its `ui` there.
+   */
+  readonly ui?: Readonly<Record<string, unknown>>;
 }
+
+/**
+ * The `ui` a test starts with: no assistant over the layout, and a login never opens the browser of
+ * the machine (`xdg-open`, `open` or `start` would open a real one).
+ */
+export const SAFE_UI = { setup: { open: 'never' }, login: { browser: 'off' } } as const;
+
+/** The same, as the lines of a `config.yaml` (for the daemon of `ot-tui`, after `persistConfig`). */
+export const SAFE_UI_YAML = 'ui:\n  setup:\n    open: never\n  login:\n    browser: "off"\n';
 
 export interface TuiTerminal {
   readonly term: TuiTestClass;
@@ -176,7 +194,10 @@ export async function withTui(
       cols: options.columns ?? 120,
       rows: options.rows ?? 30,
       cwd: home,
-      env: tuiEnv(home, options.dataDir, entry),
+      env: {
+        ...tuiEnv(home, options.dataDir, entry),
+        OT_TUI_UI: JSON.stringify({ ...SAFE_UI, ...options.ui }),
+      },
     });
     await body({ term, home });
   } catch (error) {

@@ -103,7 +103,7 @@ O `@otheater/workflows` é pacote novo do monorepo, não dependência de fora. E
 | P14 | Supervisão do Diretor (N309): sinais, `warn` e `redirect`, o canal pela resposta MCP (D8) e os três extras | P13 | P2, P5 | a fazer |
 | P15 | `ask_director` (N308, opção 2): o `blocked` que não encerra, com espera, prazo e o modo `relay` pelo canal do P14 | P14 | P3 a P12 | a fazer |
 | P16 | Aceite da fase | P1 a P15, P17, P18 | nada | a fazer |
-| P17 | Testes da TUI num terminal real com o `@microsoft/tui-test` (N320) | P1, P7, P13 | os da onda 2 | a fazer |
+| P17 | Testes da TUI num terminal real com o `@microsoft/tui-test` (N320) | P1, P7, P13 | os da onda 2 | feito (este PR) |
 | P18a | Nova detecção dos clientes (N321, itens 2 e 5): sem reiniciar o daemon, a cada abertura do assistente e ao criar uma conta; no Windows, o `Path` do registro; o motivo de cada cliente não achado na API | P7 | os da onda 2 | feito (#367) |
 | P18b | O assistente resolve na tela (N321, itens 1 e 4): as teclas I, R e A, o motivo na tela e as mensagens sem comandos `ot` | P18a | os da onda 2 | feito (#371) |
 
@@ -462,7 +462,31 @@ Todos **[proposta]** quanto ao nome. Cada um entra no catálogo do protocolo e n
 - Onde falta o build ou o binário da plataforma, o teste é pulado; com `OT_REQUIRE_PTY=1`, o pulo vira falha, como hoje.
 - **Aceite próprio:** os testes passam na CI de Linux, macOS e Windows. Um tema com a cor trocada faz o teste de cor falhar.
 
-**Como ficou:** a preencher.
+**Como ficou** (2026-11-26; [V] no Linux, com os três terminais emulados; macOS e Windows pela CI deste PR):
+
+- O `terminal.test-support.ts` abre o `main.js` da TUI ou o `ot tui` compilado contra o daemon do fake-agent, com HOME e pastas temporárias. A função `withTui` grava o trace e o texto da tela em `OT_TUI_TEST_ARTIFACTS` quando o teste falha.
+- O `ui` do teste vai pelo `OT_TUI_UI`, por cima do `SAFE_UI` (assistente `never`, navegador do login `off`). O daemon recebe o mesmo no `config.yaml`, que o `ot tui` lê. Assim nenhum teste abre navegador nem o assistente.
+- O `tui-terminal.e2e.test.ts` tem 8 testes por terminal (24 com `OT_TUI_TEST_BACKEND=all`, [V] todos passam):
+  - as cores do tema `otheater` por célula (cabeçalho, borda da área com foco, as outras);
+  - o tema `terminal`, que sai com as cores nomeadas 12 e 8 da paleta de 16, e não em cor verdadeira;
+  - o redimensionamento de 120x30 para 213x83;
+  - o clique do mouse em cada área;
+  - o link OSC 8 do painel de login (`getByLink`), com o endereço `.invalid` e sem navegador;
+  - o Ctrl+C no `main.js` e no `ot tui`, com código 0;
+  - um sinal (fora do Windows).
+
+  No fim, o terminal tem de voltar como estava: sem tela alternativa, com o cursor visível, sem bracketed paste e sem modo de mouse.
+- O `pty.focus.test.ts` saiu do `pty` do Python e roda em cima do suporte. Ele manda os três pedaços SGR medidos no terminal do Claude desktop, depois do redimensionamento, agora nos três sistemas.
+- **Bug achado e corrigido:** com o protocolo de teclado do kitty, o Ctrl+C chega como `ESC [99;5u`, e a TUI não saía. O `isCtrlC` (`keys/use-keymap.ts`) aceita as duas formas, e os testes de `app` e `run` cobrem as duas.
+- **Aceite da cor** [V]: com a borda ativa trocada para `#7d8cfe` na paleta, o teste falhou com "expected '#7d8cfe' to be '#7d8cff'"; com a cor de volta, passou.
+- [N] Com o `signal('TERM')` do tui-test 0.1.1, o código de saída é 129 e não 143, provavelmente porque a sessão termina com um hang-up (não confirmado no código dele). O teste aceita qualquer código de sinal; o código de cada sinal continua testado no `run.test.tsx`.
+- CI: o job novo `tui-terminal` roda os dois arquivos no Ubuntu, no macOS e no Windows, com `OT_REQUIRE_PTY=1`, nas mesmas condições do `linux`. No Windows, ele compila antes o `ot-job-launcher.exe`. Na falha, sobe o artefato `tui-terminal-<sistema>`. Os dois arquivos levam `// ot-ci: no-cross`, para o `cross` não repetir.
+- **[proposta]** (perguntas ao dono):
+  - o `alacritty` como terminal padrão;
+  - as cores escritas em hexadecimal no teste, em vez de lidas da paleta;
+  - o `SAFE_UI`;
+  - o job próprio na CI, em vez do `cross`;
+  - a variável do repositório `OT_TUI_TEST_BACKEND`, que escolhe o terminal na CI.
 
 ## Riscos
 
