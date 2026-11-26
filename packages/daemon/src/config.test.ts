@@ -194,11 +194,18 @@ describe('parseConfig', () => {
       open: 'auto',
       readTimeoutMs: 5000,
       reviewNotes: 'grouped',
+      modelPick: 'preset',
     });
     const { ui } = parseConfig(
-      'ui:\n  setup:\n    open: never\n    readTimeoutMs: 800\n    reviewNotes: all\n',
+      'ui:\n  setup:\n    open: never\n    readTimeoutMs: 800\n    reviewNotes: all\n    modelPick: none\n',
     );
-    expect(ui.setup).toEqual({ open: 'never', readTimeoutMs: 800, reviewNotes: 'all' });
+    expect(ui.setup).toEqual({
+      open: 'never',
+      readTimeoutMs: 800,
+      reviewNotes: 'all',
+      modelPick: 'none',
+    });
+    expect(() => parseConfig('ui:\n  setup:\n    modelPick: some\n')).toThrow(/ui\.setup/);
     expect(() => parseConfig('ui:\n  setup:\n    reviewNotes: some\n')).toThrow(/ui\.setup/);
     expect(() => parseConfig('ui:\n  setup:\n    open: always\n')).toThrow(/ui\.setup\.open/);
     expect(() => parseConfig('ui:\n  setup:\n    wait: 1\n')).toThrow(/ui\.setup/);

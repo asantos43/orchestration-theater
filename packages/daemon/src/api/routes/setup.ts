@@ -12,9 +12,16 @@ function assistant(service: SetupService | undefined): SetupService {
   return service;
 }
 
-/** `GET /v1/setup`: whether a first run is needed, and the run to resume in each flow (P4 of docs/18). */
+/**
+ * `GET /v1/setup`: whether a first run is needed, and the run to resume in each flow (P4 of
+ * docs/18); `GET /v1/setup/models/:client/:name`: the models of an account after its login (N324).
+ */
 export function registerSetupRoutes(handlers: ApiHandlers, deps: ReadRouteDeps): void {
   handlers.register('getSetup', () => assistant(deps.setup).overview());
+  // N324: after a login, whether the account is logged in and the models it can use.
+  handlers.register('getSetupModels', ({ params }) =>
+    assistant(deps.setup).models(`${params.client}/${params.name}`),
+  );
 }
 
 /**
