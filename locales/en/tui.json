@@ -72,7 +72,7 @@
       "up": "Move up in the side bar",
       "down": "Move down in the side bar",
       "activate": "Open the scenario or fold the section",
-      "newProject": "Open a new project",
+      "newProject": "Open a new scenario (project or chat)",
       "toggleFinished": "Open or close the finished plays"
     },
     "panel": {
@@ -213,7 +213,7 @@
     },
     "sidebar": {
       "activate": "Open",
-      "newProject": "New project",
+      "newProject": "New scenario",
       "toggleFinished": "Finished"
     },
     "panel": {
@@ -549,7 +549,10 @@
         "AWAITING_PRODUCER": "waiting for you",
         "DONE": "done",
         "CANCELLED": "cancelled"
-      }
+      },
+      "noScenario": "No scenario. Type to open a chat, or {{key}} in the side bar to pick the type.",
+      "noScenarioNotice": "No scenario. Open one with {{key}} in the side bar.",
+      "noScenarioSend": "there is no scenario open. Open one with {{key}} in the side bar."
     },
     "panel": {
       "empty": "This tab has no content yet.",
@@ -572,15 +575,23 @@
       "closeHint": "{{key}} closes"
     },
     "newProject": {
-      "title": "New project",
+      "title": "New scenario",
       "label": "Repository (a folder of a git repository)",
-      "hint": "Enter opens · Esc cancels",
-      "opening": "Opening the project…",
-      "opened": "Project {{name}} open.",
+      "hint": "Tab changes the type · Enter opens · Esc cancels",
+      "opening": "Opening the scenario…",
+      "opened": "Scenario {{name}} open.",
       "badRepo": "Could not open a project on \"{{repo}}\": it is not a git repository the project can start from.",
-      "failed": "Could not open the project: {{message}}",
+      "failed": "Could not open the scenario: {{message}}",
       "noRepo": "Type the repository of the project.",
-      "noConnection": "There is no connection with the daemon."
+      "noConnection": "There is no connection with the daemon.",
+      "nameLabel": "Name of the chat (optional)",
+      "taskOff": "Task: comes with Phase 9b",
+      "typeOff": "{{type}}: the daemon does not open this type yet",
+      "types": {
+        "project": "Project",
+        "task": "Task",
+        "chat": "Chat"
+      }
     },
     "link": {
       "syncing": "syncing",

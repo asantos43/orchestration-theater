@@ -48,7 +48,7 @@ const OTHEATER = {
 const CORNER = { y: 1, sidebar: 0, chat: 30, panel: 90 } as const;
 /** A cell well inside each area, and the bar of shortcuts it shows when it has the focus. */
 const AREAS = {
-  sidebar: { x: 10, y: 12, bar: 'New project' },
+  sidebar: { x: 10, y: 12, bar: 'New scenario' },
   chat: { x: 50, y: 12, bar: 'PageUp  Scroll' },
   panel: { x: 100, y: 12, bar: 'Enter  Fold' },
 } as const;

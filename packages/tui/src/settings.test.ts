@@ -39,6 +39,7 @@ describe('parseUiSettings', () => {
         esc: 'stop',
         directorFooter: 'on',
         history: 40,
+        noScenario: 'open',
       },
       input: DEFAULT_UI_SETTINGS.input,
       overview: { confirm: 'always', recentEvents: 8, hiddenEvents: ['session.update'] },
@@ -54,7 +55,7 @@ describe('parseUiSettings', () => {
       clipboardCopy: 'osc52',
       tuiMouse: { wheelLines: 3, copyMaxBytes: 100_000 },
       setup: { open: 'auto', readTimeoutMs: 5000, reviewNotes: 'grouped', modelPick: 'preset' },
-      newProject: { repo: 'cwd' },
+      newProject: { repo: 'cwd', type: 'chat' },
       sidebar: { finishedPlays: 'collapsed', finishedLimit: 20 },
       login: { browser: 'auto' },
       settingsTab: { limits: 'folded', roles: 'line' },
@@ -82,6 +83,7 @@ describe('parseUiSettings', () => {
         decisionClick: 'select',
         esc: 'off',
         history: 12,
+        noScenario: 'notice',
       },
       input: { maxVisibleLines: 3 },
     });
@@ -93,6 +95,7 @@ describe('parseUiSettings', () => {
       esc: 'off',
       directorFooter: 'on',
       history: 12,
+      noScenario: 'notice',
     });
     expect(parseUiSettings({ chat: { directorFooter: 'off' } }).chat.directorFooter).toBe('off');
     expect(parseUiSettings({ chat: { directorFooter: 'maybe' } }).chat.directorFooter).toBe('on');
@@ -241,7 +244,7 @@ describe('parseUiSettings', () => {
   });
 
   it('reads ui.newProject of P22 and falls back key by key', () => {
-    expect(parseUiSettings({}).newProject).toEqual({ repo: 'cwd' });
+    expect(parseUiSettings({}).newProject).toEqual({ repo: 'cwd', type: 'chat' });
     expect(parseUiSettings({ newProject: { repo: 'git_root' } }).newProject.repo).toBe('git_root');
     expect(parseUiSettings({ newProject: { repo: 'empty' } }).newProject.repo).toBe('empty');
     expect(parseUiSettings({ newProject: { repo: 'home' } }).newProject).toEqual(

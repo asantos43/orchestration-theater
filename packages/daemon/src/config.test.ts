@@ -189,7 +189,7 @@ describe('parseConfig', () => {
   });
 
   it('has the default of ui.newProject, takes its other modes and refuses bad values (P22)', () => {
-    expect(parseConfig('').ui.newProject).toEqual({ repo: 'cwd' });
+    expect(parseConfig('').ui.newProject).toEqual({ repo: 'cwd', type: 'chat' });
     expect(parseConfig('ui:\n  newProject:\n    repo: git_root\n').ui.newProject.repo).toBe(
       'git_root',
     );
@@ -246,6 +246,7 @@ describe('parseConfig', () => {
       esc: 'stop',
       directorFooter: 'on',
       history: 40,
+      noScenario: 'open',
     });
     const yaml =
       'ui:\n  chat:\n    queue: hold\n    suggestions: 0\n    esc: off\n    decisionClick: select\n';
@@ -257,6 +258,7 @@ describe('parseConfig', () => {
       esc: 'off',
       directorFooter: 'on',
       history: 40,
+      noScenario: 'open',
     });
     expect(parseConfig('ui:\n  chat:\n    directorFooter: off\n').ui.chat.directorFooter).toBe(
       'off',

@@ -202,6 +202,11 @@ export interface ChatDaemonOptions {
    * of the daemon must fire). A real client always has the real clock (`real`), whatever this says.
    */
   readonly realClock?: boolean;
+  /**
+   * Opens the chat scenario of `repo` once the daemon is up (default `true`). With `false` the daemon
+   * starts with no scenario (N329: the TUI with nothing to talk to yet), and `scenarioId` is empty.
+   */
+  readonly openScenario?: boolean;
 }
 
 /** Polls `read` until it returns something, or fails after `timeoutMs` of real time. */
@@ -351,7 +356,8 @@ ${options.extra ?? ''}
     await options.prepare?.(daemon, dataDir, repo);
     const { producer } = daemon;
     if (producer === undefined) throw new Error('the daemon has no Producer channel');
-    const { scenarioId } = await producer.openChat({ repo });
+    const { scenarioId } =
+      options.openScenario === false ? { scenarioId: '' } : await producer.openChat({ repo });
     return {
       dispose,
       daemon,

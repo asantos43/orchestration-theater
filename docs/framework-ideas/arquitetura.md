@@ -1339,7 +1339,7 @@ api:
 
 **Entregas da onda 6 da Fase 7 (2026-11-21 [S: descrição dos PRs #238, #236, #235, #241, #237 e #239, todos na main: e1d48b2, eb75825, b4ade6b, 9c26896, f86a042 e 6a34177 [V: `git log`]]; plano em [docs/18](../18-PLANO-DA-FASE-7.md)).** Tudo abaixo é **[proposta]**; ver a pergunta 32 da seção 12.
 
-- **Criar projeto (P22, PR #238).** Sem rota nem evento novos. A tecla `N` da ação `sidebar.newProject` abre o `/new project` pela TUI, e a chave `ui.newProject.repo` (`cwd`, `git_root` ou `empty`; padrão `cwd`) escolhe o repositório. A palavra `project` fica reservada como tipo em `/new`.
+- **Criar projeto (P22, PR #238).** Sem rota nem evento novos. A tecla `N` da ação `sidebar.newProject` abre o `/new project` pela TUI, e a chave `ui.newProject.repo` (`cwd`, `git_root` ou `empty`; padrão `cwd`) escolhe o repositório. A palavra `project` fica reservada como tipo em `/new`. Desde a N329 (2026-11-26, Fase 11b), o prompt se chama Novo cenário e mostra os três tipos oficiais (Projeto, Tarefa e Chat; Tab troca); a rota `GET /v1/scenario-types` diz quais o daemon já abre (`{items: [{id, creatable}]}`), e a Tarefa aparece desligada até a Fase 9b.
 - **Assistente e Executores a quente (P23, PR #236).** Sem rota nova. A classificação de "quente" passa a ser por caminho (`isHotPath`) nos três chamadores (`PUT /v1/config`, assistente e serviço de Executores): `executors.*` e `profiles.<id>.budget|local` valem na hora, e `profiles.<id>.codex_link`, as chaves fixas de `profiles`, `api.*`, `backup.*` e as demais seções esperam o reinício. Os três emitem `config.changed`; uma peça aberta mantém os limites com que abriu. A recarga fica em `config-reload.ts`; ver a seção 5.13.
 - **`KeyFeed` (P24, PR #235).** Sem rota nem evento: `input/key-feed.tsx` fecha a janela entre a abertura da TUI e a ligação do teclado da caixa de texto.
 - **Tentativas e pausa (P25, PR #241).** Rota nova `GET /v1/plays/:playId/attempts` (`open`, `limit`, `after`; erro `not_found`), com o tipo `ApiPlayAttempt` (`model` e `paused: 'actor' | 'play' | null`), o campo `paused`, **obrigatório**, em `ApiPlay` e a opção `activity: 'open' | 'none'` do cliente (padrão `open`).
@@ -1543,6 +1543,8 @@ O patch fica, com a versão do Ink travada em 8.0.0: se a versão mudar, o patch
 | `ui.chat.decisionFocus` **[proposta]** | `auto` | `auto` (o cartão toma o teclado ao chegar), `manual` (só depois de abrir com Ctrl+O) |
 | `ui.chat.decisionClick` **[proposta]** | `answer` | `answer` (clicar numa opção do cartão de decisão responde), `select` (só a seleciona; a resposta vai com Enter) |
 | `ui.chat.esc` **[proposta]** | `stop` | `stop` (Esc para a resposta do Diretor), `off` |
+| `ui.chat.noScenario` **[proposta]** | `open` | `open` ou `notice` (N329): sem cenário, enviar uma mensagem abre o prompt Novo cenário e guarda o texto, que vai ao Diretor quando o cenário abrir; `notice` só avisa como abrir um |
+| `ui.newProject.type` **[proposta]** | `chat` | `chat` ou `project` (N329; padrão escolhido pelo dono em 2026-11-26): o tipo com que o prompt Novo cenário abre |
 | `ui.overview.confirm` **[proposta]** | `always` | `always` (pausar e retomar pedem `y`), `off` |
 | `ui.overview.recentEvents` **[proposta]** | 8 | inteiro de 1 a 100 |
 | `ui.overview.hiddenEvents` **[proposta]** | `['session.update']` | lista de tipos de evento |

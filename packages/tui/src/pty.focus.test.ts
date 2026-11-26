@@ -40,7 +40,7 @@ const SHOWN = { columns: 213, rows: 83 };
 
 /** A cell well inside each area at `SHOWN` (one-based, as SGR counts): the side bar, the chat, the panel. */
 const AREAS = {
-  sidebar: { col: 10, row: 12, bar: 'New project' },
+  sidebar: { col: 10, row: 12, bar: 'New scenario' },
   chat: { col: 40, row: 12, bar: 'PageUp  Scroll' },
   panel: { col: 150, row: 12, bar: 'Enter  Fold' },
 } as const;

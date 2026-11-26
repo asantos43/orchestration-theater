@@ -10,17 +10,83 @@ import { useTheme } from './theme-context.js';
 import { Text } from './themed-text.js';
 import { useRawKeys, type KeyEvent } from '../keys/use-keymap.js';
 import { MouseModalScope } from '../mouse/index.js';
-import type { NewProjectRepoMode } from '../settings.js';
+import type { NewProjectRepoMode, NewProjectTypeMode } from '../settings.js';
 import { fieldStep } from '../tabs/settings/field.js';
 import { overlayRect, type OverlayFrame } from './overlays.js';
 import { clipStart } from './text.js';
 import { TOKEN } from './theme.js';
 
 /**
- * "New project" (P22 of Phase 7, N208 item 1): the prompt that asks for the repository and opens
- * the `project` scenario by the same route as `ot chat --type project --repo .`. This file has the
- * pure parts (where the prompt starts, how the typed path is read) and the prompt itself.
+ * "New scenario" (P22 of Phase 7, N208 item 1; N329): the prompt that picks the type of the scenario
+ * (project, task or chat), asks for its field and opens it by the same route as `ot chat --type`.
+ * This file has the pure parts (the types, where the prompt starts, how the typed path is read) and
+ * the prompt itself.
  */
+
+/** A type of scenario the prompt shows, and whether the daemon can open it yet. */
+export interface ScenarioTypeChoice {
+  readonly id: string;
+  readonly creatable: boolean;
+}
+
+/**
+ * The types when the daemon does not say them (a daemon older than `GET /v1/scenario-types`): the
+ * three official ones, with the task off, as the daemon of N329 creates them.
+ */
+export const FALLBACK_SCENARIO_TYPES: readonly ScenarioTypeChoice[] = [
+  { id: 'project', creatable: true },
+  { id: 'task', creatable: false },
+  { id: 'chat', creatable: true },
+];
+
+/** What the prompt opens: a project on a repository or a chat, with an optional name. */
+export type NewScenarioRequest =
+  | { readonly type: 'project'; readonly repo: string }
+  | { readonly type: 'chat'; readonly name?: string };
+
+/** Whether the TUI knows how to ask for a type: the daemon may list a type the TUI has no field for. */
+function askable(id: string): id is NewProjectTypeMode {
+  return id === 'project' || id === 'chat';
+}
+
+/** The type the prompt starts on: the one asked for when it can be opened, or else the first that can. */
+export function startType(
+  types: readonly ScenarioTypeChoice[],
+  wanted: string,
+): NewProjectTypeMode | undefined {
+  const open = types.filter((type) => type.creatable && askable(type.id));
+  const hit = open.find((type) => type.id === wanted) ?? open[0];
+  return hit === undefined ? undefined : (hit.id as NewProjectTypeMode);
+}
+
+/** The next type that can be opened, after (`step` 1) or before (-1) `current`, going around. */
+export function stepType(
+  types: readonly ScenarioTypeChoice[],
+  current: string,
+  step: 1 | -1,
+): NewProjectTypeMode {
+  const at = types.findIndex((type) => type.id === current);
+  for (let move = 1; move <= types.length; move++) {
+    const type = types[(((at + step * move) % types.length) + types.length) % types.length];
+    if (type !== undefined && type.creatable && askable(type.id)) return type.id;
+  }
+  return current as NewProjectTypeMode;
+}
+
+/** The request the field stands for, or the catalog key of what is missing. */
+export function newScenarioRequest(
+  type: NewProjectTypeMode,
+  text: string,
+  cwd: string,
+  home: string = homedir(),
+): NewScenarioRequest | { readonly missing: string } {
+  if (type === 'chat') {
+    const name = text.trim();
+    return name === '' ? { type: 'chat' } : { type: 'chat', name };
+  }
+  const repo = resolveRepo(text, cwd, home);
+  return repo === '' ? { missing: 'layout.newProject.noRepo' } : { type: 'project', repo };
+}
 
 /** The root of the Git repository `folder` is in, or `folder` itself when it is in none. */
 export function gitRootOf(folder: string): string {
@@ -60,10 +126,10 @@ export function resolveRepo(text: string, cwd: string, home: string = homedir())
 /** The text of a failed open, in the catalog: a repository the daemon refused, or the other failures. */
 export function openFailure(
   error: unknown,
-  repo: string,
+  repo: string | undefined,
   t: (key: string, params?: Record<string, string>) => string,
 ): string {
-  if (error instanceof ApiRequestError && error.code === 'invalid_input') {
+  if (repo !== undefined && error instanceof ApiRequestError && error.code === 'invalid_input') {
     return t('layout.newProject.badRepo', { repo });
   }
   return t('layout.newProject.failed', {
@@ -73,28 +139,45 @@ export function openFailure(
 
 export interface NewProjectPromptProps {
   readonly screen: OverlayFrame;
-  /** What the field starts with. */
+  /** What the field of the repository starts with. */
   readonly initial: string;
+  /** The type the prompt starts on (`ui.newProject.type`, or `project` for `/new project`). */
+  readonly initialType: string;
   /** The folder a relative path starts at. */
   readonly cwd: string;
-  /** Opens the project on the repository (an absolute path); throws what went wrong. */
-  readonly open: (repo: string) => Promise<void>;
+  /** Reads the types from the daemon; without it, or when it fails, the prompt shows the fallback. */
+  readonly types?: () => Promise<readonly ScenarioTypeChoice[]>;
+  /** Opens the scenario; throws what went wrong. */
+  readonly open: (request: NewScenarioRequest) => Promise<void>;
   readonly onClose: () => void;
   /** The shell's flag that a field has the keyboard: set while the prompt is on screen. */
   readonly capture: RefObject<boolean>;
 }
 
-/** The prompt of "new project": a one-line field for the repository, over the screen. */
+/**
+ * The prompt of a new scenario: the row of the types (Tab and Shift+Tab move, a type the daemon
+ * cannot open yet is shown off and skipped) and a one-line field, over the screen. The project asks
+ * for the repository; the chat asks for a name, which may stay empty.
+ */
 export function NewProjectPrompt(props: NewProjectPromptProps): ReactNode {
   const { t } = useTranslation();
-  const [value, setValue] = useState(props.initial);
-  // The latest value, kept in step with every key, so keys that arrive faster than a render (a
-  // paste, a burst of typing) each act on the text the one before left.
-  const latest = useRef(props.initial);
+  const [types, setTypes] = useState<readonly ScenarioTypeChoice[]>(FALLBACK_SCENARIO_TYPES);
+  const [type, setType] = useState<NewProjectTypeMode>(
+    () => startType(FALLBACK_SCENARIO_TYPES, props.initialType) ?? 'chat',
+  );
+  // One text per type, so going from the project to the chat and back keeps what was typed.
+  const [texts, setTexts] = useState<Record<NewProjectTypeMode, string>>({
+    project: props.initial,
+    chat: '',
+  });
+  // The latest state, kept in step with every key, so keys that arrive faster than a render (a
+  // paste, a burst of typing) each act on what the one before left.
+  // `moved`: the person already changed the type, so the types read later do not move it back.
+  const latest = useRef({ type, texts, types, moved: false });
   const [error, setError] = useState<string | undefined>(undefined);
   const [busy, setBusy] = useState(false);
   const mounted = useRef(true);
-  const { capture } = props;
+  const { capture, types: readTypes, initialType } = props;
   useEffect(() => {
     capture.current = true;
     mounted.current = true;
@@ -103,30 +186,56 @@ export function NewProjectPrompt(props: NewProjectPromptProps): ReactNode {
       mounted.current = false;
     };
   }, [capture]);
+  useEffect(() => {
+    if (readTypes === undefined) return;
+    readTypes().then(
+      (read) => {
+        if (!mounted.current || read.length === 0) return;
+        const now = latest.current;
+        const start = startType(read, now.moved ? now.type : initialType);
+        if (start === undefined) return;
+        latest.current = { ...latest.current, types: read, type: start };
+        setTypes(read);
+        setType(start);
+      },
+      () => undefined,
+    );
+  }, [readTypes, initialType]);
 
   const submit = (): void => {
-    const repo = resolveRepo(latest.current, props.cwd);
-    if (repo === '') {
-      setError(t('layout.newProject.noRepo'));
+    const now = latest.current;
+    const request = newScenarioRequest(now.type, now.texts[now.type], props.cwd);
+    if ('missing' in request) {
+      setError(t(request.missing));
       return;
     }
     setBusy(true);
     setError(undefined);
-    props.open(repo).then(
+    props.open(request).then(
       () => {
         if (mounted.current) props.onClose();
       },
       (failure: unknown) => {
         if (!mounted.current) return;
         setBusy(false);
-        setError(openFailure(failure, repo, t as never));
+        setError(
+          openFailure(failure, request.type === 'project' ? request.repo : undefined, t as never),
+        );
       },
     );
   };
 
   useRawKeys((event: KeyEvent) => {
     if (busy) return;
-    const step = fieldStep(latest.current, event.combo, event.data);
+    const now = latest.current;
+    if (event.combo === 'Tab' || event.combo === 'Shift+Tab') {
+      const next = stepType(now.types, now.type, event.combo === 'Tab' ? 1 : -1);
+      latest.current = { ...now, type: next, moved: true };
+      setType(next);
+      if (error !== undefined) setError(undefined);
+      return;
+    }
+    const step = fieldStep(now.texts[now.type], event.combo, event.data);
     if (step.done === 'cancel') {
       props.onClose();
       return;
@@ -134,14 +243,18 @@ export function NewProjectPrompt(props: NewProjectPromptProps): ReactNode {
     if (error !== undefined) setError(undefined);
     if (step.done === 'submit') submit();
     else {
-      latest.current = step.value;
-      setValue(step.value);
+      const nextTexts = { ...now.texts, [now.type]: step.value };
+      latest.current = { ...now, texts: nextTexts };
+      setTexts(nextTexts);
     }
   });
 
   const palette = useTheme();
-  const rect = overlayRect(props.screen, { width: 72, height: 10 });
+  const rect = overlayRect(props.screen, { width: 72, height: 11 });
   const inner = Math.max(1, rect.width - 4);
+  const value = texts[type];
+  // Off: the daemon cannot open it yet, or the TUI has no field for it yet (the task before Phase 9b).
+  const off = types.filter((choice) => !choice.creatable || !askable(choice.id));
   return (
     <Box
       position="absolute"
@@ -159,8 +272,29 @@ export function NewProjectPrompt(props: NewProjectPromptProps): ReactNode {
         {t('layout.newProject.title')}
       </Text>
       <MouseModalScope>
+        <Text wrap="truncate">
+          {types.map((choice, index) => (
+            <Text key={choice.id}>
+              {index > 0 ? '  ' : ''}
+              {choice.id === type ? (
+                <Text
+                  bold
+                  inverse
+                  color={TOKEN.accent}
+                >{` ${typeLabel(choice.id, t as never)} `}</Text>
+              ) : (
+                <Text
+                  dimColor={off.includes(choice)}
+                >{` ${typeLabel(choice.id, t as never)} `}</Text>
+              )}
+            </Text>
+          ))}
+        </Text>
         <Text dimColor wrap="truncate">
-          {t('layout.newProject.label')}
+          {off.length === 0 ? ' ' : off.map((choice) => typeOff(choice.id, t as never)).join(' · ')}
+        </Text>
+        <Text dimColor wrap="truncate">
+          {t(type === 'chat' ? 'layout.newProject.nameLabel' : 'layout.newProject.label')}
         </Text>
         <Text wrap="truncate">
           <Text color={TOKEN.accent}>{'> '}</Text>
@@ -184,4 +318,18 @@ export function NewProjectPrompt(props: NewProjectPromptProps): ReactNode {
       </MouseModalScope>
     </Box>
   );
+}
+
+type Translate = (key: string, params?: Record<string, string>) => string;
+
+/** The name of a type in the catalog; a type the catalog does not know shows its id. */
+function typeLabel(id: string, t: Translate): string {
+  return askable(id) || id === 'task' ? t(`layout.newProject.types.${id}`) : id;
+}
+
+/** Why a type is off: the task says the phase it comes with; another type says only that it is off. */
+function typeOff(id: string, t: Translate): string {
+  return id === 'task'
+    ? t('layout.newProject.taskOff')
+    : t('layout.newProject.typeOff', { type: typeLabel(id, t) });
 }

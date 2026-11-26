@@ -50,6 +50,8 @@ export interface ChatProps {
   readonly title: string;
   readonly stateLine: string;
   readonly messages: readonly ChatMessage[];
+  /** What the chat says while it has no message; without it, "Nothing said yet." */
+  readonly empty?: string | undefined;
   readonly offset: number;
   readonly onOffset: (offset: number) => void;
   /** The border is dragged with the mouse (N34): the same width action as the keys of the border. */
@@ -169,7 +171,7 @@ export function Chat(props: ChatProps): ReactNode {
       {messages.length === 0 ? (
         <Box height={rows} flexDirection="column">
           <Text dimColor wrap="truncate">
-            {t('layout.chat.empty')}
+            {props.empty ?? t('layout.chat.empty')}
           </Text>
         </Box>
       ) : (

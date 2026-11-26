@@ -458,6 +458,6 @@ describe('the clicks, with the margin of comfortable', () => {
     const folded = await click(app, { col: plus - 3, row: head.row });
     expect(folded).toContain('▸ SCENARIOS');
     const opened = await click(app, { col: plus, row: head.row });
-    expect(opened).toContain('New project');
+    expect(opened).toContain('New scenario');
   });
 });

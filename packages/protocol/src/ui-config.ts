@@ -274,6 +274,12 @@ export const UI_CHAT_DECISION_CLICK_MODES = ['answer', 'select'] as const;
 export const UI_CHAT_DIRECTOR_FOOTER_MODES = ['on', 'off'] as const;
 /** What Esc does while the Director is replying: `stop` asks the daemon to stop the reply (`/stop`); `off` does nothing. */
 export const UI_CHAT_ESC_MODES = ['stop', 'off'] as const;
+/**
+ * What the chat does when the person sends a message with no scenario open (N329): `open` (default)
+ * opens the prompt of a new scenario and keeps the message, which goes to the Director once the
+ * scenario opens; `notice` only says that there is no scenario and keeps the text in the box.
+ */
+export const UI_CHAT_NO_SCENARIO_MODES = ['open', 'notice'] as const;
 
 /**
  * `ui.chat` (P12). Every default is [proposta], since the architecture fixes the behavior and not
@@ -286,7 +292,8 @@ export const UI_CHAT_ESC_MODES = ['stop', 'off'] as const;
  * - `directorFooter` (P14 of Phase 9): `on` (default) or `off`;
  * - `history` (P26, N203 item 2): how many of the last events of the scenario the chat shows when it
  *   opens on a scenario that already talked (40); `0` opens it empty, as before. The most is
- *   `CHAT_HISTORY_MAX` (200), the limit of the `history` message of the socket.
+ *   `CHAT_HISTORY_MAX` (200), the limit of the `history` message of the socket;
+ * - `noScenario` (N329): `open` (default) or `notice`.
  */
 export const UiChatConfigSchema = z.strictObject({
   queue: z.enum(UI_CHAT_QUEUE_MODES).default('daemon'),
@@ -296,6 +303,7 @@ export const UiChatConfigSchema = z.strictObject({
   esc: z.enum(UI_CHAT_ESC_MODES).default('stop'),
   directorFooter: z.enum(UI_CHAT_DIRECTOR_FOOTER_MODES).default('on'),
   history: z.int().min(0).max(200).default(40),
+  noScenario: z.enum(UI_CHAT_NO_SCENARIO_MODES).default('open'),
 });
 export type UiChatConfig = z.output<typeof UiChatConfigSchema>;
 
@@ -413,14 +421,22 @@ export type UiSetupConfig = z.output<typeof UiSetupConfigSchema>;
  */
 export const UI_NEW_PROJECT_REPO_MODES = ['cwd', 'git_root', 'empty'] as const;
 export type UiNewProjectRepoMode = (typeof UI_NEW_PROJECT_REPO_MODES)[number];
+/**
+ * The type the prompt of a new scenario starts on (N329). The prompt shows the three official types
+ * (project, task and chat); a type the daemon cannot create yet is shown off and skipped.
+ */
+export const UI_NEW_PROJECT_TYPE_MODES = ['chat', 'project'] as const;
+export type UiNewProjectTypeMode = (typeof UI_NEW_PROJECT_TYPE_MODES)[number];
 
 /**
  * `ui.newProject` (P22), [proposta]: the architecture fixes that the TUI creates a project and asks
  * for the repository, and not what the prompt starts with, so the pattern is a key with modes:
- * `repo` is `cwd` (default), `git_root` or `empty`.
+ * `repo` is `cwd` (default), `git_root` or `empty`. Since N329 the prompt opens any official type,
+ * and `type` is the one it starts on: `chat` (default) or `project`.
  */
 export const UiNewProjectConfigSchema = z.strictObject({
   repo: z.enum(UI_NEW_PROJECT_REPO_MODES).default('cwd'),
+  type: z.enum(UI_NEW_PROJECT_TYPE_MODES).default('chat'),
 });
 export type UiNewProjectConfig = z.output<typeof UiNewProjectConfigSchema>;
 

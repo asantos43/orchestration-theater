@@ -80,12 +80,25 @@ export interface ChatPanelProps {
   readonly newProject?: ChatNewProject | undefined;
 }
 
-/** The shell's side of `/new project` (P22 of Phase 7). */
+/** A message of the text box, with its attachments. */
+type ChatSubmission = Parameters<typeof bindAttachments>[0];
+
+/** What the prompt of a new scenario starts with, when the chat opens it (N329). */
+export interface NewScenarioPromptOptions {
+  /** The type it starts on; without it, `ui.newProject.type`. */
+  readonly type?: 'project' | 'chat';
+  /** The repository the field starts with (an absolute path); without it, `ui.newProject.repo`. */
+  readonly repo?: string;
+  /** The prompt opened the scenario `scenarioId`. */
+  readonly onOpened?: (scenarioId: string) => void;
+}
+
+/** The shell's side of `/new project` (P22 of Phase 7) and of a message with no scenario (N329). */
 export interface ChatNewProject {
   /** The folder the TUI was opened in: a relative repository starts here. */
   readonly cwd: string;
-  /** Opens the prompt that asks for the repository (the line had none). */
-  readonly prompt: () => void;
+  /** Opens the prompt of a new scenario (the line had no repository, or there is no scenario). */
+  readonly prompt: (options?: NewScenarioPromptOptions) => void;
   /** The command opened the project scenario `scenarioId`: the screen goes to it. */
   readonly opened: (scenarioId: string) => void;
 }
@@ -297,8 +310,54 @@ export function useChatPanel(props: ChatPanelProps): ChatPanel {
             }),
     [client, scenarioId],
   );
+  const deliver = useCallback(
+    async (
+      to: ChatSession,
+      send: NonNullable<typeof upload>,
+      message: ChatSubmission,
+    ): Promise<void> => {
+      if (isShellLine(message.text)) {
+        // Before the upload: a `!` command takes no attachment, and a draft sent then would be orphaned.
+        if (message.attachments.length > 0) throw new Error(t('layout.chat.shellNoAttachments'));
+        to.submit(message.text);
+        return;
+      }
+      const bound = await bindAttachments(message, send);
+      to.submit(bound.text, bound.attachments);
+    },
+    [t],
+  );
+  // A message sent with no scenario (N329, `ui.chat.noScenario: open`): kept until the scenario the
+  // prompt opens is on screen and its socket is open, then sent to its Director.
+  const pendingSend = useRef<{ message: ChatSubmission; scenarioId?: string } | undefined>(
+    undefined,
+  );
+  const [pendingTick, setPendingTick] = useState(0);
+  const noScenarioKey = keyLabel(keymap, 'sidebar.newProject') ?? '';
   const submit = useCallback(
-    async (message: Parameters<typeof bindAttachments>[0]): Promise<void> => {
+    async (message: ChatSubmission): Promise<void> => {
+      if (scenarioId === undefined && client !== undefined && newProject !== undefined) {
+        if (config.chat.noScenario === 'notice') {
+          throw new Error(t('layout.chat.noScenarioSend', { key: noScenarioKey }));
+        }
+        const project = newProjectLine(message.text);
+        if (project !== undefined) {
+          newProject.prompt({
+            type: 'project',
+            ...(project.repo === '' ? {} : { repo: resolveRepo(project.repo, newProject.cwd) }),
+          });
+          return;
+        }
+        pendingSend.current = { message };
+        newProject.prompt({
+          onOpened: (opened) => {
+            if (pendingSend.current?.message !== message) return;
+            pendingSend.current = { message, scenarioId: opened };
+            setPendingTick((n) => n + 1);
+          },
+        });
+        return;
+      }
       if (session === undefined || upload === undefined) {
         throw new Error(t('layout.chat.noConnection'));
       }
@@ -307,23 +366,35 @@ export function useChatPanel(props: ChatPanelProps): ChatPanel {
         // The daemon does not know the folder the TUI was opened in: the prompt asks for the
         // repository, and a typed one goes as an absolute path.
         if (project.repo === '') {
-          newProject.prompt();
+          newProject.prompt({ type: 'project' });
           return;
         }
         session.submit(`/new project ${resolveRepo(project.repo, newProject.cwd)}`);
         return;
       }
-      if (isShellLine(message.text)) {
-        // Before the upload: a `!` command takes no attachment, and a draft sent then would be orphaned.
-        if (message.attachments.length > 0) throw new Error(t('layout.chat.shellNoAttachments'));
-        session.submit(message.text);
-        return;
-      }
-      const bound = await bindAttachments(message, upload);
-      session.submit(bound.text, bound.attachments);
+      await deliver(session, upload, message);
     },
-    [session, upload, t, newProject],
+    [
+      session,
+      upload,
+      t,
+      newProject,
+      scenarioId,
+      client,
+      config.chat.noScenario,
+      noScenarioKey,
+      deliver,
+    ],
   );
+  useEffect(() => {
+    const waiting = pendingSend.current;
+    if (waiting?.scenarioId === undefined || waiting.scenarioId !== scenarioId) return;
+    if (session === undefined || upload === undefined || state.connection !== 'open') return;
+    pendingSend.current = undefined;
+    deliver(session, upload, waiting.message).catch((error: unknown) => {
+      session.local('sendFailed', { message: errorText(error) });
+    });
+  }, [pendingTick, scenarioId, session, upload, state.connection, deliver]);
 
   // ---- What it says of the scenario -------------------------------------------------------------
   const scenarioState = useStoreValue(stores.scenarios, (s) =>
