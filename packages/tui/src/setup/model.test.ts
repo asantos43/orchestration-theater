@@ -15,6 +15,7 @@ import {
   loginCommandOf,
   parseBudgetLine,
   parseExecutorLine,
+  reconciledDraft,
   reordered,
   stepNumber,
   submissionOf,
@@ -125,6 +126,56 @@ describe('the draft of each step', () => {
   it('a draft of one step never answers another step', () => {
     expect(submissionOf({ kind: 'preset', cursor: 0 }, DETECT)).toBeUndefined();
     expect(submissionOf({ kind: 'account', cursor: 0 }, PRESET)).toBeUndefined();
+  });
+});
+
+describe('the draft brought up to date with the accounts (2026-11-26)', () => {
+  const remembered: Draft = {
+    kind: 'detect',
+    rows: [
+      { profileId: 'codex/c', on: true },
+      { profileId: 'claude-code/a', on: false },
+      { profileId: 'codex/gone', on: true },
+    ],
+    cursor: 2,
+  };
+
+  it('keeps the marks and the order, drops what left and adds what came, checked when usable', () => {
+    const prompt: SetupPrompt = {
+      step: 'detect',
+      clients: [],
+      profiles: [
+        profileOf('claude-code/a'),
+        profileOf('codex/b', { usable: false }),
+        profileOf('codex/c'),
+        profileOf('codex/new'),
+      ],
+    };
+    expect(reconciledDraft(remembered, prompt, [])).toEqual({
+      kind: 'detect',
+      rows: [
+        { profileId: 'codex/c', on: true },
+        { profileId: 'claude-code/a', on: false },
+        { profileId: 'codex/b', on: false },
+        { profileId: 'codex/new', on: true },
+      ],
+      cursor: 2,
+    });
+  });
+
+  it('checks an account added in this run, when usable', () => {
+    const rows = reconciledDraft(remembered, DETECT, ['claude-code/a', 'codex/b']);
+    expect(rows.kind === 'detect' ? rows.rows : []).toEqual([
+      { profileId: 'codex/c', on: true },
+      { profileId: 'claude-code/a', on: true },
+      { profileId: 'codex/b', on: false },
+    ]);
+  });
+
+  it('leaves any other step as it was', () => {
+    const preset: Draft = { kind: 'preset', cursor: 1 };
+    expect(reconciledDraft(preset, PRESET, ['codex/c'])).toBe(preset);
+    expect(reconciledDraft(remembered, PRESET, [])).toBe(remembered);
   });
 });
 

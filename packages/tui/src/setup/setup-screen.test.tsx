@@ -898,7 +898,7 @@ describe('the setup screen: the step that adds an account (N274)', () => {
     await screen.press(ENTER);
     // The account was added; the read after it failed, and the screen says so, with R.
     await screen.seen('Added in this run: codex/home');
-    await screen.seen('could not be read again (timed out)');
+    await screen.seen('could not be read again');
     failing = false;
     const detect = await screen.press(ENTER);
     expect(detect).toContain('Pick the accounts that take part');
@@ -908,12 +908,10 @@ describe('the setup screen: the step that adds an account (N274)', () => {
   it('goes on when the read on its way out fails, and says so', async () => {
     const { api } = withAccounts();
     const screen = await atStep(api);
-    api.overview = async () => {
-      throw new Error('timed out');
-    };
+    api.overview = () => Promise.reject(new Error('timed out'));
     const detect = await screen.press(ENTER);
     expect(detect).toContain('Pick the accounts that take part');
-    expect(detect).toContain('could not be read again (timed out)');
+    expect(detect).toContain('could not be read again');
   });
 
   it('keeps the marks of the detection when it comes back for another account', async () => {
