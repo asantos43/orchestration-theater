@@ -19330,6 +19330,13 @@
                 "type": "string",
                 "minLength": 1
               },
+              "executorId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "profileId": {
+                "$ref": "#/$defs/__schema3"
+              },
               "message": {
                 "type": "string"
               }
@@ -20316,6 +20323,13 @@
               "head": {
                 "type": "string",
                 "minLength": 1
+              },
+              "executorId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "profileId": {
+                "$ref": "#/$defs/__schema2"
               },
               "message": {
                 "type": "string"
@@ -21339,6 +21353,13 @@
                 "type": "string",
                 "minLength": 1
               },
+              "executorId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "profileId": {
+                "$ref": "#/$defs/__schema2"
+              },
               "message": {
                 "type": "string"
               }
@@ -22359,6 +22380,13 @@
               "head": {
                 "type": "string",
                 "minLength": 1
+              },
+              "executorId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "profileId": {
+                "$ref": "#/$defs/__schema2"
               },
               "message": {
                 "type": "string"
@@ -23381,6 +23409,13 @@
                 "type": "string",
                 "minLength": 1
               },
+              "executorId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "profileId": {
+                "$ref": "#/$defs/__schema2"
+              },
               "message": {
                 "type": "string"
               }
@@ -24402,6 +24437,13 @@
                 "type": "string",
                 "minLength": 1
               },
+              "executorId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "profileId": {
+                "$ref": "#/$defs/__schema2"
+              },
               "message": {
                 "type": "string"
               }
@@ -24964,9 +25006,7 @@
         "type": "object",
         "properties": {
           "profileId": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 129
+            "$ref": "#/$defs/__schema0"
           },
           "kind": {
             "type": "string",
@@ -25174,6 +25214,13 @@
                   "type": "string",
                   "minLength": 1
                 },
+                "executorId": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "profileId": {
+                  "$ref": "#/$defs/__schema0"
+                },
                 "message": {
                   "type": "string"
                 }
@@ -25198,7 +25245,14 @@
           "models",
           "notes"
         ],
-        "additionalProperties": false
+        "additionalProperties": false,
+        "$defs": {
+          "__schema0": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 129
+          }
+        }
       },
       "errors": {
         "400": [

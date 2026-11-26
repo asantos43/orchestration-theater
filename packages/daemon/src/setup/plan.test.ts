@@ -82,6 +82,32 @@ describe('the plan of the assistant', () => {
     ).toBe(true);
   });
 
+  it('names the Executor and the account a note is about (2026-11-26)', () => {
+    const { plan } = buildPlan(
+      input({
+        preset: null,
+        yaml: 'roles:\n  director:\n    executors: [ghost-low@claude-code/main]\n',
+      }),
+    );
+    expect(plan.notes).toContainEqual(
+      expect.objectContaining({
+        code: 'not_registered',
+        role: 'director',
+        executorId: 'ghost-low@claude-code/main',
+        profileId: 'claude-code/main',
+      }),
+    );
+    expect(plan.notes).toContainEqual(
+      expect.objectContaining({ code: 'budget_suggested', profileId: 'opencode/key' }),
+    );
+    // A note about no Executor carries neither.
+    expect(
+      plan.notes
+        .filter((note) => note.code === 'no_account')
+        .every((note) => !('executorId' in note) && !('profileId' in note)),
+    ).toBe(true);
+  });
+
   it('proposes the suggested cap for an API account with no cap, and not when the file has one', () => {
     expect(buildPlan(input()).plan.budgets).toEqual([
       { profileId: 'opencode/key', dailyUsd: 20, monthlyUsd: 200 },

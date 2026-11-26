@@ -160,13 +160,19 @@ describe('the setup screen: first run', () => {
 
     const review = await screen.seen('This is what will be written.');
     expect(review).toContain('Preset: economical');
-    expect(review).toContain('gpt-5@codex/work');
-    expect(review).toContain('roles.preset');
+    expect(review).toMatch(/codex\/work +1 new Executor/);
+    expect(review).toMatch(/claude-code\/old +out: logged out/);
+    expect(review).toContain('2 keys written · D shows the details');
+    expect(review).not.toContain('roles.preset');
+    expect(await screen.press('d')).toContain('roles.preset');
     await screen.press(ENTER);
 
-    const done = await screen.seen('Done. The configuration was written.');
+    // The finished screen repeats the summary of the review (2026-11-26).
+    const done = await screen.seen('✓ Done. The configuration was written.');
     expect(done).toContain('Preset: economical');
-    expect(done).toContain('Executors registered: gpt-5@codex/work');
+    expect(done).toMatch(/codex\/work +1 new Executor/);
+    expect(done).toContain('✓ 2 keys written');
+    expect(done).toContain('Next step: close the assistant');
     expect(screen.outcomes).toEqual([]);
     await screen.press(ENTER);
     expect(screen.outcomes).toEqual(['confirmed']);
@@ -483,17 +489,19 @@ describe('the setup screen: the other flows', () => {
     await screen.press(ENTER);
     const folded = await screen.seen('This is what will be written.');
     expect(folded).toContain(
-      'claude: no account of this machine has claude-opus-high, claude-sonnet-medium; left out of 2 role(s)',
+      '· 2 models of the preset with no account (claude): claude-opus-high, claude-sonnet-medium',
     );
-    expect(folded).toContain('codex: no account of this machine has codex-sol-high');
-    expect(folded).toContain('No Executor left in 1 role(s): author');
-    expect(folded).toContain('a note of its own');
+    expect(folded).toContain('· 1 model of the preset with no account (codex): codex-sol-high');
+    expect(folded).toContain('⚠ no Executor in author: they follow the when-exhausted rule');
+    // A code the locale does not word shows the daemon's message.
+    expect(folded).toContain('· a note of its own');
     expect(folded).not.toContain('no account has claude-opus-high for reviewer');
-    expect(folded).toContain('D shows each note');
+    expect(folded).toContain('D shows the details');
     const all = await screen.press('d');
+    expect(all).toContain('claude-opus-high has no account: left out of reviewer');
     expect(all).toContain('no account has claude-opus-high for reviewer');
     expect(all).toContain('author is empty');
-    expect(all).toContain('D folds the notes again');
+    expect(all).toContain('D folds the notes and the keys again');
     expect(await screen.press('d')).not.toContain('no account has claude-opus-high for reviewer');
   });
 
@@ -527,8 +535,9 @@ describe('the setup screen: the other flows', () => {
       () => (frame().includes('This is what will be written.') ? frame() : undefined),
       'review',
     );
+    expect(review).toContain('codex-sol-high has no account: left out of author');
     expect(review).toContain('one by one');
-    expect(review).not.toContain('no account of this machine has');
+    expect(review).not.toContain('models of the preset with no account');
   });
 
   it('shows the preset as kept when the plan does not change it', async () => {
