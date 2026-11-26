@@ -393,6 +393,13 @@ export type SetupAdapterInstallResult = z.infer<typeof SetupAdapterInstallResult
 export const SETUP_MODEL_CATALOG_STATES = ['listed', 'assisted', 'unavailable', 'none'] as const;
 export type SetupModelCatalogState = (typeof SETUP_MODEL_CATALOG_STATES)[number];
 
+/**
+ * What a floating id stands for (the `floating` of a model): `account`, the model the client
+ * recommends for the account, chosen by its plan; `family`, the newest model of a family.
+ */
+export const SETUP_MODEL_FLOATING_KINDS = ['account', 'family'] as const;
+export type SetupModelFloating = (typeof SETUP_MODEL_FLOATING_KINDS)[number];
+
 /** One model the catalog lists for the account, with what the preset and the configuration say of it. */
 export const SetupModelSchema = z.strictObject({
   /** The model id as the catalog lists it (what `SetupExecutorRequest.model` takes). */
@@ -402,6 +409,11 @@ export const SetupModelSchema = z.strictObject({
   efforts: z.array(z.string().min(1)),
   local: z.boolean(),
   contextWindow: z.int().min(0).nullable(),
+  /**
+   * The id is an alias the client resolves to a model that can change (N324, the owner on
+   * 2026-11-26: the screen says so); null for a fixed id or when the catalog does not say.
+   */
+  floating: z.enum(SETUP_MODEL_FLOATING_KINDS).nullable(),
   /**
    * The Executors of the preset this model fills on the account (the `discovered` the `account`
    * step would give): empty when the preset does not name it. Unchecking the model is putting

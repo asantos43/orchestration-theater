@@ -261,6 +261,7 @@ function model(
     efforts: ['high'],
     local: false,
     contextWindow: null,
+    floating: null,
     preset: preset.map((executorId) => ({ id: executorId, effort: 'high' })),
     registered: [...registered],
   };

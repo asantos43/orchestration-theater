@@ -12,6 +12,15 @@ export interface ModelCost {
   readonly cacheWritePerMTokUsd?: number;
 }
 
+/**
+ * What a floating id stands for: the client resolves it to a model that can change. `account`:
+ * the model the client recommends for the account (Claude Code `default`, chosen by the plan);
+ * `family`: the newest model of a family (Claude Code `opus`, `sonnet`...). [S: the aliases of the
+ * model configuration of Claude Code]
+ */
+export const MODEL_FLOATING_KINDS = ['account', 'family'] as const;
+export type ModelFloating = (typeof MODEL_FLOATING_KINDS)[number];
+
 /** A model a client offers on a profile (architecture 5.2, 5.7). */
 export interface ModelInfo {
   /** Id as the client's catalog lists it; what goes into the Executor. */
@@ -35,6 +44,11 @@ export interface ModelInfo {
    * fill the `local` block of the profile (architecture 5.7 step 2, 5.9); it is not a secret.
    */
   readonly baseUrl?: string;
+  /**
+   * The id is an alias the client resolves, not a fixed model; `undefined` for a fixed id or when
+   * the catalog does not say. An optional addition: the port stays at 0.1.0 (5.18).
+   */
+  readonly floating?: ModelFloating;
 }
 
 /** What `suggest` fills in for the setup assistant; the Producer confirms it (architecture 5.7). */

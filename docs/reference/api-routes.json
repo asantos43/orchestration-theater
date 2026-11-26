@@ -25071,6 +25071,20 @@
                     }
                   ]
                 },
+                "floating": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "enum": [
+                        "account",
+                        "family"
+                      ]
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
                 "preset": {
                   "type": "array",
                   "items": {
@@ -25114,6 +25128,7 @@
                 "efforts",
                 "local",
                 "contextWindow",
+                "floating",
                 "preset",
                 "registered"
               ],

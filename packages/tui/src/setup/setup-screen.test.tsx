@@ -900,6 +900,7 @@ describe('the setup screen: the list of models after a login (N324, item 2)', ()
       efforts: [],
       local: false,
       contextWindow: null,
+      floating: null,
       preset: [],
       registered: [],
       ...extra,
