@@ -78,6 +78,7 @@ export async function discoverForPreset(input: DiscoverInput): Promise<DiscoverR
         severity: 'warning',
         code: 'catalog_unavailable',
         role: null,
+        profileId,
         message: `the model catalog of ${profileId} could not be read (${
           error instanceof Error ? error.message : String(error)
         }); its models are not proposed`,
@@ -127,6 +128,8 @@ export function matchPreset(input: MatchPresetInput): DiscoverResult {
         severity: 'warning',
         code: 'effort_not_accepted',
         role: null,
+        head,
+        profileId,
         message: `${profileId}: the model ${info.id} does not accept the effort "${split.effort}" the preset names; it is left out`,
       });
       continue;

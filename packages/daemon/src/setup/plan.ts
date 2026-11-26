@@ -4,6 +4,7 @@ import {
   ROLE_IDS,
   planRegistration,
   resolveRoleExecutors,
+  tryParseExecutorId,
   type ExecutorEntry,
   type ProfileFact,
   type RolePresetName,
@@ -83,6 +84,13 @@ export function entryOf(executor: SetupExecutor): ExecutorEntry {
   };
 }
 
+/** The account of a note about an Executor, read from its id (`<model>-<effort>@<client>/<profile>`). */
+function profileOfExecutor(executorId: string | null): { profileId?: string } {
+  if (executorId === null) return {};
+  const parsed = tryParseExecutorId(executorId);
+  return typeof parsed === 'string' ? {} : { profileId: parsed.profileId };
+}
+
 function hasCap(budget: {
   daily_usd?: number | undefined;
   monthly_usd?: number | undefined;
@@ -149,6 +157,8 @@ export function buildPlan(input: PlanInput): PlanResult {
       code: note.code,
       role: note.role,
       ...(note.head === undefined ? {} : { head: note.head }),
+      ...(note.executorId === null ? {} : { executorId: note.executorId }),
+      ...profileOfExecutor(note.executorId),
       message: note.message,
     });
   }
@@ -227,6 +237,7 @@ export function buildPlan(input: PlanInput): PlanResult {
       severity: 'info',
       code: 'budget_suggested',
       role: null,
+      profileId,
       message: `${profileId} is an API account with no cap: the suggested one (setup.suggested_budget) is proposed`,
     });
   }
