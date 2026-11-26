@@ -638,6 +638,68 @@ describe('the models of an account after its login (N324)', () => {
   });
 });
 
+describe('SetupService gives roles to an Executor at the executors step (N333)', () => {
+  async function atExecutors() {
+    const rig = await rigOf({ configYaml: 'roles:\n  preset: quality\n' });
+    const service = rig.service();
+    const run = await service.start('add_account');
+    const after = await service.submit(run.id, { step: 'account', input: { profileId: CODEX } });
+    const discovered = after.done[0]?.step === 'account' ? after.done[0].output.discovered : [];
+    const ids = discovered.map((executor) => executor.id);
+    if (ids.length < 2) throw new Error('expected two Executors');
+    return { rig, service, run, ids };
+  }
+
+  it('puts the Executor at the end of each role, in the review and in the file', async () => {
+    const { rig, service, run, ids } = await atExecutors();
+    const [dropped, kept] = ids;
+    if (dropped === undefined || kept === undefined) throw new Error('expected two Executors');
+    const plain = await service.submit(run.id, {
+      step: 'executors',
+      input: { exclude: [dropped] },
+    });
+    if (plain.prompt?.step !== 'review') throw new Error('expected the review prompt');
+    const without = plain.prompt.plan.roles.find((list) => !list.executors.includes(kept));
+    if (without === undefined) throw new Error('expected a role that lacks the Executor');
+    // The review goes back and answers again, with the roles added.
+    await service.back(run.id);
+    const review = await service.submit(run.id, {
+      step: 'executors',
+      input: { exclude: [dropped], roles: [{ executorId: kept, roles: [without.role] }] },
+    });
+    if (review.prompt?.step !== 'review') throw new Error('expected the review prompt');
+    const list = review.prompt.plan.roles.find((entry) => entry.role === without.role);
+    expect(list?.executors.at(-1)).toBe(kept);
+    expect(review.prompt.plan.writes).toContain(`roles.${without.role}.executors`);
+    await service.confirm(run.id);
+    const config = await rig.config();
+    expect(config.roles[without.role]?.executors?.at(-1)).toBe(kept);
+  });
+
+  it('refuses an Executor of another run, one that was left out, a repeated one and a repeated role', async () => {
+    const { service, run, ids } = await atExecutors();
+    const [dropped, kept] = ids;
+    if (dropped === undefined || kept === undefined) throw new Error('expected two Executors');
+    const submit = (roles: { executorId: string; roles: ('author' | 'critic')[] }[]) =>
+      service.submit(run.id, { step: 'executors', input: { exclude: [dropped], roles } });
+    await expect(
+      submit([{ executorId: `codex-ghost@${CODEX}`, roles: ['author'] }]),
+    ).rejects.toBeInstanceOf(InvalidInput);
+    await expect(submit([{ executorId: dropped, roles: ['author'] }])).rejects.toBeInstanceOf(
+      InvalidInput,
+    );
+    await expect(
+      submit([
+        { executorId: kept, roles: ['author'] },
+        { executorId: kept, roles: ['critic'] },
+      ]),
+    ).rejects.toBeInstanceOf(InvalidInput);
+    await expect(
+      submit([{ executorId: kept, roles: ['author', 'author'] }]),
+    ).rejects.toBeInstanceOf(InvalidInput);
+  });
+});
+
 describe('SetupService looks for the clients again (P18, N321)', () => {
   it('opening and starting search as open; redetect searches as asked and gives the clients with why', async () => {
     const rig = await rigOf({ installed: ['codex'] });

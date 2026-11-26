@@ -159,6 +159,13 @@ const SETUP_KEYS: readonly (readonly [
   ['details', ['D'], ['bar.setup.details', 19]],
   // N326: at the step that adds an account, continue without one. [proposta] S.
   ['skip', ['S'], ['bar.setup.skip', 15]],
+  // N333: at the step of the Executors, the effort of the row under the cursor ([proposta] ←/→); `/`
+  // opens the typed line `<account> <model> [effort]`; at the review, P gives roles to an Executor
+  // with none.
+  ['effortPrev', ['Left']],
+  ['effortNext', ['Right'], ['bar.setup.effort', 13]],
+  ['type', ['/'], ['bar.setup.type', 16]],
+  ['role', ['P'], ['bar.setup.role', 18]],
 ];
 
 function setupActions(): NonNullable<UiRegistryDefinition['actions']> {

@@ -24,7 +24,13 @@ const F6 = '\x1b[15~';
 function settingsWith(open: 'auto' | 'never', readTimeoutMs = 5000): UiSettings {
   return {
     ...TEST_UI_SETTINGS,
-    setup: { open, readTimeoutMs, reviewNotes: 'grouped', modelPick: 'preset' },
+    setup: {
+      open,
+      readTimeoutMs,
+      reviewNotes: 'grouped',
+      modelPick: 'preset',
+      executorsInput: 'list',
+    },
   };
 }
 

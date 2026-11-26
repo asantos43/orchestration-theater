@@ -21,7 +21,11 @@ import { useSuspendTerminal } from '../mouse/index.js';
 import { useRenderControl } from '../render-control.js';
 import { fieldStep } from '../tabs/settings/field.js';
 import { errorText, runInTerminal } from '../tabs/settings/index.js';
-import type { SetupModelPickMode, SetupReviewNotesMode } from '../settings.js';
+import type {
+  SetupExecutorsInputMode,
+  SetupModelPickMode,
+  SetupReviewNotesMode,
+} from '../settings.js';
 import type { SetupApi, SetupFlow } from './api.js';
 import {
   accountFormKey,
@@ -30,6 +34,7 @@ import {
   unknownClientText,
   type AccountForm,
 } from './account-form.js';
+import { accountsOfRun, listOf, seededRows, type ModelsRead } from './executor-list.js';
 import { clientStateText, clientTodoText, setupLines, type SetupLine } from './lines.js';
 import {
   choiceOf,
@@ -40,6 +45,7 @@ import {
   type ModelChoice,
   type ModelPick,
 } from './model-pick.js';
+import { rolePickKey, rolePickLines, rolePickStart, type RolePick } from './role-pick.js';
 import {
   accountClients,
   accountsCursorMoved,
@@ -47,10 +53,12 @@ import {
   adapterToInstall,
   atFirstStep,
   draftKey,
+  effortMoved,
   executorsItem,
   initialDraft,
   isFinished,
   loginCommandOf,
+  noRoleExecutors,
   parseBudgetLine,
   parseExecutorLine,
   reconciledDraft,
@@ -61,6 +69,7 @@ import {
   withBudget,
   withCursor,
   withExecutor,
+  withList,
   withoutExecutor,
   type Draft,
 } from './model.js';
@@ -89,6 +98,11 @@ export interface SetupScreenProps {
   readonly reviewNotes?: SetupReviewNotesMode | undefined;
   /** `ui.setup.modelPick` (N324): which models the list after a login starts checked; `preset`. */
   readonly modelPick?: SetupModelPickMode | undefined;
+  /**
+   * `ui.setup.executorsInput` (N333) [proposta]: `list` shows, per account, the models the client
+   * catalog lists, to check; `prompt` keeps the typed line `<account> <model> [effort]` only.
+   */
+  readonly executorsInput?: SetupExecutorsInputMode | undefined;
 }
 
 type Tone = 'ok' | 'warn' | 'error';
@@ -107,6 +121,8 @@ type Mode =
   | { readonly kind: 'confirmCancel' }
   /** The list of models after a login (N324, item 2). */
   | { readonly kind: 'models'; readonly pick: ModelPick }
+  /** The roles of an Executor the preset left without one, in the review (N333, item 4). */
+  | { readonly kind: 'roles'; readonly pick: RolePick }
   /** The client says the account is not logged in after the login (N324): L again, S goes on. */
   | { readonly kind: 'loginCheck'; readonly profileId: string }
   /** A second subscription of one provider: the daemon wants the notice accepted (N127). */
@@ -142,6 +158,8 @@ interface State {
    * repeats its summary. The daemon's result keeps only the keys and the Executors written.
    */
   readonly confirmedPlan: SetupPlan | undefined;
+  /** The Executor with no role the cursor of the review is on (N333), among the ones the plan lists. */
+  readonly reviewCursor: number;
 }
 
 const IDLE: Mode = { kind: 'idle' };
@@ -166,6 +184,7 @@ const FIRST: State = {
   details: false,
   choices: {},
   confirmedPlan: undefined,
+  reviewCursor: 0,
 };
 
 /** An account exists already: added in this run, or found by the detection. */
@@ -173,7 +192,6 @@ function accountExists(run: SetupRunView, added: readonly string[]): boolean {
   return added.length > 0 || (run.prompt?.step === 'detect' && run.prompt.profiles.length > 0);
 }
 
-/** The hints of the bar that make sense at the step on screen. */
 /** The bar while the form is open: its own keys, fixed as the form reads them (N326). */
 const FORM_BAR: readonly UiBarItem[] = [
   { id: 'accountForm.submit', label: 'Enter', text: { key: 'bar.accountForm.submit' } },
@@ -189,23 +207,38 @@ const MODELS_BAR: readonly UiBarItem[] = [
   { id: 'modelPick.cancel', label: 'Esc', text: { key: 'bar.modelPick.cancel' } },
 ];
 
+/** The bar while the roles of an Executor are chosen at the review (N333): its own keys. */
+const ROLES_BAR: readonly UiBarItem[] = [
+  { id: 'rolePick.confirm', label: 'Enter', text: { key: 'bar.rolePick.confirm' } },
+  { id: 'rolePick.toggle', label: 'Space', text: { key: 'bar.rolePick.toggle' } },
+  { id: 'rolePick.cancel', label: 'Esc', text: { key: 'bar.rolePick.cancel' } },
+];
+
 /** The bar while the account is not logged in after the login (N324). */
 const LOGIN_CHECK_BAR: readonly UiBarItem[] = [
   { id: 'loginCheck.retry', label: 'L', text: { key: 'bar.loginCheck.retry' } },
   { id: 'loginCheck.skip', label: 'S', text: { key: 'bar.loginCheck.skip' } },
 ];
 
-function relevantBar(
-  item: UiBarItem,
-  step: string | undefined,
-  finished: boolean,
-  accounts: boolean,
-  hasAccount: boolean,
-): boolean {
-  if (finished) return item.id === 'setup.advance';
-  if (accounts) {
+/** What the bar needs to know of the screen to pick the hints that make sense at the step. */
+interface BarContext {
+  readonly step: string | undefined;
+  readonly finished: boolean;
+  /** The step that adds an account is on screen. */
+  readonly accounts: boolean;
+  readonly hasAccount: boolean;
+  /** The list of models (N333) has rows on screen. */
+  readonly list: boolean;
+  /** The review has an Executor with no role (N333). */
+  readonly noRole: boolean;
+}
+
+function relevantBar(item: UiBarItem, ctx: BarContext): boolean {
+  const { step } = ctx;
+  if (ctx.finished) return item.id === 'setup.advance';
+  if (ctx.accounts) {
     // N326: S continues without an account only where there is none yet.
-    if (item.id === 'setup.skip') return !hasAccount;
+    if (item.id === 'setup.skip') return !ctx.hasAccount;
     return ![
       'setup.toggle',
       'setup.edit',
@@ -213,6 +246,9 @@ function relevantBar(
       'setup.moveUp',
       'setup.moveDown',
       'setup.details',
+      'setup.effortNext',
+      'setup.type',
+      'setup.role',
     ].includes(item.id);
   }
   switch (item.id) {
@@ -220,12 +256,19 @@ function relevantBar(
     case 'setup.skip':
       return false;
     case 'setup.toggle':
-      return step === 'detect';
+      return step === 'detect' || (step === 'executors' && ctx.list);
     case 'setup.details':
       return step === 'review';
     case 'setup.add':
+      // N333: with the list on screen, typing a line is the `/` key.
+      return step === 'executors' && !ctx.list;
     case 'setup.edit':
       return step === 'executors';
+    case 'setup.effortNext':
+    case 'setup.type':
+      return step === 'executors' && ctx.list;
+    case 'setup.role':
+      return step === 'review' && ctx.noRole;
     default:
       return true;
   }
@@ -239,6 +282,8 @@ export function SetupScreen(props: SetupScreenProps): ReactNode {
   const suspendTerminal = useSuspendTerminal();
   // The step that adds an account exists in the first run, when the API has the routes for it.
   const accountsOn = flow === 'first_run' && api.accounts !== undefined;
+  // N333: the step of the Executors lists the models (`ui.setup.executorsInput`) and the API can read them.
+  const listing = props.executorsInput !== 'prompt' && api.accounts?.models !== undefined;
 
   const start: State = { ...FIRST, details: props.reviewNotes === 'all' };
   const [state, setState] = useState<State>(start);
@@ -274,17 +319,58 @@ export function SetupScreen(props: SetupScreenProps): ReactNode {
     const remembered = memory.current.get(draftKey(run)) ?? onScreen;
     // N324: the step of the Executors opens with what the lists of models after the logins chose.
     const fresh = initialDraft(run.prompt, seedOfChoices(run, ref.current.choices));
+    const draft =
+      remembered?.kind === fresh.kind
+        ? reconciledDraft(remembered, run.prompt, current.added)
+        : fresh;
     update({
       load: 'ready',
       loadError: undefined,
       run,
-      draft:
-        remembered?.kind === fresh.kind
-          ? reconciledDraft(remembered, run.prompt, current.added)
-          : fresh,
+      draft,
       mode: IDLE,
       busy: false,
       message,
+      reviewCursor: 0,
+    });
+    // N333: the step of the Executors lists the models of each account, once per draft.
+    if (draft.kind === 'executors' && draft.list === undefined && listing) void loadList(run);
+  };
+
+  /**
+   * Reads the models of each account of the run and puts them in the draft of the Executors as rows
+   * (N333). What the lists after the logins chose (N324) is merged in: a model checked there is
+   * checked here, a preset Executor unchecked there is unchecked here. A read that fails leaves its
+   * account without rows and says so; the typed line is still there (`/`).
+   */
+  const loadList = async (run: SetupRunView): Promise<void> => {
+    const models = api.accounts?.models;
+    const start = ref.current.draft;
+    if (models === undefined || start.kind !== 'executors') return;
+    update({ draft: { ...start, list: 'loading' } });
+    const reads: ModelsRead[] = await Promise.all(
+      accountsOfRun(run.done).map(async (profileId): Promise<ModelsRead> => {
+        try {
+          return { profileId, found: await models(profileId) };
+        } catch (error) {
+          return { profileId, failure: errorText(error) };
+        }
+      }),
+    );
+    if (!alive.current) return;
+    const now = ref.current;
+    // The person went elsewhere meanwhile: the read belongs to a step that is not on screen.
+    if (now.run === undefined || draftKey(now.run) !== draftKey(run)) return;
+    if (now.draft.kind !== 'executors') return;
+    const { rows, groups } = listOf(reads);
+    const seeded = seededRows(rows, now.draft.executors, now.draft.exclude ?? []);
+    update({
+      draft: withList(now.draft, {
+        rows: seeded.rows,
+        groups,
+        executors: seeded.executors,
+        exclude: seeded.exclude,
+      }),
     });
   };
 
@@ -412,6 +498,10 @@ export function SetupScreen(props: SetupScreenProps): ReactNode {
     if (run.step === 'review') {
       if (run.prompt?.step === 'review') update({ confirmedPlan: run.prompt.plan });
       void command(run, () => api.confirm(run.id));
+      return;
+    }
+    if (draft.kind === 'executors' && draft.list === 'loading') {
+      say(t('setup.executors.waitList'), 'warn');
       return;
     }
     const body = submissionOf(draft, run.prompt);
@@ -740,6 +830,74 @@ export function SetupScreen(props: SetupScreenProps): ReactNode {
     void refresh({ text: t('setup.models.skipped', { profile: pick.profileId }), tone: 'warn' });
   };
 
+  /**
+   * Gives roles to an Executor of the plan (N333, item 4) [proposta]: the review goes back to the
+   * step of the Executors and answers it again with the same input plus the roles, which the daemon
+   * puts at the end of the list of each role. A refusal leaves the run at the step of the Executors,
+   * and says why.
+   */
+  const assignRoles = async (
+    run: SetupRunView,
+    executorId: string,
+    roles: RolePick['checked'],
+  ): Promise<void> => {
+    const answered = run.done.find((entry) => entry.step === 'executors');
+    if (answered === undefined) return;
+    const previous = answered.input;
+    const placements = [
+      ...previous.roles.filter((place) => place.executorId !== executorId),
+      { executorId, roles: [...roles] },
+    ];
+    update({ busy: true, mode: IDLE, message: undefined });
+    let at: SetupRunView = run;
+    try {
+      at = await api.back(run.id);
+      const next = await api.submit(at.id, {
+        step: 'executors',
+        input: {
+          executors: previous.executors,
+          budgets: previous.budgets,
+          exclude: previous.exclude,
+          roles: placements,
+        },
+      });
+      if (!alive.current) return;
+      const key = `${run.id}/executors`;
+      const kept = memory.current.get(key);
+      if (kept?.kind === 'executors') memory.current.set(key, { ...kept, placements });
+      show(next, {
+        text: t('setup.review.rolesGiven', { executor: executorId, roles: roles.join(', ') }),
+        tone: 'ok',
+      });
+    } catch (error) {
+      if (!alive.current) return;
+      if (error instanceof ApiRequestError && error.code === 'conflict') {
+        await reread(run, {
+          text: t('setup.refused', { message: errorText(error) }),
+          tone: 'error',
+        });
+        return;
+      }
+      if (at !== run)
+        show(at, { text: t('setup.refused', { message: errorText(error) }), tone: 'error' });
+      else refused(error);
+    }
+  };
+
+  /** The keys of the list of roles of an Executor (N333): Enter gives them, Esc leaves it. */
+  const onRolesKey = (run: SetupRunView, pick: RolePick, combo: string | undefined): void => {
+    const step = rolePickKey(pick, combo);
+    if (step.done === undefined) {
+      update({ mode: { kind: 'roles', pick: step.pick } });
+      return;
+    }
+    if (step.done === 'cancel') {
+      update({ mode: IDLE });
+      return;
+    }
+    void assignRoles(run, step.pick.executorId, step.pick.checked);
+  };
+
   const submitPrompt = (current: Extract<Mode, { kind: 'prompt' }>, draft: Draft): void => {
     if (current.purpose === 'executor') {
       const executor = parseExecutorLine(current.value);
@@ -894,6 +1052,10 @@ export function SetupScreen(props: SetupScreenProps): ReactNode {
       onLoginCheckKey(mode.profileId, event.combo);
       return;
     }
+    if (mode.kind === 'roles') {
+      onRolesKey(run, mode.pick, event.combo);
+      return;
+    }
     if (mode.kind === 'form') {
       const step = accountFormKey(mode.form, event.combo, event.data);
       if (step.done === 'cancel') update({ mode: IDLE });
@@ -925,14 +1087,38 @@ export function SetupScreen(props: SetupScreenProps): ReactNode {
         back(run);
         return;
       case 'itemPrev':
-        update({ draft: withCursor(draft, run.prompt, -1) });
+      case 'itemNext': {
+        const delta = action === 'setup.itemPrev' ? -1 : 1;
+        if (run.step === 'review' && run.prompt?.step === 'review') {
+          // N333: the cursor of the review walks the Executors with no role.
+          const last = Math.max(0, noRoleExecutors(run.prompt.plan).length - 1);
+          update({ reviewCursor: Math.min(last, Math.max(0, current.reviewCursor + delta)) });
+          return;
+        }
+        update({ draft: withCursor(draft, run.prompt, delta) });
         return;
-      case 'itemNext':
-        update({ draft: withCursor(draft, run.prompt, 1) });
-        return;
+      }
       case 'toggle':
         update({ draft: toggled(draft) });
         return;
+      case 'effortPrev':
+        update({ draft: effortMoved(draft, -1) });
+        return;
+      case 'effortNext':
+        update({ draft: effortMoved(draft, 1) });
+        return;
+      case 'type':
+        if (draft.kind === 'executors') {
+          update({ mode: { kind: 'prompt', purpose: 'executor', profileId: '', value: '' } });
+        }
+        return;
+      case 'role': {
+        if (run.step !== 'review' || run.prompt?.step !== 'review' || isFinished(run)) return;
+        const id = noRoleExecutors(run.prompt.plan)[current.reviewCursor];
+        if (id === undefined) say(t('setup.review.noRoleNone'), 'warn');
+        else update({ mode: { kind: 'roles', pick: rolePickStart(id) } });
+        return;
+      }
       case 'moveUp':
         update({ draft: reordered(draft, -1) });
         return;
@@ -940,9 +1126,10 @@ export function SetupScreen(props: SetupScreenProps): ReactNode {
         update({ draft: reordered(draft, 1) });
         return;
       case 'add':
-        if (draft.kind === 'executors') {
-          update({ mode: { kind: 'prompt', purpose: 'executor', profileId: '', value: '' } });
-        }
+        if (draft.kind !== 'executors') return;
+        // N333: with the list on screen, a typed line is the `/` key.
+        if ((draft.rows?.length ?? 0) > 0) say(t('setup.executors.useType'), 'warn');
+        else update({ mode: { kind: 'prompt', purpose: 'executor', profileId: '', value: '' } });
         return;
       case 'edit': {
         const item = executorsItem(draft, run.prompt);
@@ -1021,6 +1208,17 @@ export function SetupScreen(props: SetupScreenProps): ReactNode {
       });
     }
     head.push({ key: 'mp.gap', text: '' });
+  } else if (mode.kind === 'roles') {
+    for (const line of rolePickLines(mode.pick, mode.pick.executorId, t)) {
+      head.push({
+        key: line.key,
+        text: line.text,
+        ...(line.tone === 'accent' ? { color: TOKEN.accent } : {}),
+        ...(line.dim === true ? { dim: true } : {}),
+        ...(line.selected === true ? { selected: true } : {}),
+      });
+    }
+    head.push({ key: 'rp.gap', text: '' });
   } else if (mode.kind === 'loginCheck') {
     head.push({ key: 'lc.hint', text: t('setup.models.loginCheckKeys'), dim: true });
   } else if (mode.kind === 'confirmNotice') {
@@ -1070,6 +1268,10 @@ export function SetupScreen(props: SetupScreenProps): ReactNode {
           closeKey,
           reviewNotes: { all: state.details, key: keyLabel(keymap, 'setup.details') ?? '' },
           confirmedPlan: state.confirmedPlan,
+          reviewRoles:
+            run.step === 'review' && !finished
+              ? { cursor: state.reviewCursor, key: keyLabel(keymap, 'setup.role') ?? '' }
+              : undefined,
           accounts: accountsOn
             ? {
                 active: onAccounts,
@@ -1126,21 +1328,31 @@ export function SetupScreen(props: SetupScreenProps): ReactNode {
   const first = Math.max(0, cursorLine - Math.max(1, innerHeight - 1));
 
   const hasAccountNow = run !== undefined && accountExists(run, state.added);
+  const barContext: BarContext = {
+    step: run?.step,
+    finished,
+    accounts: onAccounts,
+    hasAccount: hasAccountNow,
+    list: draft.kind === 'executors' && (draft.rows?.length ?? 0) > 0,
+    noRole: run?.prompt?.step === 'review' && noRoleExecutors(run.prompt.plan).length > 0,
+  };
   const bar =
     mode.kind === 'form'
       ? FORM_BAR
       : mode.kind === 'models'
         ? MODELS_BAR
-        : mode.kind === 'loginCheck'
-          ? LOGIN_CHECK_BAR
-          : deriveShortcutBar(keymap.registry, keymap.keymap, ['setup'])
-              .filter((item) => relevantBar(item, run?.step, finished, onAccounts, hasAccountNow))
-              .map((item) =>
-                // N326: with no account yet, Enter at the step opens the form instead of going on.
-                onAccounts && !hasAccountNow && item.id === 'setup.advance'
-                  ? { ...item, text: { key: 'bar.setup.openForm' } }
-                  : item,
-              );
+        : mode.kind === 'roles'
+          ? ROLES_BAR
+          : mode.kind === 'loginCheck'
+            ? LOGIN_CHECK_BAR
+            : deriveShortcutBar(keymap.registry, keymap.keymap, ['setup'])
+                .filter((item) => relevantBar(item, barContext))
+                .map((item) =>
+                  // N326: with no account yet, Enter at the step opens the form instead of going on.
+                  onAccounts && !hasAccountNow && item.id === 'setup.advance'
+                    ? { ...item, text: { key: 'bar.setup.openForm' } }
+                    : item,
+                );
 
   return (
     <Box flexDirection="column" width={columns} height={rows}>

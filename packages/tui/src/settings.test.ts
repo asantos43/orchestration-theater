@@ -54,7 +54,13 @@ describe('parseUiSettings', () => {
       theme: 'otheater',
       clipboardCopy: 'osc52',
       tuiMouse: { wheelLines: 3, copyMaxBytes: 100_000 },
-      setup: { open: 'auto', readTimeoutMs: 5000, reviewNotes: 'grouped', modelPick: 'preset' },
+      setup: {
+        open: 'auto',
+        readTimeoutMs: 5000,
+        reviewNotes: 'grouped',
+        modelPick: 'preset',
+        executorsInput: 'list',
+      },
       newProject: { repo: 'cwd', type: 'chat' },
       sidebar: { finishedPlays: 'collapsed', finishedLimit: 20 },
       login: { browser: 'auto' },
@@ -224,17 +230,29 @@ describe('parseUiSettings', () => {
       readTimeoutMs: 5000,
       reviewNotes: 'grouped',
       modelPick: 'preset',
+      executorsInput: 'list',
     });
     expect(
       parseUiSettings({
-        setup: { open: 'never', readTimeoutMs: 900, reviewNotes: 'all', modelPick: 'none' },
+        setup: {
+          open: 'never',
+          readTimeoutMs: 900,
+          reviewNotes: 'all',
+          modelPick: 'none',
+          executorsInput: 'prompt',
+        },
       }).setup,
     ).toEqual({
       open: 'never',
       readTimeoutMs: 900,
       reviewNotes: 'all',
       modelPick: 'none',
+      executorsInput: 'prompt',
     });
+    // N333: a mode of executorsInput the TUI does not know falls back to list.
+    expect(parseUiSettings({ setup: { executorsInput: 'some' } }).setup.executorsInput).toBe(
+      'list',
+    );
     // N324: a mode of modelPick the TUI does not know falls back to preset.
     expect(parseUiSettings({ setup: { modelPick: 'some' } }).setup.modelPick).toBe('preset');
     // N324: a mode the TUI does not know falls back to grouped.

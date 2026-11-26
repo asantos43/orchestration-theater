@@ -211,6 +211,9 @@ describe.skipIf(NO_LAUNCHER).each(LOCALES)(
           await seen(app, T('setup.hint.preset'));
           await press(app, ENTER);
           await seen(app, T('setup.hint.executors'));
+          // The step reads the models of each account first (N333); the only account here has a
+          // client that lists none, so the list ends in the line that says so.
+          await seen(app, T('setup.executors.noClient'));
           await press(app, ENTER);
           await seen(app, T('setup.hint.review'));
           await press(app, ENTER);

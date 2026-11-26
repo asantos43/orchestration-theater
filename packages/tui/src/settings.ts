@@ -165,6 +165,8 @@ export const SETUP_REVIEW_NOTES_MODES = ['grouped', 'all'] as const;
 export type SetupReviewNotesMode = (typeof SETUP_REVIEW_NOTES_MODES)[number];
 export const SETUP_MODEL_PICK_MODES = ['preset', 'all', 'none'] as const;
 export type SetupModelPickMode = (typeof SETUP_MODEL_PICK_MODES)[number];
+export const SETUP_EXECUTORS_INPUT_MODES = ['list', 'prompt'] as const;
+export type SetupExecutorsInputMode = (typeof SETUP_EXECUTORS_INPUT_MODES)[number];
 
 /** `ui.setup` (P17): whether the first run opens the assistant, and how long the TUI waits to know. */
 export interface UiSetupSettings {
@@ -174,6 +176,8 @@ export interface UiSetupSettings {
   readonly reviewNotes: SetupReviewNotesMode;
   /** Which models of the list after a login start checked (N324): the preset's, all or none. */
   readonly modelPick: SetupModelPickMode;
+  /** How the step of the Executors takes them (N333): a list of models to check, or a typed line. */
+  readonly executorsInput: SetupExecutorsInputMode;
 }
 
 export const NEW_PROJECT_REPO_MODES = ['cwd', 'git_root', 'empty'] as const;
@@ -321,6 +325,7 @@ export const DEFAULT_SETUP: UiSetupSettings = {
   readTimeoutMs: 5000,
   reviewNotes: 'grouped',
   modelPick: 'preset',
+  executorsInput: 'list',
 };
 
 export const DEFAULT_NEW_PROJECT: UiNewProjectSettings = { repo: 'cwd', type: 'chat' };
@@ -568,6 +573,11 @@ export function parseUiSettings(ui: unknown): UiSettings {
         DEFAULT_SETUP.reviewNotes,
       ),
       modelPick: oneOf(field(setup, 'modelPick'), SETUP_MODEL_PICK_MODES, DEFAULT_SETUP.modelPick),
+      executorsInput: oneOf(
+        field(setup, 'executorsInput'),
+        SETUP_EXECUTORS_INPUT_MODES,
+        DEFAULT_SETUP.executorsInput,
+      ),
     },
     newProject: {
       repo: oneOf(field(newProject, 'repo'), NEW_PROJECT_REPO_MODES, DEFAULT_NEW_PROJECT.repo),

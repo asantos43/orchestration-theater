@@ -9,7 +9,8 @@ import type {
 } from '@otheater/protocol';
 import type { TFunction } from 'i18next';
 import { TOKEN } from '../layout/theme.js';
-import { accountClients, stepNumber, type Draft } from './model.js';
+import { rowRoles, type ExecutorRow } from './executor-list.js';
+import { accountClients, noRoleExecutors, stepNumber, type Draft } from './model.js';
 
 /** One row of the setup screen, before it is cut to the width. */
 export interface SetupLine {
@@ -39,6 +40,17 @@ export interface SetupLinesInput {
    * repeats its summary. Absent (a run confirmed elsewhere), it lists what the result holds.
    */
   readonly confirmedPlan?: SetupPlan | undefined;
+  /**
+   * N333: the review lets the person give roles to an Executor that has none: which of those the
+   * cursor is on, and the label of the key (P). Absent: the review draws no cursor.
+   */
+  readonly reviewRoles?: ReviewRolesView | undefined;
+}
+
+/** The cursor of the review over the Executors with no role (N333). */
+export interface ReviewRolesView {
+  readonly cursor: number;
+  readonly key: string;
 }
 
 /** How the review draws its notes (N324, `ui.setup.reviewNotes`). */
@@ -246,15 +258,75 @@ function presetLines(
   }));
 }
 
+/** The line of a model of the list (N333): `[x] model ‹effort›  → roles`. */
+function rowText(row: ExecutorRow, roles: readonly string[], t: TFunction): string {
+  const box = row.registered ? '[=]' : row.on ? '[x]' : '[ ]';
+  const name = row.name !== null && row.name !== row.model ? ` (${row.name})` : '';
+  const effort = row.effort === null || row.registered ? '' : `  ‹${row.effort}›`;
+  const tags = [
+    ...(row.floating === null ? [] : [t(`setup.models.floating.${row.floating}`)]),
+    ...(row.registered ? [t('setup.models.registered')] : []),
+  ];
+  const beside =
+    row.on && roles.length > 0
+      ? `  ${t('setup.executors.rowRoles', { roles: roles.join(', ') })}`
+      : '';
+  return `${box} ${row.model}${name}${effort}${beside}${tags.length > 0 ? `  ${tags.join(', ')}` : ''}`;
+}
+
+/** What a group of the list says when it has no rows, or why its models could not be listed. */
+function groupNote(
+  group: NonNullable<Extract<Draft, { kind: 'executors' }>['groups']>[number],
+  rows: number,
+  t: TFunction,
+): string | undefined {
+  switch (group.catalog) {
+    case 'listed':
+      return rows === 0 ? t('setup.executors.noModels') : undefined;
+    case 'assisted':
+      return t('setup.executors.assisted');
+    case 'none':
+      return t('setup.executors.noClient');
+    case 'unavailable':
+      return t('setup.executors.unavailable', { reason: group.reason ?? '' });
+    case 'failed':
+      return t('setup.executors.listFailed', { reason: group.reason ?? '' });
+  }
+}
+
 function executorsLines(
   prompt: Extract<SetupPrompt, { step: 'executors' }>,
   draft: Extract<Draft, { kind: 'executors' }>,
   t: TFunction,
+  run?: SetupRunView,
 ): SetupLine[] {
+  const rows = draft.rows ?? [];
   const lines: SetupLine[] = [
     { key: 'h.list', text: t('setup.executors.listTitle'), color: TOKEN.accent, bold: true },
   ];
-  if (draft.executors.length === 0) {
+  if (draft.list === 'loading') {
+    lines.push({ key: 'e.loading', text: t('setup.executors.loading'), dim: true });
+  }
+  // N333: per account, the models its client lists, with the effort and the roles beside each one.
+  for (const group of draft.groups ?? []) {
+    const own = rows
+      .map((row, index) => ({ row, index }))
+      .filter((entry) => entry.row.profileId === group.profileId);
+    lines.push({ key: `g.${group.profileId}`, text: group.profileId, bold: true });
+    const note = groupNote(group, own.length, t);
+    if (note !== undefined)
+      lines.push({ key: `g.${group.profileId}.note`, indent: 2, text: note, dim: true });
+    for (const { row, index } of own) {
+      lines.push({
+        key: `r.${String(index)}`,
+        indent: 2,
+        text: rowText(row, rowRoles(run, row), t),
+        selected: index === draft.cursor,
+        ...(row.registered ? { dim: true } : {}),
+      });
+    }
+  }
+  if (draft.executors.length === 0 && rows.length === 0 && draft.list !== 'loading') {
     lines.push({ key: 'e.none', text: t('setup.executors.none'), dim: true });
   }
   if (draft.exclude !== undefined && draft.exclude.length > 0) {
@@ -278,7 +350,7 @@ function executorsLines(
               model: executor.model,
               effort: executor.effort,
             }),
-      selected: index === draft.cursor,
+      selected: rows.length + index === draft.cursor,
     });
   });
   lines.push({
@@ -306,7 +378,7 @@ function executorsLines(
               daily: usdText(set.dailyUsd, t),
               monthly: usdText(set.monthlyUsd, t),
             }),
-      selected: draft.executors.length + index === draft.cursor,
+      selected: rows.length + draft.executors.length + index === draft.cursor,
     });
   });
   return lines;
@@ -370,9 +442,10 @@ function planLines(
   t: TFunction,
   view?: ReviewNotesView,
   run?: SetupRunView,
+  roles?: ReviewRolesView,
 ): SetupLine[] {
   return [
-    ...summaryLines(plan, t, run),
+    ...summaryLines(plan, t, run, roles),
     ...notesLines(plan.notes, t, view, nameOf(plan, run)),
     ...writesLines(plan.writes, t, view),
   ];
@@ -389,7 +462,12 @@ function nameOf(plan: SetupPlan, run: SetupRunView | undefined): (id: string) =>
 }
 
 /** The preset, the accounts and the roles: what the review and the finished screen both show. */
-function summaryLines(plan: SetupPlan, t: TFunction, run: SetupRunView | undefined): SetupLine[] {
+function summaryLines(
+  plan: SetupPlan,
+  t: TFunction,
+  run: SetupRunView | undefined,
+  pick?: ReviewRolesView,
+): SetupLine[] {
   const lines: SetupLine[] = [
     {
       key: 'preset',
@@ -403,6 +481,8 @@ function summaryLines(plan: SetupPlan, t: TFunction, run: SetupRunView | undefin
   const name = nameOf(plan, run);
   const taking = takingOf(run);
   const out = outOf(run, t);
+  // N333: the Executor with no role the cursor is on (P gives it roles).
+  const under = pick === undefined ? undefined : noRoleExecutors(plan)[pick.cursor];
   const ids = [
     ...plan.executors.map((executor) => executor.id),
     ...plan.roles.flatMap((role) => role.executors),
@@ -439,10 +519,17 @@ function summaryLines(plan: SetupPlan, t: TFunction, run: SetupRunView | undefin
       const roles = plan.roles
         .filter((role) => role.executors.includes(id))
         .map((role) => role.role);
+      const selected = pick !== undefined && roles.length === 0 && id === under;
       lines.push({
         key: `x.${id}`,
         indent: 4,
-        text: `${padHead(splitId(id).head)}  ${roles.length === 0 ? t('setup.review.noRole') : roles.join(', ')}`,
+        text: `${padHead(splitId(id).head)}  ${
+          roles.length === 0
+            ? t('setup.review.noRole') +
+              (selected ? `  (${t('setup.review.giveRole', { key: pick.key })})` : '')
+            : roles.join(', ')
+        }`,
+        ...(selected ? { selected: true } : {}),
       });
     }
     const budget = plan.budgets.find((entry) => entry.profileId === profileId);
@@ -695,6 +782,13 @@ function finishedLines(input: SetupLinesInput): SetupLine[] {
   return lines;
 }
 
+/** The hint of a step: the Executors step with the list of models (N333) has its own. */
+function hintOf(step: string, draft: Draft): string {
+  return step === 'executors' && draft.kind === 'executors' && (draft.rows?.length ?? 0) > 0
+    ? 'executorsList'
+    : step;
+}
+
 /** The rows of the screen: the progress, the hint of the step and the step itself (or the end). */
 export function setupLines(input: SetupLinesInput): SetupLine[] {
   const { run, draft, t, accounts } = input;
@@ -715,7 +809,7 @@ export function setupLines(input: SetupLinesInput): SetupLine[] {
     return lines;
   }
   lines.push(
-    { key: 'hint', text: t(`setup.hint.${prompt.step}`), dim: true },
+    { key: 'hint', text: t(`setup.hint.${hintOf(prompt.step, draft)}`), dim: true },
     { key: 'gap2', text: '' },
   );
   switch (prompt.step) {
@@ -729,10 +823,10 @@ export function setupLines(input: SetupLinesInput): SetupLine[] {
       if (draft.kind === 'preset') lines.push(...presetLines(prompt, draft, t));
       break;
     case 'executors':
-      if (draft.kind === 'executors') lines.push(...executorsLines(prompt, draft, t));
+      if (draft.kind === 'executors') lines.push(...executorsLines(prompt, draft, t, run));
       break;
     case 'review':
-      lines.push(...planLines(prompt.plan, t, input.reviewNotes, run));
+      lines.push(...planLines(prompt.plan, t, input.reviewNotes, run, input.reviewRoles));
       break;
   }
   return lines;

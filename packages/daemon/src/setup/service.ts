@@ -42,6 +42,7 @@ import {
   type SetupRedetectResult,
   type SetupPrompt,
   type SetupResult,
+  type SetupRolePlacement,
   type SetupRunView,
   type SetupStepId,
   type SetupStepSubmission,
@@ -134,6 +135,8 @@ interface RunFacts {
   readonly discovered: readonly SetupExecutor[];
   readonly registered: readonly SetupExecutor[];
   readonly givenBudgets: readonly SetupBudget[];
+  /** N333: the roles given at the review to Executors of the run. */
+  readonly placements: readonly SetupRolePlacement[];
   readonly notes: readonly SetupNote[];
 }
 
@@ -169,6 +172,7 @@ function factsOf(done: readonly SetupDoneStep[]): RunFacts {
   let discovered: SetupExecutor[] = [];
   let registered: SetupExecutor[] = [];
   let givenBudgets: SetupBudget[] = [];
+  let placements: SetupRolePlacement[] = [];
   const notes: SetupNote[] = [];
   for (const entry of done) {
     switch (entry.step) {
@@ -190,12 +194,13 @@ function factsOf(done: readonly SetupDoneStep[]): RunFacts {
         discovered = discovered.filter((executor) => !excluded.has(executor.id));
         registered = [...entry.output.executors];
         givenBudgets = [...entry.input.budgets];
+        placements = [...entry.input.roles];
         notes.push(...entry.output.notes);
         break;
       }
     }
   }
-  return { accounts, preset, discovered, registered, givenBudgets, notes };
+  return { accounts, preset, discovered, registered, givenBudgets, placements, notes };
 }
 
 /** One change of `config.yaml` the confirmation makes. */
@@ -563,6 +568,7 @@ export class SetupService {
       discovered: facts.discovered,
       registered: facts.registered,
       givenBudgets: facts.givenBudgets,
+      placements: facts.placements,
       carriedNotes: facts.notes,
       settings: {
         suggestedBudget: {
@@ -797,6 +803,23 @@ export class SetupService {
           profileId: request.profileId,
           message: issue.message,
         });
+      }
+    }
+    // N333: a role is given to an Executor of this run: the ones the catalogs found (not left out)
+    // and the ones this answer registers.
+    const placed = new Set<string>();
+    for (const placement of input.roles) {
+      if (!taken.has(placement.executorId)) {
+        throw new InvalidInput(
+          `The Executor ${placement.executorId} is not one of this run: only those can be given roles`,
+        );
+      }
+      if (placed.has(placement.executorId)) {
+        throw new InvalidInput(`The roles of ${placement.executorId} are given twice`);
+      }
+      placed.add(placement.executorId);
+      if (new Set(placement.roles).size !== placement.roles.length) {
+        throw new InvalidInput(`A role is repeated for ${placement.executorId}`);
       }
     }
     const seen = new Set<string>();
