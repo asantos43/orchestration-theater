@@ -338,6 +338,15 @@ export const QUOTA_MINIMAX_USAGE_COUNT_MEANS = ['remaining', 'used'] as const;
  */
 export const QUOTA_OPENCODE_MODES = ['auto', 'codex_link', 'ledger', 'off'] as const;
 /**
+ * [proposta] `quota.track` (2026-11-26): which accounts the quota service reads. `always` (default,
+ * the owner's choice "Ao subir e ao cadastrar"): every active or draining subscription
+ * (`token_plan`) is read from the start of the daemon, and a new one as soon as it is registered;
+ * `on_session`: an account is read only once a session of it opens (the behaviour before this key,
+ * apart from the OpenCode profiles, which are always tracked at the start).
+ */
+export const QUOTA_TRACK_MODES = ['always', 'on_session'] as const;
+export type QuotaTrackMode = (typeof QUOTA_TRACK_MODES)[number];
+/**
  * [proposta] `usage.subscription_display` (architecture 5.6, P10): what the screens show for a
  * subscription profile. `quota_and_equivalent` (default) shows the quota and, beside it, the API
  * equivalent; `quota` shows only the quota; `prorated` divides the `monthly_price_usd` of the plan
@@ -3063,6 +3072,8 @@ export const DaemonConfigSchema = z
      * `read` calls where polling is on. The defaults follow N123, decided by the owner on
      * 2026-11-18.
      *
+     * `track` ([proposta], 2026-11-26): see {@link QUOTA_TRACK_MODES}.
+     *
      * `recheck_every` (P9, architecture 5.6, "Consulta sem horário de reset"): how long a profile
      * that is exhausted with no known end waits before the daemon looks at it again, using only
      * signals that never call the model. `15m` by default; `off` never looks again (the profile
@@ -3071,6 +3082,7 @@ export const DaemonConfigSchema = z
      */
     quota: z
       .strictObject({
+        track: z.enum(QUOTA_TRACK_MODES).default('always'),
         near_limit_at: z.number().gt(0).max(1).default(0.8),
         stale_after: DurationSchema.prefault('10m'),
         probe: z

@@ -13,6 +13,7 @@ import { wakeupSettingsOf } from './wakeups.js';
 describe('quota.* keys [proposta]', () => {
   it('defaults to 80% near the limit, 10 minutes of freshness and both ways of reading', () => {
     expect(parseConfig('').quota).toEqual({
+      track: 'always',
       near_limit_at: 0.8,
       stale_after: 600_000,
       recheck_every: 900_000,

@@ -82,8 +82,10 @@ export const ProfileRemovedPayloadSchema = z.strictObject({
  * select; `detail` names the role), `exec_draining` (P28a: `ot profile exec` ran the client of a
  * profile that is draining), `exec_refused` (P28a: `ot profile exec` did not run it; `detail` says
  * why: `removed`, `no_client` or `no_profile_cli`), `shim_conflict` (P28b: the command of the profile
- * was not made because another program in `PATH` has that name; `detail` is the name) and
- * `shim_failed` (P28b: the commands could not be written; `detail` is the error code).
+ * was not made because another program in `PATH` has that name; `detail` is the name),
+ * `shim_failed` (P28b: the commands could not be written; `detail` is the error code) and
+ * `quota_track_failed` ([proposta], `quota.track` `always`: the account just registered could not be
+ * handed to the quota service; it is read once a session of it opens).
  */
 export const PROFILE_WARNING_KINDS = [
   'login_probe_failed',
@@ -96,6 +98,7 @@ export const PROFILE_WARNING_KINDS = [
   'exec_refused',
   'shim_conflict',
   'shim_failed',
+  'quota_track_failed',
 ] as const;
 export type ProfileWarningKind = (typeof PROFILE_WARNING_KINDS)[number];
 

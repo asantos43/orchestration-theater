@@ -150,6 +150,11 @@ export interface ProfileServiceOptions {
    * after the start has its adapter. It never throws (a failure is the daemon's to log).
    */
   readonly redetect?: (() => Promise<void>) | undefined;
+  /**
+   * Hears each account once it is registered (its `profile.added` written), so the daemon reads
+   * its quota at once (`quota.track` `always`). A listener that throws is logged and ignored.
+   */
+  readonly onAdded?: ((record: ProfileRecord) => void) | undefined;
 }
 
 export interface AddProfileInput {
@@ -338,6 +343,12 @@ export class ProfileService {
       { profile: id, kind: given.kind, hasSecret: secretRef !== null },
       'profile registered',
     );
+    try {
+      this.#o.onAdded?.(record);
+    } catch (error) {
+      this.#o.logger.warn({ err: error, profile: id }, 'a listener of the new account failed');
+      this.#warning(id, 'quota_track_failed', error);
+    }
     return {
       status: 'added',
       profile: record,
