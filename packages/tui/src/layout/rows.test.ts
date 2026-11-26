@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 import { describe, expect, it } from 'vitest';
 import { frameLine } from './frame.js';
-import { fillBar, finishedRows, quotaRows, scenarioRows } from './scenario-rows.js';
+import { fillBar, finishedRows, noReadingKey, quotaRows, scenarioRows } from './scenario-rows.js';
 import { sidebarItems, SIDEBAR_SECTIONS } from './sidebar.js';
 import { play, quota, scenario } from '../layout.test-support.js';
 import { cellWidth } from './text.js';
@@ -43,6 +43,14 @@ describe('quotaRows and fillBar', () => {
       ['a', 62, 31],
       ['b', 100, undefined],
     ]);
+  });
+
+  it('says a Claude Code account is read at its first session, and any other has no reading (N328, [proposta])', () => {
+    expect(noReadingKey('claude-code/main')).toBe('firstSession');
+    expect(noReadingKey('codex/work')).toBe('noReading');
+    expect(noReadingKey('opencode/mm')).toBe('noReading');
+    expect(noReadingKey('claude-code')).toBe('firstSession');
+    expect(noReadingKey('')).toBe('noReading');
   });
 
   it('fills a bar to the percent, never beyond the cells', () => {

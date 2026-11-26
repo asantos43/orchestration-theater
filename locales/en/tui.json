@@ -361,6 +361,7 @@
       "empty": "No scenarios yet",
       "noQuota": "No subscription read yet",
       "noReading": "no reading",
+      "firstSession": "read at the 1st session",
       "fiveHour": "5h",
       "week": "7d",
       "settings": "Settings",

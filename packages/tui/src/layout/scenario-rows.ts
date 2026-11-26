@@ -111,6 +111,19 @@ export function quotaRows(byProfile: Readonly<Record<string, ApiQuotaStatus>>): 
     }));
 }
 
+/**
+ * The clients whose quota is read only after the first answer of a session (the statusline of
+ * Claude Code, architecture 5.6). [proposta] (N328, 2026-11-26): an account of theirs with no
+ * reading says when the reading comes, instead of only "no reading".
+ */
+export const READ_AT_FIRST_SESSION_CLIENTS: readonly string[] = ['claude-code'];
+
+/** The catalog key for an account (`client/name`) with no reading. */
+export function noReadingKey(profile: string): 'noReading' | 'firstSession' {
+  const client = profile.split('/')[0] ?? '';
+  return READ_AT_FIRST_SESSION_CLIENTS.includes(client) ? 'firstSession' : 'noReading';
+}
+
 /** `█████░░░` of `cells` cells with `percent` filled. */
 export function fillBar(cells: number, percent: number, full = '█', empty = '░'): string {
   const filled = Math.max(0, Math.min(cells, Math.round((cells * percent) / 100)));

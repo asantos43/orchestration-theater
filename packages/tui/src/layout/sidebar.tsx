@@ -8,6 +8,7 @@ import { edgeMargin, frameInner, useDensity } from './density-context.js';
 import { Frame } from './frame.js';
 import {
   fillBar,
+  noReadingKey,
   type FinishedRow,
   type QuotaRow,
   type ScenarioMark,
@@ -143,7 +144,7 @@ function ExpandedQuota(props: { readonly row: QuotaRow; readonly inner: number }
   const cells = Math.max(4, pad > 0 ? inner : inner - 2);
   const values =
     row.fiveHour === undefined && row.week === undefined
-      ? t('layout.sidebar.noReading')
+      ? t(`layout.sidebar.${noReadingKey(row.profile)}`)
       : `${row.fiveHour === undefined ? '—' : `${String(row.fiveHour)}%`} · ${row.week === undefined ? '—' : `${String(row.week)}%`}${row.state === 'near_limit' || row.state === 'exhausted' ? ' !' : ''}`;
   const name = fit(row.profile, Math.max(1, inner - cellWidth(values) - 1));
   return (
