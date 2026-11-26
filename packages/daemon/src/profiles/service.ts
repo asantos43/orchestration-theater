@@ -355,33 +355,32 @@ export class ProfileService {
       ...(options.client === undefined ? {} : { client: options.client }),
       ...(options.includeRemoved === true ? {} : { states: ['active', 'draining'] as const }),
     });
-    const summaries: ProfileSummary[] = [];
-    for (const record of records) {
-      const executors = await store.executors.list({ profileId: record.id });
-      const base: ProfileSummary = {
-        profile: record,
-        hasSecret: record.secretRef !== null,
-        executors: {
-          valid: executors.filter((e) => e.validity === 'valid').length,
-          invalid: executors.filter((e) => e.validity === 'invalid').length,
-        },
-      };
-      if (options.checkLogin !== true) {
-        summaries.push(base);
-        continue;
-      }
-      const login =
-        record.kind === 'api' || record.state === 'removed'
-          ? null
-          : await this.#probe({
-              client: record.client,
-              profile: record.name,
-              id: record.id,
-              dir: record.dir,
-            });
-      summaries.push({ ...base, login });
-    }
-    return summaries;
+    // [proposta] The probes run side by side: each one opens a session of the client, and one
+    // after the other they could outlast the 30 s a client of the API waits (2026-11-26).
+    return Promise.all(
+      records.map(async (record): Promise<ProfileSummary> => {
+        const executors = await store.executors.list({ profileId: record.id });
+        const base: ProfileSummary = {
+          profile: record,
+          hasSecret: record.secretRef !== null,
+          executors: {
+            valid: executors.filter((e) => e.validity === 'valid').length,
+            invalid: executors.filter((e) => e.validity === 'invalid').length,
+          },
+        };
+        if (options.checkLogin !== true) return base;
+        const login =
+          record.kind === 'api' || record.state === 'removed'
+            ? null
+            : await this.#probe({
+                client: record.client,
+                profile: record.name,
+                id: record.id,
+                dir: record.dir,
+              });
+        return { ...base, login };
+      }),
+    );
   }
 
   /**

@@ -885,6 +885,63 @@ describe('the setup screen: the step that adds an account (N274)', () => {
       'claude-code/work',
       'codex/home',
     ]);
+    // Both come in at the detection, checked (the owner on 2026-11-26: "Reler e marcar").
+    const detect = await screen.press(ENTER);
+    expect(detect).toMatch(/\[x\] \d\. claude-code\/work/);
+    expect(detect).toMatch(/\[x\] \d\. codex\/home/);
+  });
+
+  it('reads the accounts again on its way out, after a read that failed', async () => {
+    const { api } = withAccounts({ clients: BOTH_INSTALLED });
+    const screen = await atStep(api);
+    const real = api.overview.bind(api);
+    let failing = true;
+    api.overview = async () => {
+      if (failing) throw new Error('timed out');
+      return real();
+    };
+    await screen.press(DOWN);
+    await screen.press('a');
+    await screen.press(TAB);
+    await screen.type('home');
+    await screen.press(ENTER);
+    // The account was added; the read after it failed, and the screen says so, with R.
+    await screen.seen('Added in this run: codex/home');
+    await screen.seen('could not be read again');
+    failing = false;
+    const detect = await screen.press(ENTER);
+    expect(detect).toContain('Pick the accounts that take part');
+    expect(detect).toMatch(/\[x\] \d\. codex\/home/);
+  });
+
+  it('goes on when the read on its way out fails, and says so', async () => {
+    const { api } = withAccounts();
+    const screen = await atStep(api);
+    api.overview = () => Promise.reject(new Error('timed out'));
+    const detect = await screen.press(ENTER);
+    expect(detect).toContain('Pick the accounts that take part');
+    expect(detect).toContain('could not be read again');
+  });
+
+  it('keeps the marks of the detection when it comes back for another account', async () => {
+    const { api } = withAccounts({ clients: BOTH_INSTALLED });
+    const screen = await atStep(api);
+    await screen.press(ENTER);
+    await screen.seen('Pick the accounts that take part');
+    // The first account (claude-code/main) goes out.
+    const unchecked = await screen.press(' ');
+    expect(unchecked).toMatch(/\[ \] +claude-code\/main/);
+    await screen.press(ESC);
+    await screen.seen('Add an account of a client');
+    await screen.press(DOWN);
+    await screen.press('a');
+    await screen.press(TAB);
+    await screen.type('home');
+    await screen.press(ENTER);
+    await screen.seen('Added in this run: codex/home');
+    const detect = await screen.press(ENTER);
+    expect(detect).toMatch(/\[ \] +claude-code\/main/);
+    expect(detect).toMatch(/\[x\] \d\. codex\/home/);
   });
 
   it('is only in the first run, not in the other flows', async () => {
