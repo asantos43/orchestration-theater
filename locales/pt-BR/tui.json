@@ -1287,7 +1287,8 @@
       "cannotAdd": "{{client}} não está pronto nesta máquina ({{why}}), então ainda não tem conta para adicionar. {{todo}}",
       "noReady": "Nenhum cliente está pronto nesta máquina ainda. {{install}} instala o adaptador do cliente sob o cursor, {{reload}} procura de novo, {{skip}} segue sem conta.",
       "skipped": "Seguindo sem conta: os papéis ficam vazios até você adicionar uma na aba Configurações.",
-      "keysEmpty": "Nenhuma conta ainda: {{next}} abre o formulário do cliente sob o cursor, {{skip}} segue sem conta."
+      "keysEmpty": "Nenhuma conta ainda: {{next}} abre o formulário do cliente sob o cursor, {{skip}} segue sem conta.",
+      "rereadFailed": "Não deu para reler a lista de contas ({{message}}). {{reload}} lê de novo."
     },
     "reason": {
       "installed": "instalado",

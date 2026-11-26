@@ -1287,7 +1287,8 @@
       "cannotAdd": "{{client}} is not ready on this machine ({{why}}), so it has no account to add yet. {{todo}}",
       "noReady": "No client is ready on this machine yet. {{install}} installs the adapter of the client under the cursor, {{reload}} looks again, {{skip}} continues without an account.",
       "skipped": "Continuing without an account: the roles stay empty until you add one in the Settings tab.",
-      "keysEmpty": "No account yet: {{next}} opens the form for the client under the cursor, {{skip}} continues without one."
+      "keysEmpty": "No account yet: {{next}} opens the form for the client under the cursor, {{skip}} continues without one.",
+      "rereadFailed": "The list of accounts could not be read again ({{message}}). {{reload}} reads it again."
     },
     "reason": {
       "installed": "installed",

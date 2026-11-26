@@ -88,6 +88,33 @@ export function initialDraft(prompt: SetupPrompt | null, seed?: ExecutorsSeed): 
   }
 }
 
+/**
+ * The draft remembered for a step, brought up to date with what the daemon lists now (the owner on
+ * 2026-11-26: "Reler e marcar"). Only the detection changes: an account the daemon no longer lists
+ * leaves, a new one comes in at the end as {@link initialDraft} would take it (in when usable), and
+ * an account added in this run (`added`) comes in checked when usable, whatever the draft said. The
+ * rest keeps the person's marks and order. Any other step keeps the remembered draft.
+ */
+export function reconciledDraft(
+  remembered: Draft,
+  prompt: SetupPrompt | null,
+  added: readonly string[],
+): Draft {
+  if (remembered.kind !== 'detect' || prompt?.step !== 'detect') return remembered;
+  const usable = new Map(prompt.profiles.map((profile) => [profile.profileId, profile.usable]));
+  const kept = remembered.rows
+    .filter((row) => usable.has(row.profileId))
+    .map((row) =>
+      added.includes(row.profileId) ? { ...row, on: usable.get(row.profileId) === true } : row,
+    );
+  const known = new Set(kept.map((row) => row.profileId));
+  const fresh = prompt.profiles
+    .filter((profile) => !known.has(profile.profileId))
+    .map((profile) => ({ profileId: profile.profileId, on: profile.usable }));
+  const rows = [...kept, ...fresh];
+  return { ...remembered, rows, cursor: Math.min(remembered.cursor, Math.max(0, rows.length - 1)) };
+}
+
 /** How many rows the cursor walks at the step. */
 export function itemCount(draft: Draft, prompt: SetupPrompt | null): number {
   if (prompt === null) return 0;
