@@ -570,6 +570,41 @@ describe('the models of an account after its login (N324)', () => {
     ).toEqual(discovered.map((executor) => executor.id).toSorted());
   });
 
+  it('marks the models of the preset by family in a catalog with versions (N333)', async () => {
+    const listed = ['gpt-5.6-sol', 'gpt-6.2-sol', 'gpt-6.1-terra', 'gpt-6-luna'];
+    const rig = await rigOf({
+      configYaml: 'roles:\n  preset: quality\n',
+      catalogs: { codex: new ListCatalog(listed) },
+    });
+    const models = await rig.service().models(CODEX);
+    const marks = Object.fromEntries(
+      models.models.map((model) => [model.id, model.preset.map((mark) => mark.id)]),
+    );
+    expect(marks['gpt-6.2-sol']).toEqual([`codex-sol-high@${CODEX}`]);
+    expect(marks['gpt-6-luna']).toEqual([`codex-luna-low@${CODEX}`]);
+    expect(marks['gpt-5.6-sol']).toEqual([]);
+    expect(marks['gpt-6.1-terra']).toEqual([]);
+  });
+
+  it('setup.preset_match: exact and executors.aliases change what the preset marks', async () => {
+    const listed = ['gpt-5.6-sol', 'gpt-6.2-sol', 'gpt-6-luna'];
+    const exact = await rigOf({
+      configYaml: 'roles:\n  preset: quality\nsetup:\n  preset_match: exact\n',
+      catalogs: { codex: new ListCatalog(listed) },
+    });
+    const none = await exact.service().models(CODEX);
+    expect(none.models.every((model) => model.preset.length === 0)).toBe(true);
+    const aliased = await rigOf({
+      configYaml:
+        'roles:\n  preset: quality\nsetup:\n  preset_match: exact\nexecutors:\n  aliases:\n    codex-sol: gpt-5.6-sol\n',
+      catalogs: { codex: new ListCatalog(listed) },
+    });
+    const marked = await aliased.service().models(CODEX);
+    expect(
+      marked.models.filter((model) => model.preset.length > 0).map((model) => model.id),
+    ).toEqual(['gpt-5.6-sol']);
+  });
+
   it('passes on which ids are aliases the client resolves', async () => {
     const rig = await rigOf({
       catalogs: {
