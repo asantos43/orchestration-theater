@@ -126,7 +126,8 @@ export const listScenarioTypes = defineRoute({
   id: 'listScenarioTypes',
   method: 'GET',
   path: '/v1/scenario-types',
-  summary: 'The scenario types (project, task, chat) and whether a new one of each can be opened yet',
+  summary:
+    'The scenario types (project, task, chat) and whether a new one of each can be opened yet',
   response: ApiScenarioTypeListSchema,
 });
 
