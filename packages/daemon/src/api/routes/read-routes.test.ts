@@ -319,6 +319,16 @@ describe('scenarios, plays and decisions', () => {
     );
   });
 
+  it('lists the scenario types and says which ones can be opened yet (N329)', async () => {
+    const answer = await get('/v1/scenario-types');
+    expect(answer.status).toBe(200);
+    expect(answer.json<{ items: unknown[] }>().items).toEqual([
+      { id: 'project', creatable: true },
+      { id: 'task', creatable: false },
+      { id: 'chat', creatable: true },
+    ]);
+  });
+
   it('answers 404 not_found for an id that does not exist', async () => {
     for (const path of [
       '/v1/scenarios/none',

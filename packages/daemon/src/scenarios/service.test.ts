@@ -6,7 +6,12 @@ import { InvalidInput, type Vcs } from '@otheater/core';
 import { FakeClock, InMemoryStore } from '@otheater/core/testing';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { buildDaemonRegistries } from '../registries.js';
-import { genericChatId, projectScenarioId, ScenarioService } from './service.js';
+import {
+  CREATABLE_SCENARIO_TYPES,
+  genericChatId,
+  projectScenarioId,
+  ScenarioService,
+} from './service.js';
 
 let root: string;
 let store: InMemoryStore;
@@ -99,5 +104,19 @@ describe('creating scenarios by type', () => {
   it('refuses a type that is not registered, and one that cannot be created yet', async () => {
     await expect(service().create({ type: 'ghost' })).rejects.toThrow(/no scenario type "ghost"/);
     await expect(service().create({ type: 'task' })).rejects.toThrow(/cannot be created yet/);
+  });
+
+  it('creates every type CREATABLE_SCENARIO_TYPES names, and only those (N329)', async () => {
+    for (const type of buildDaemonRegistries().scenarioTypes.keys()) {
+      const made = service()
+        .create({ type, name: `n-${type}` })
+        .then(
+          () => 'made',
+          (error: unknown) => (error instanceof Error ? error.message : String(error)),
+        );
+      // A project with no repository is refused for that, not for its type.
+      const refusedForType = /cannot be created yet/.test(await made);
+      expect(refusedForType, type).toBe(!CREATABLE_SCENARIO_TYPES.includes(type));
+    }
   });
 });

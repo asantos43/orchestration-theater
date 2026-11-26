@@ -106,4 +106,33 @@ export const openScenario = defineRoute({
   errors: ['not_found', 'conflict', 'unavailable'],
 });
 
-export const SCENARIO_ROUTES = defineRoutes(listScenarios, getScenario, openScenario);
+/**
+ * The scenario types the daemon knows (architecture 5.20) and whether it can open a new scenario of
+ * each one yet (2026-11-26, N329). [proposta] `creatable: false` is a type of the registry the daemon
+ * cannot create yet (the task, until Phase 9b): an interface shows it turned off and turns it on by
+ * itself when the daemon answers `true`.
+ */
+export const ApiScenarioTypeSchema = z.strictObject({
+  id: z.string().min(1).max(64),
+  creatable: z.boolean(),
+});
+export type ApiScenarioType = z.infer<typeof ApiScenarioTypeSchema>;
+
+export const ApiScenarioTypeListSchema = z.strictObject({
+  items: z.array(ApiScenarioTypeSchema),
+});
+
+export const listScenarioTypes = defineRoute({
+  id: 'listScenarioTypes',
+  method: 'GET',
+  path: '/v1/scenario-types',
+  summary: 'The scenario types (project, task, chat) and whether a new one of each can be opened yet',
+  response: ApiScenarioTypeListSchema,
+});
+
+export const SCENARIO_ROUTES = defineRoutes(
+  listScenarios,
+  getScenario,
+  openScenario,
+  listScenarioTypes,
+);
