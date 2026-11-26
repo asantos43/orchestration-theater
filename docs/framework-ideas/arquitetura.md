@@ -1543,8 +1543,8 @@ O patch fica, com a versão do Ink travada em 8.0.0: se a versão mudar, o patch
 | `ui.chat.decisionFocus` **[proposta]** | `auto` | `auto` (o cartão toma o teclado ao chegar), `manual` (só depois de abrir com Ctrl+O) |
 | `ui.chat.decisionClick` **[proposta]** | `answer` | `answer` (clicar numa opção do cartão de decisão responde), `select` (só a seleciona; a resposta vai com Enter) |
 | `ui.chat.esc` **[proposta]** | `stop` | `stop` (Esc para a resposta do Diretor), `off` |
-| `ui.chat.noScenario` **[proposta]** | `open` | `open` ou `notice` (N329): sem cenário, enviar uma mensagem abre o prompt Novo cenário e guarda o texto, que vai ao Diretor quando o cenário abrir; `notice` só avisa como abrir um |
-| `ui.newProject.type` **[proposta]** | `chat` | `chat` ou `project` (N329; padrão escolhido pelo dono em 2026-11-26): o tipo com que o prompt Novo cenário abre |
+| `ui.chat.noScenario` | `open` | `open` ou `notice` (N329): sem cenário, enviar uma mensagem abre o prompt Novo cenário e guarda o texto, que vai ao Diretor quando o cenário abrir; `notice` só avisa como abrir um; aceita pelo dono em 2026-11-26 |
+| `ui.newProject.type` | `chat` | `chat` ou `project` (N329; padrão escolhido e chave aceita pelo dono em 2026-11-26): o tipo com que o prompt Novo cenário abre |
 | `ui.overview.confirm` **[proposta]** | `always` | `always` (pausar e retomar pedem `y`), `off` |
 | `ui.overview.recentEvents` **[proposta]** | 8 | inteiro de 1 a 100 |
 | `ui.overview.hiddenEvents` **[proposta]** | `['session.update']` | lista de tipos de evento |
