@@ -72,7 +72,7 @@
       "up": "Subir na barra lateral",
       "down": "Descer na barra lateral",
       "activate": "Abrir o cenário ou recolher a seção",
-      "newProject": "Abrir um novo projeto",
+      "newProject": "Abrir um novo cenário (projeto ou chat)",
       "toggleFinished": "Abrir ou fechar as peças terminadas"
     },
     "panel": {
@@ -213,7 +213,7 @@
     },
     "sidebar": {
       "activate": "Abrir",
-      "newProject": "Novo projeto",
+      "newProject": "Novo cenário",
       "toggleFinished": "Terminadas"
     },
     "panel": {
@@ -549,7 +549,10 @@
         "AWAITING_PRODUCER": "esperando você",
         "DONE": "concluída",
         "CANCELLED": "cancelada"
-      }
+      },
+      "noScenario": "Sem cenário. Escreva para abrir um chat, ou {{key}} na barra lateral para escolher o tipo.",
+      "noScenarioNotice": "Sem cenário. Abra um com {{key}} na barra lateral.",
+      "noScenarioSend": "não há cenário aberto. Abra um com {{key}} na barra lateral."
     },
     "panel": {
       "empty": "Esta aba ainda não tem conteúdo.",
@@ -572,15 +575,23 @@
       "closeHint": "{{key}} fecha"
     },
     "newProject": {
-      "title": "Novo projeto",
+      "title": "Novo cenário",
       "label": "Repositório (uma pasta de repositório git)",
-      "hint": "Enter abre · Esc cancela",
-      "opening": "Abrindo o projeto…",
-      "opened": "Projeto {{name}} aberto.",
+      "hint": "Tab troca o tipo · Enter abre · Esc cancela",
+      "opening": "Abrindo o cenário…",
+      "opened": "Cenário {{name}} aberto.",
       "badRepo": "Não deu para abrir um projeto em \"{{repo}}\": não é um repositório git em que o projeto possa começar.",
-      "failed": "Não deu para abrir o projeto: {{message}}",
+      "failed": "Não deu para abrir o cenário: {{message}}",
       "noRepo": "Digite o repositório do projeto.",
-      "noConnection": "Não há conexão com o daemon."
+      "noConnection": "Não há conexão com o daemon.",
+      "nameLabel": "Nome do chat (opcional)",
+      "taskOff": "Tarefa: chega com a Fase 9b",
+      "typeOff": "{{type}}: o daemon ainda não abre este tipo",
+      "types": {
+        "project": "Projeto",
+        "task": "Tarefa",
+        "chat": "Chat"
+      }
     },
     "link": {
       "syncing": "sincronizando",

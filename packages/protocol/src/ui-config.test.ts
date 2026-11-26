@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 import { describe, expect, it } from 'vitest';
 import {
+  UiChatConfigSchema,
   UiClipboardConfigSchema,
   UiInputConfigSchema,
   UiKeyboardConfigSchema,
@@ -163,11 +164,20 @@ describe('ui.* schemas of the terminal', () => {
   });
 
   it('has the default of the newProject block (P22), takes its other modes and refuses the rest', () => {
-    expect(UiNewProjectConfigSchema.parse({})).toEqual({ repo: 'cwd' });
+    expect(UiNewProjectConfigSchema.parse({})).toEqual({ repo: 'cwd', type: 'chat' });
+    // N329: the prompt Novo cenário opens on the chat, or on the project.
+    expect(UiNewProjectConfigSchema.parse({ type: 'project' }).type).toBe('project');
+    expect(UiNewProjectConfigSchema.safeParse({ type: 'task' }).success).toBe(false);
     expect(UiNewProjectConfigSchema.parse({ repo: 'git_root' }).repo).toBe('git_root');
     expect(UiNewProjectConfigSchema.parse({ repo: 'empty' }).repo).toBe('empty');
     expect(UiNewProjectConfigSchema.safeParse({ repo: 'home' }).success).toBe(false);
     expect(UiNewProjectConfigSchema.safeParse({ path: '.' }).success).toBe(false);
+  });
+
+  it('has the mode of the chat with no scenario (N329), takes the other and refuses the rest', () => {
+    expect(UiChatConfigSchema.parse({}).noScenario).toBe('open');
+    expect(UiChatConfigSchema.parse({ noScenario: 'notice' }).noScenario).toBe('notice');
+    expect(UiChatConfigSchema.safeParse({ noScenario: 'off' }).success).toBe(false);
   });
 
   it('has the defaults of the setup block (P17), takes its other mode and refuses the rest', () => {

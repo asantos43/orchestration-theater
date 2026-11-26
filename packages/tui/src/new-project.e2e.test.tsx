@@ -22,11 +22,13 @@ import {
 } from './chat/fake-agent.test-support.js';
 
 /**
- * "New project" in the TUI (P22 of Phase 7, N208 item 1), end to end against the real daemon of
- * this process with the fake agent: the action of the side bar (its key and the click on the `+`),
- * `/new project <repo>` and `/new project` alone in the chat, and a folder that is not a
- * repository. In English and in Brazilian Portuguese; every expected text comes from the catalog.
- * Nothing real runs: temporary folders, loopback only, fake clock and CodeHost.
+ * "New scenario" in the TUI (P22 of Phase 7, N208 item 1; N329), end to end against the real daemon
+ * of this process with the fake agent: the action of the side bar (its key and the click on the
+ * `+`), the row of the types (project, task off, chat), `/new project <repo>` and `/new project`
+ * alone in the chat, a folder that is not a repository, and a message sent with no scenario, which
+ * opens the prompt and reaches the Director of the chat it opens. In English and in Brazilian
+ * Portuguese; every expected text comes from the catalog. Nothing real runs: temporary folders,
+ * loopback only, fake clock and CodeHost.
  */
 
 beforeAll(assertFakeAgentBuilt);
@@ -121,6 +123,18 @@ function barOf(app: RenderedApp): string {
  * Moves the focus to the side bar (chat, edge, panel, side bar: three Tabs) and waits for its
  * shortcut. Each Tab waits for the bar to change, so two keys never act on the same focus.
  */
+/**
+ * Opens the prompt by the key of the side bar, which starts on the chat (`ui.newProject.type`), and
+ * moves to the project with Tab.
+ */
+async function openProjectPrompt(app: RenderedApp, T: (key: string) => string): Promise<void> {
+  await press(app, 'n');
+  await seen(app, T('layout.newProject.nameLabel'));
+  await pause();
+  await press(app, TAB);
+  await seen(app, T('layout.newProject.label'));
+}
+
 async function focusSidebar(app: RenderedApp, shortcut: string): Promise<void> {
   for (let tab = 0; tab < 3; tab += 1) {
     const before = barOf(app);
@@ -143,10 +157,11 @@ describe.skipIf(NO_LAUNCHER).each(LOCALES)(
         other: string;
         T: (key: string, vars?: Record<string, unknown>) => string;
       }) => Promise<void>,
+      openScenario = true,
     ): Promise<void> {
       const other = await makeRepo('otheater-p22-other-');
       try {
-        await withChatDaemon(fakes(), {}, async (chat) => {
+        await withChatDaemon(fakes(), { openScenario }, async (chat) => {
           const app = await renderApp({
             connector: chat.connector,
             systemLocale,
@@ -162,7 +177,7 @@ describe.skipIf(NO_LAUNCHER).each(LOCALES)(
           const T = (key: string, vars?: Record<string, unknown>): string =>
             flat(translate(key, vars));
           await seen(app, T('layout.sidebar.scenarios'));
-          await seen(app, basename(chat.repo));
+          if (openScenario) await seen(app, basename(chat.repo));
           await body({ app, chat, other, T });
         });
       } finally {
@@ -183,8 +198,7 @@ describe.skipIf(NO_LAUNCHER).each(LOCALES)(
       async () => {
         await withApp(async ({ app, chat, other, T }) => {
           await focusSidebar(app, T('bar.sidebar.newProject'));
-          await press(app, 'n');
-          await seen(app, T('layout.newProject.label'));
+          await openProjectPrompt(app, T);
           // The field starts with the folder the TUI was opened in (`ui.newProject.repo: cwd`).
           await seen(app, `> ${other}`);
           await pause();
@@ -210,16 +224,14 @@ describe.skipIf(NO_LAUNCHER).each(LOCALES)(
       async () => {
         await withApp(async ({ app, chat, T }) => {
           await focusSidebar(app, T('bar.sidebar.newProject'));
-          await press(app, 'n');
-          await seen(app, T('layout.newProject.label'));
+          await openProjectPrompt(app, T);
           await pause();
           await press(app, ESC);
           await gone(app, T('layout.newProject.label'));
 
           const notRepo = await realpath(await mkdtemp(join(BASE, 'otheater-p22-plain-')));
           try {
-            await press(app, 'n');
-            await seen(app, T('layout.newProject.label'));
+            await openProjectPrompt(app, T);
             // Lets the prompt take the keyboard, then clears the field and types a folder with no
             // repository in it.
             await new Promise<void>((resolve) => setTimeout(resolve, 200));
@@ -284,6 +296,63 @@ describe.skipIf(NO_LAUNCHER).each(LOCALES)(
           await press(app, ESC);
           await gone(app, T('layout.newProject.label'));
         });
+      },
+      TEST_MS,
+    );
+
+    it(
+      'opens a chat by the key of the side bar, with the task shown off',
+      async () => {
+        await withApp(async ({ app, chat, T }) => {
+          await focusSidebar(app, T('bar.sidebar.newProject'));
+          await press(app, 'n');
+          await seen(app, T('layout.newProject.nameLabel'));
+          // The three types are in the row, and the task says the phase it comes with.
+          const frame = flat(app.frame());
+          for (const type of ['project', 'task', 'chat']) {
+            expect(frame).toContain(T(`layout.newProject.types.${type}`));
+          }
+          await seen(app, T('layout.newProject.taskOff'));
+          await pause();
+          await press(app, ENTER);
+          await gone(app, T('layout.newProject.nameLabel'));
+          const chats = await waitUntil('the new chat', async () => {
+            const all = await chat.daemon.store.scenarios.list();
+            const found = all.filter((scenario) => scenario.kind === 'chat');
+            return found.length > 0 ? found : undefined;
+          });
+          // The scenario of the helper is a project, so the chat is the only one of its kind.
+          expect(chats.length).toBe(1);
+        });
+      },
+      TEST_MS,
+    );
+
+    it(
+      'with no scenario, says so, and a message opens the prompt and reaches the new chat',
+      async () => {
+        await withApp(async ({ app, chat, T }) => {
+          const before = (T('layout.chat.noScenario', { key: '@@' }).split('@@')[0] ?? '').trim();
+          await seen(app, before);
+          await typeText(app, 'hello from no scenario');
+          await press(app, ENTER);
+          // The prompt opens on the chat (`ui.newProject.type`), and the message is kept.
+          await seen(app, T('layout.newProject.nameLabel'));
+          await pause();
+          await press(app, ENTER);
+          await gone(app, T('layout.newProject.nameLabel'));
+          const opened = await waitUntil('the chat of the message', async () => {
+            const all = await chat.daemon.store.scenarios.list();
+            return all.find((scenario) => scenario.kind === 'chat');
+          });
+          // Once the chat is on screen and its socket is open, the message goes to its Director.
+          // The event does not carry the text: this test sends no other prompt, so one is enough.
+          await waitUntil('the message at the Director', async () =>
+            (await chat.events()).some((event) => event.type === 'prompt.queued'),
+          );
+          expect(await chat.daemon.store.scenarios.get(opened.id)).toBeDefined();
+          await seen(app, 'hello from no scenario');
+        }, false);
       },
       TEST_MS,
     );

@@ -81,6 +81,13 @@ export function genericChatId(name: string): string {
 }
 
 /**
+ * The scenario types `ScenarioService.create` can open today (2026-11-26, N329). The task is in the
+ * registry but waits for Phase 9b: `GET /v1/scenario-types` answers it with `creatable: false`, and
+ * an interface turns it on by itself once its id is here.
+ */
+export const CREATABLE_SCENARIO_TYPES: readonly string[] = ['project', 'chat'];
+
+/**
  * Creates the scenarios of the registered types (architecture 5.20): the type says the flow the
  * scenario starts with. [proposta]
  * - `project`: lives in the Producer's repository (the folder is the repository), flow `play`.

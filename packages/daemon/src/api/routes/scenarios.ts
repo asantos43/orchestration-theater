@@ -1,5 +1,11 @@
 // SPDX-License-Identifier: MPL-2.0
-import { NotFound, type JsonObject, type ScenarioRecord } from '@otheater/core';
+import {
+  NotFound,
+  OFFICIAL_SCENARIO_TYPES,
+  type JsonObject,
+  type ScenarioRecord,
+} from '@otheater/core';
+import { CREATABLE_SCENARIO_TYPES } from '../../scenarios/service.js';
 import type { ApiHandlers } from '../handlers.js';
 import type { ReadRouteDeps } from './deps.js';
 import { paginate } from './paging.js';
@@ -27,6 +33,16 @@ export function registerScenarioRoutes(handlers: ApiHandlers, deps: ReadRouteDep
     });
     return paginate(rows.map(scenarioOf), (item) => [item.createdAt, item.id], query);
   });
+
+  // The types of architecture 5.20, and whether the daemon can open one yet (N329). [proposta]
+  handlers.register('listScenarioTypes', () =>
+    Promise.resolve({
+      items: OFFICIAL_SCENARIO_TYPES.map((type) => ({
+        id: type.id,
+        creatable: CREATABLE_SCENARIO_TYPES.includes(type.id),
+      })),
+    }),
+  );
 
   handlers.register('getScenario', async ({ params }) => {
     const record = await scenarioOrNotFound(params.scenarioId);

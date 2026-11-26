@@ -124,6 +124,8 @@ export const CHAT_DIRECTOR_FOOTER_MODES = ['on', 'off'] as const;
 export type ChatDirectorFooter = (typeof CHAT_DIRECTOR_FOOTER_MODES)[number];
 export const CHAT_ESC_MODES = ['stop', 'off'] as const;
 export type ChatEscMode = (typeof CHAT_ESC_MODES)[number];
+export const CHAT_NO_SCENARIO_MODES = ['open', 'notice'] as const;
+export type ChatNoScenarioMode = (typeof CHAT_NO_SCENARIO_MODES)[number];
 
 /** `ui.chat` (P12): the queue while the Director is in a turn, the `/` list, decisions and Esc. */
 export interface UiChatSettings {
@@ -138,6 +140,8 @@ export interface UiChatSettings {
   readonly directorFooter: ChatDirectorFooter;
   /** How many of the last events of the scenario the chat shows on opening (P26); 0 opens it empty. */
   readonly history: number;
+  /** A message sent with no scenario (N329): `open` opens the prompt and keeps it; `notice` only warns. */
+  readonly noScenario: ChatNoScenarioMode;
 }
 
 export const MOUSE_MODES = ['full', 'wheel', 'off'] as const;
@@ -174,10 +178,14 @@ export interface UiSetupSettings {
 
 export const NEW_PROJECT_REPO_MODES = ['cwd', 'git_root', 'empty'] as const;
 export type NewProjectRepoMode = (typeof NEW_PROJECT_REPO_MODES)[number];
+export const NEW_PROJECT_TYPE_MODES = ['chat', 'project'] as const;
+export type NewProjectTypeMode = (typeof NEW_PROJECT_TYPE_MODES)[number];
 
-/** `ui.newProject` (P22): what the prompt of "new project" starts with. */
+/** `ui.newProject` (P22, N329): what the prompt of a new scenario starts with. */
 export interface UiNewProjectSettings {
   readonly repo: NewProjectRepoMode;
+  /** The type the prompt starts on (N329). */
+  readonly type: NewProjectTypeMode;
 }
 
 export const SIDEBAR_FINISHED_MODES = ['collapsed', 'hidden', 'expanded'] as const;
@@ -285,6 +293,7 @@ export const DEFAULT_CHAT: UiChatSettings = {
   esc: 'stop',
   directorFooter: 'on',
   history: 40,
+  noScenario: 'open',
 };
 
 export const DEFAULT_TUI_MOUSE: UiTuiMouseSettings = {
@@ -299,7 +308,7 @@ export const DEFAULT_SETUP: UiSetupSettings = {
   modelPick: 'preset',
 };
 
-export const DEFAULT_NEW_PROJECT: UiNewProjectSettings = { repo: 'cwd' };
+export const DEFAULT_NEW_PROJECT: UiNewProjectSettings = { repo: 'cwd', type: 'chat' };
 
 export const DEFAULT_SIDEBAR: UiSidebarSettings = { finishedPlays: 'collapsed', finishedLimit: 20 };
 
@@ -501,6 +510,7 @@ export function parseUiSettings(ui: unknown): UiSettings {
         DEFAULT_CHAT.directorFooter,
       ),
       history: integer(field(chat, 'history'), 0, 200, DEFAULT_CHAT.history),
+      noScenario: oneOf(field(chat, 'noScenario'), CHAT_NO_SCENARIO_MODES, DEFAULT_CHAT.noScenario),
     },
     input: parseInputSettings(field(source, 'input')),
     overview: parseOverviewSettings(field(source, 'overview')),
@@ -538,6 +548,7 @@ export function parseUiSettings(ui: unknown): UiSettings {
     },
     newProject: {
       repo: oneOf(field(newProject, 'repo'), NEW_PROJECT_REPO_MODES, DEFAULT_NEW_PROJECT.repo),
+      type: oneOf(field(newProject, 'type'), NEW_PROJECT_TYPE_MODES, DEFAULT_NEW_PROJECT.type),
     },
     sidebar: {
       finishedPlays: oneOf(

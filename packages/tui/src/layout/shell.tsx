@@ -36,7 +36,12 @@ import {
   type UiTuiLayoutSettings,
 } from '../settings.js';
 import { useStoreValue, type ReadableStore } from '../use-store-value.js';
-import { useChatPanel, type ChatNewProject, type ChatPanelConfig } from '../chat/use-chat-panel.js';
+import {
+  useChatPanel,
+  type ChatNewProject,
+  type ChatPanelConfig,
+  type NewScenarioPromptOptions,
+} from '../chat/use-chat-panel.js';
 import {
   SetupScreen,
   firstRunNeeded,
@@ -54,7 +59,7 @@ import {
 } from './data.js';
 import { computeGeometry, steppedChatWidth, steppedSidebarWidth } from './geometry.js';
 import { Header } from './header.js';
-import { initialRepo, NewProjectPrompt } from './new-project.js';
+import { initialRepo, NewProjectPrompt, type NewScenarioRequest } from './new-project.js';
 import { HelpOverlay, PaletteOverlay, TabPickerOverlay } from './overlays.js';
 import { DensityProvider, frameInner, useDensity } from './density-context.js';
 import { Panel, panelContentSize } from './panel.js';
@@ -165,8 +170,16 @@ function ShellBody(props: ShellProps): ReactNode {
   const capture = useRef(false);
   // The setup assistant (P17) takes the whole screen while it is open.
   const [assistant, setAssistant] = useState<SetupFlow | undefined>(undefined);
-  // The prompt of "new project" (P22): what its field starts with, while it is open.
-  const [newProject, setNewProject] = useState<{ readonly initial: string } | undefined>(undefined);
+  // The prompt of a new scenario (P22, N329): what it starts with, while it is open, and what the
+  // chat does once it opens one (the message sent with no scenario).
+  const [newProject, setNewProject] = useState<
+    | {
+        readonly initial: string;
+        readonly type: string;
+        readonly onOpened?: ((scenarioId: string) => void) | undefined;
+      }
+    | undefined
+  >(undefined);
   const cwd = props.cwd ?? process.cwd();
   const settings = props.settings ?? DEFAULT_UI_SETTINGS;
   const setupApi = useMemo(
@@ -284,26 +297,46 @@ function ShellBody(props: ShellProps): ReactNode {
     setFocus('chat');
   }, []);
   const projectRepo = settings.newProject.repo;
+  const projectType = settings.newProject.type;
+  const promptNewScenario = useCallback(
+    (options: NewScenarioPromptOptions = {}): void => {
+      setNewProject({
+        initial: options.repo ?? initialRepo(projectRepo, cwd),
+        type: options.type ?? projectType,
+        onOpened: options.onOpened,
+      });
+    },
+    [projectRepo, projectType, cwd],
+  );
   const chatNewProject = useMemo(
-    (): ChatNewProject => ({
-      cwd,
-      prompt: () => {
-        setNewProject({ initial: initialRepo(projectRepo, cwd) });
-      },
-      opened: selectScenario,
-    }),
-    [cwd, projectRepo, selectScenario],
+    (): ChatNewProject => ({ cwd, prompt: promptNewScenario, opened: selectScenario }),
+    [cwd, promptNewScenario, selectScenario],
   );
   const projectClient = props.client ?? props.chat.client;
-  const openProject = useCallback(
-    async (repo: string): Promise<void> => {
+  // N329: the types the daemon says it opens; a daemon without the route leaves the fallback.
+  const readScenarioTypes = useMemo(
+    () =>
+      projectClient === undefined
+        ? undefined
+        : async () => (await projectClient.call(API_ROUTES.listScenarioTypes)).items,
+    [projectClient],
+  );
+  const openNewScenario = useCallback(
+    async (
+      request: NewScenarioRequest,
+      onOpened: ((scenarioId: string) => void) | undefined,
+    ): Promise<void> => {
       if (projectClient === undefined) throw new Error(t('layout.newProject.noConnection'));
       const opened = await projectClient.call(API_ROUTES.openScenario, {
-        body: { type: 'project', repo },
+        body:
+          request.type === 'project'
+            ? { type: 'project', repo: request.repo }
+            : { type: 'chat', ...(request.name === undefined ? {} : { name: request.name }) },
         headers: { 'idempotency-key': randomUUID() },
       });
       selectScenario(opened.scenario.id);
       setNotice(t('layout.newProject.opened', { name: opened.scenario.name }));
+      onOpened?.(opened.scenario.id);
     },
     [projectClient, selectScenario, t],
   );
@@ -561,7 +594,7 @@ function ShellBody(props: ShellProps): ReactNode {
         if (finished !== undefined) setFinishedToggled(!finishedOpen);
         return;
       case 'sidebar.newProject':
-        setNewProject({ initial: initialRepo(projectRepo, cwd) });
+        promptNewScenario();
         return;
       case 'sidebar.activate': {
         const item = items.find((candidate) => candidate.id === cursorInSide);
@@ -793,6 +826,16 @@ function ShellBody(props: ShellProps): ReactNode {
                 : undefined
             }
             title={selectedRow?.name ?? t('layout.header.noScenario')}
+            empty={
+              selectedRow === undefined
+                ? t(
+                    props.chat.chat.noScenario === 'open'
+                      ? 'layout.chat.noScenario'
+                      : 'layout.chat.noScenarioNotice',
+                    { key: keyLabel(tuiKeymap, 'sidebar.newProject') ?? '' },
+                  )
+                : undefined
+            }
             stateLine={
               selectedRow === undefined
                 ? ''
@@ -902,8 +945,10 @@ function ShellBody(props: ShellProps): ReactNode {
           <NewProjectPrompt
             screen={screen}
             initial={newProject.initial}
+            initialType={newProject.type}
             cwd={cwd}
-            open={openProject}
+            {...(readScenarioTypes === undefined ? {} : { types: readScenarioTypes })}
+            open={(request) => openNewScenario(request, newProject.onOpened)}
             capture={capture}
             onClose={() => {
               setNewProject(undefined);
