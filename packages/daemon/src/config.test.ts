@@ -1581,6 +1581,22 @@ describe('setup (the setup assistant, P4 of Phase 7)', () => {
     expect(setup.suggested_budget).toEqual({ daily_usd: 20, monthly_usd: 200 });
     expect(setup.role_lists).toBe('explicit');
     expect(setup.preset_match).toBe('newest');
+    // N334 [proposta]: the assistant asks about security.unenforced by default.
+    expect(setup.unenforced_prompt).toBe('ask');
+  });
+
+  it('takes setup.unenforced_prompt: never and refuses an unknown mode (N334, [proposta])', () => {
+    expect(parseConfig('setup:\n  unenforced_prompt: never\n').setup.unenforced_prompt).toBe(
+      'never',
+    );
+    expect(() => parseConfig('setup:\n  unenforced_prompt: always\n')).toThrow(InvalidInput);
+  });
+
+  it('has ui.security.banner on by default, takes off and refuses an unknown mode (N334, [proposta])', () => {
+    expect(parseConfig('').ui.security.banner).toBe('on');
+    expect(parseConfig('ui:\n  security:\n    banner: off\n').ui.security.banner).toBe('off');
+    expect(() => parseConfig('ui:\n  security:\n    banner: soft\n')).toThrow(InvalidInput);
+    expect(() => parseConfig('ui:\n  security:\n    extra: 1\n')).toThrow(InvalidInput);
   });
 
   it('takes each mode and a cap of its own', () => {

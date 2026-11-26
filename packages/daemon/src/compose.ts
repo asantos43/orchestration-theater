@@ -650,6 +650,30 @@ export function probeSandbox(): Promise<SandboxAvailability> {
   return probe;
 }
 
+/**
+ * N334 [proposta]: told right after `sandbox_unavailable`, with what `security.unenforced` makes of
+ * the missing layer: `refuse` (default) refuses the sessions that need it (the Director does not
+ * open), `warn` and `allow` let them run with the protection reduced. A situation the log carries
+ * is also an event (`daemon.notice` `protection_reduced`), for the hooks and the interfaces.
+ */
+function recordProtectionReduced(
+  config: DaemonConfig,
+  logger: Logger,
+  situations: SituationSink | undefined,
+): void {
+  const mode = config.security.unenforced;
+  const detail =
+    mode === 'refuse'
+      ? 'security.unenforced is refuse: the sessions that need layer 3 (the Director among them) do not open; set it to warn or allow in config.yaml, or run the setup assistant again'
+      : `security.unenforced is ${mode}: the sessions open with the write scope and the network unguaranteed`;
+  logger.warn({ unenforced: mode }, detail);
+  situations?.record('daemon.notice', {
+    kind: 'protection_reduced',
+    subject: situationSubject(mode),
+    detail: situationText(detail),
+  });
+}
+
 /** Layer 3 of this daemon (architecture 5.8): checked, logged, and `undefined` where it is not there. */
 async function composeSandbox(
   config: DaemonConfig,
@@ -686,6 +710,7 @@ async function composeSandbox(
         subject: situationSubject(sandbox.id),
         detail: situationText(availability.reason),
       });
+      recordProtectionReduced(config, logger, situations);
       return undefined;
     }
   } else {
@@ -702,6 +727,7 @@ async function composeSandbox(
         subject: situationSubject(process.platform),
         detail: situationText(availability.reason),
       });
+      recordProtectionReduced(config, logger, situations);
       return undefined;
     }
     sandbox = new SrtSandbox(socketDir === undefined ? {} : { unixSocketDirs: [socketDir] });

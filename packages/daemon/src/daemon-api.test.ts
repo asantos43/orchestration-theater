@@ -169,6 +169,37 @@ describe('startDaemon, the HTTP API', () => {
     }
   });
 
+  it('says in GET /v1/status whether layer 3 is there and the unenforced the daemon started with (N334)', async () => {
+    const tmp = await makeTempDataDir();
+    try {
+      const off = await start(
+        tmp.dir,
+        parseConfig(
+          'backup:\n  when: manual\nsandbox:\n  mode: off\nsecurity:\n  unenforced: warn\n',
+        ),
+      );
+      const token = await tokenOf(tmp.dir);
+      const status = (await (await get(off.api.url, token)).json()) as ApiStatus;
+      expect(status.security).toEqual({ layer3: false, unenforced: 'warn' });
+      await off.stop('shutdown');
+    } finally {
+      await tmp.dispose();
+    }
+    const other = await makeTempDataDir();
+    try {
+      const refuse = await start(
+        other.dir,
+        parseConfig('backup:\n  when: manual\nsandbox:\n  mode: off\n'),
+      );
+      const token = await tokenOf(other.dir);
+      const status = (await (await get(refuse.api.url, token)).json()) as ApiStatus;
+      expect(status.security).toEqual({ layer3: false, unenforced: 'refuse' });
+      await refuse.stop('shutdown');
+    } finally {
+      await other.dispose();
+    }
+  });
+
   it('answers GET /v1/status with the token, publishes api.json and api-token (0600), and records api.started', async () => {
     const tmp = await makeTempDataDir();
     try {

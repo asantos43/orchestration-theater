@@ -31,15 +31,27 @@ export const SetupFlowSchema = z.enum(SETUP_FLOWS);
 export const SetupRunIdSchema = z.string().regex(SETUP_RUN_ID_PATTERN);
 
 /** The steps of the assistant; a flow uses some of them. */
-export const SETUP_STEP_IDS = ['detect', 'account', 'preset', 'executors', 'review'] as const;
+export const SETUP_STEP_IDS = [
+  'detect',
+  'account',
+  'preset',
+  'security',
+  'executors',
+  'review',
+] as const;
 export type SetupStepId = (typeof SETUP_STEP_IDS)[number];
 export const SetupStepIdSchema = z.enum(SETUP_STEP_IDS);
 
-/** The steps of each flow, in order. `review` is last: it has no input. */
+/**
+ * The steps of each flow, in order. `review` is last: it has no input. `security` (N334) is in the
+ * list of `first_run` only when the daemon adds it (layer 3 missing, `security.unenforced:
+ * refuse`, `setup.unenforced_prompt: ask`): the `steps` of a run and of a flow say whether it is
+ * there. It comes before `executors` so the review still goes back to `executors` in one step.
+ */
 export const SETUP_FLOW_STEPS: Readonly<
   Record<(typeof SETUP_FLOWS)[number], readonly SetupStepId[]>
 > = {
-  first_run: ['detect', 'preset', 'executors', 'review'],
+  first_run: ['detect', 'preset', 'security', 'executors', 'review'],
   add_account: ['account', 'executors', 'review'],
   change_preset: ['preset', 'review'],
 };
@@ -187,6 +199,21 @@ export const SetupDetectOutputSchema = z.strictObject({
   accounts: z.array(profileId),
 });
 
+/**
+ * `security` (N334, 2026-11-26; [proposta]): the answer to "layer 3 (the sandbox) is missing and
+ * `security.unenforced` is `refuse`: the Director will not open here. Write `warn`?". `warn: true`
+ * puts `security.unenforced: warn` in the plan; `false` changes nothing, and the review says the
+ * Director will not open. A daemon with layer 3, or with `unenforced` already `warn` or `allow`,
+ * has no such step.
+ */
+export const SetupSecurityInputSchema = z.strictObject({ warn: z.boolean() });
+export const SetupSecurityOutputSchema = z.strictObject({
+  /** What `security.unenforced` was when the question was answered. */
+  unenforced: z.enum(['refuse', 'warn', 'allow']),
+  /** The value the plan writes; `null`: the file is left as it is. */
+  write: z.literal('warn').nullable(),
+});
+
 /** `account`: the registered account the flow brings into the roles. */
 export const SetupAccountInputSchema = z.strictObject({ profileId });
 export const SetupAccountOutputSchema = z.strictObject({
@@ -265,6 +292,7 @@ export const SetupStepSubmissionSchema = z.discriminatedUnion('step', [
   z.strictObject({ step: z.literal('detect'), input: SetupDetectInputSchema }),
   z.strictObject({ step: z.literal('account'), input: SetupAccountInputSchema }),
   z.strictObject({ step: z.literal('preset'), input: SetupPresetInputSchema }),
+  z.strictObject({ step: z.literal('security'), input: SetupSecurityInputSchema }),
   z.strictObject({ step: z.literal('executors'), input: SetupExecutorsInputSchema }),
 ]);
 export type SetupStepSubmission = z.input<typeof SetupStepSubmissionSchema>;
@@ -285,6 +313,11 @@ export const SetupDoneStepSchema = z.discriminatedUnion('step', [
     step: z.literal('preset'),
     input: SetupPresetInputSchema,
     output: SetupPresetOutputSchema,
+  }),
+  z.strictObject({
+    step: z.literal('security'),
+    input: SetupSecurityInputSchema,
+    output: SetupSecurityOutputSchema,
   }),
   z.strictObject({
     step: z.literal('executors'),
@@ -312,6 +345,13 @@ export const SetupPromptSchema = z.discriminatedUnion('step', [
     options: z.array(z.enum(ROLE_PRESET_NAMES)),
   }),
   z.strictObject({
+    step: z.literal('security'),
+    /** Whether layer 3 (the sandbox) is there; the step exists only when it is not. */
+    layer3: z.boolean(),
+    /** The `security.unenforced` in `config.yaml` now. */
+    unenforced: z.enum(['refuse', 'warn', 'allow']),
+  }),
+  z.strictObject({
     step: z.literal('executors'),
     /** The API accounts among the confirmed ones, with a key in the vault. */
     apiProfiles: z.array(SetupDetectedProfileSchema),
@@ -331,6 +371,11 @@ export const SetupResultSchema = z.strictObject({
   executors: z.array(z.string().min(1)),
   /** The keys of `config.yaml` written. */
   written: z.array(z.string().min(1)),
+  /**
+   * The keys written that only a restart of the daemon takes in (N334: `security.unenforced` is
+   * read at the start). Absent from a daemon older than N334 and when there is none.
+   */
+  restart: z.array(z.string().min(1)).optional(),
 });
 export type SetupResult = z.infer<typeof SetupResultSchema>;
 

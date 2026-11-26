@@ -97,6 +97,12 @@ describe('the notice events of P24', () => {
     expect(() => validateEventPayload('executor.changed', 1, { ...changed, extra: 1 })).toThrow();
   });
 
+  it('daemon.notice: protection_reduced is a kind (N334, [proposta])', () => {
+    expect(DAEMON_NOTICE_KINDS).toContain('protection_reduced');
+    const notice = { kind: 'protection_reduced', subject: 'warn', detail: 'no layer 3' };
+    expect(validateEventPayload('daemon.notice', 1, notice)).toEqual(notice);
+  });
+
   it('daemon.notice: accepts every kind, with a null subject and detail', () => {
     for (const kind of DAEMON_NOTICE_KINDS) {
       const notice = { kind, subject: null, detail: null };

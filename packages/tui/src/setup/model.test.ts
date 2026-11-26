@@ -67,6 +67,23 @@ function run(
   };
 }
 
+describe('the security step (N334, [proposta])', () => {
+  const SECURITY: SetupPrompt = { step: 'security', layer3: false, unenforced: 'refuse' };
+
+  it('starts on no, moves between the two options and answers with a boolean', () => {
+    const draft = initialDraft(SECURITY);
+    expect(draft).toEqual({ kind: 'security', cursor: 0 });
+    expect(itemCount(draft, SECURITY)).toBe(2);
+    expect(submissionOf(draft, SECURITY)).toEqual({ step: 'security', input: { warn: false } });
+    const yes = withCursor(draft, SECURITY, 1);
+    expect(yes).toEqual({ kind: 'security', cursor: 1 });
+    expect(submissionOf(yes, SECURITY)).toEqual({ step: 'security', input: { warn: true } });
+    // The cursor stays inside the two options.
+    expect(withCursor(yes, SECURITY, 1)).toEqual({ kind: 'security', cursor: 1 });
+    expect(withCursor(draft, SECURITY, -1)).toEqual({ kind: 'security', cursor: 0 });
+  });
+});
+
 describe('the draft of each step', () => {
   it('detection starts with the usable accounts taken in, in the daemon order', () => {
     const draft = initialDraft(DETECT);

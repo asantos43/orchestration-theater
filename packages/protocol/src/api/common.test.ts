@@ -44,6 +44,20 @@ describe('ApiStatusSchema', () => {
     expect(ApiStatusSchema.safeParse({ ...status, apiVersion: 0 }).success).toBe(false);
   });
 
+  it('says layer 3 and the effective security.unenforced, and an old daemon may say neither (N334)', () => {
+    const base = { ...daemonStatus, daemonId, apiVersion: API_VERSION };
+    const security = { layer3: false, unenforced: 'refuse' };
+    expect(ApiStatusSchema.parse({ ...base, security })).toEqual({ ...base, security });
+    expect(ApiStatusSchema.parse(base).security).toBeUndefined();
+    expect(ApiStatusSchema.safeParse({ ...base, security: { layer3: false } }).success).toBe(false);
+    expect(
+      ApiStatusSchema.safeParse({ ...base, security: { layer3: true, unenforced: 'off' } }).success,
+    ).toBe(false);
+    expect(
+      ApiStatusSchema.safeParse({ ...base, security: { ...security, extra: 1 } }).success,
+    ).toBe(false);
+  });
+
   it('leaves DaemonStatusSchema as it was (`ot daemon` uses it)', () => {
     expect(DaemonStatusSchema.safeParse(daemonStatus).success).toBe(true);
     expect(DaemonStatusSchema.safeParse({ ...daemonStatus, daemonId }).success).toBe(false);

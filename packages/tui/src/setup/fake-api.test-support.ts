@@ -180,6 +180,11 @@ export interface FakeSetupOptions {
   readonly current?: 'quality' | 'balanced' | 'economical' | null;
   /** The clients the detection lists (default: Claude Code installed, Codex not found). */
   readonly clients?: readonly SetupDetectedClient[];
+  /**
+   * N334: the daemon asks the question of `security.unenforced` (no layer 3 and the value is
+   * `refuse`): the first run gets the `security` step before the Executors.
+   */
+  readonly askSecurity?: boolean;
   /** Without the routes that look again and install an adapter (an old daemon). */
   readonly noClientRoutes?: boolean;
 }
@@ -227,8 +232,10 @@ export class FakeSetupApi implements SetupApi {
   readonly installAdapter:
     ((client: SetupAdapterClient) => Promise<SetupAdapterInstallResult>) | undefined;
   #next = 1;
+  readonly #askSecurity: boolean;
 
   constructor(options: FakeSetupOptions = {}) {
+    this.#askSecurity = options.askSecurity === true;
     this.clients = [
       ...(options.clients ?? [
         { client: 'claude-code', installed: true },
@@ -251,11 +258,17 @@ export class FakeSetupApi implements SetupApi {
       firstRunNeeded: this.firstRunNeeded,
       flows: (Object.keys(FLOW_STEPS) as SetupFlow[]).map((flow) => ({
         flow,
-        steps: [...FLOW_STEPS[flow]],
+        steps: [...this.#steps(flow)],
         active: this.active.get(flow)?.run ?? null,
         lastFinished: null,
       })),
     }));
+  }
+
+  #steps(flow: SetupFlow): readonly SetupStepId[] {
+    const steps = FLOW_STEPS[flow];
+    if (flow !== 'first_run' || !this.#askSecurity) return steps;
+    return steps.flatMap((step) => (step === 'executors' ? ['security' as const, step] : [step]));
   }
 
   #redetect(): Promise<SetupRedetectResult> {
@@ -323,7 +336,7 @@ export class FakeSetupApi implements SetupApi {
       if (this.active.has(flow)) {
         throw requestError('conflict', 409, `A run of ${flow} is already in progress.`);
       }
-      const steps = FLOW_STEPS[flow];
+      const steps = this.#steps(flow);
       const first = steps[0] ?? 'review';
       const run = this.#view(flow, steps, first, 'active', null);
       this.active.set(flow, { run, inputs: new Map() });
@@ -468,6 +481,9 @@ export class FakeSetupApi implements SetupApi {
     }));
     const writes = [
       ...(preset === null ? [] : ['roles.preset']),
+      ...((inputs.get('security') as { warn?: boolean } | undefined)?.warn === true
+        ? ['security.unenforced']
+        : []),
       ...executors.map((executor) => `executors.${executor.id}`),
     ];
     return { flow, preset, roles, executors, budgets: [], writes, notes: [...this.notes] };
@@ -489,6 +505,8 @@ export class FakeSetupApi implements SetupApi {
         return { step, profiles: this.profiles };
       case 'preset':
         return { step, current: this.current, options: ['quality', 'balanced', 'economical'] };
+      case 'security':
+        return { step, layer3: false, unenforced: 'refuse' };
       case 'executors':
         return {
           step,

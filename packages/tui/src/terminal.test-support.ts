@@ -103,10 +103,15 @@ export interface OpenTuiOptions {
  * The `ui` a test starts with: no assistant over the layout, and a login never opens the browser of
  * the machine (`xdg-open`, `open` or `start` would open a real one).
  */
-export const SAFE_UI = { setup: { open: 'never' }, login: { browser: 'off' } } as const;
+export const SAFE_UI = {
+  setup: { open: 'never' },
+  login: { browser: 'off' },
+  security: { banner: 'off' },
+} as const;
 
 /** The same, as the lines of a `config.yaml` (for the daemon of `ot-tui`, after `persistConfig`). */
-export const SAFE_UI_YAML = 'ui:\n  setup:\n    open: never\n  login:\n    browser: "off"\n';
+export const SAFE_UI_YAML =
+  'ui:\n  setup:\n    open: never\n  login:\n    browser: "off"\n  security:\n    banner: "off"\n';
 
 export interface TuiTerminal {
   readonly term: TuiTestClass;

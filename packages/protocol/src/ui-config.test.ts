@@ -13,6 +13,7 @@ import {
   UiRuntimeConfigSchema,
   UiNewProjectConfigSchema,
   UiQuotaConfigSchema,
+  UiSecurityConfigSchema,
   UiSettingsTabConfigSchema,
   UiSetupConfigSchema,
   UiThemeModeSchema,
@@ -238,6 +239,13 @@ describe('ui.* schemas of the terminal', () => {
     expect(UiQuotaConfigSchema.parse({ show: 'used' }).show).toBe('used');
     expect(UiQuotaConfigSchema.safeParse({ show: 'left' }).success).toBe(false);
     expect(UiQuotaConfigSchema.safeParse({ bars: true }).success).toBe(false);
+  });
+
+  it('has the default of ui.security and refuses an unknown mode (N334, [proposta])', () => {
+    expect(UiSecurityConfigSchema.parse({})).toEqual({ banner: 'on' });
+    expect(UiSecurityConfigSchema.parse({ banner: 'off' }).banner).toBe('off');
+    expect(UiSecurityConfigSchema.safeParse({ banner: 'soft' }).success).toBe(false);
+    expect(UiSecurityConfigSchema.safeParse({ colour: 'red' }).success).toBe(false);
   });
 
   it('has the modes of ui.theme and refuses an unknown one', () => {

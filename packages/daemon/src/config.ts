@@ -39,6 +39,7 @@ import {
   UiNewProjectConfigSchema,
   UiQuotaConfigSchema,
   UiSettingsTabConfigSchema,
+  UiSecurityConfigSchema,
   UiSetupConfigSchema,
   UiSidebarConfigSchema,
   UiThemeModeSchema,
@@ -133,6 +134,9 @@ import {
 
 /** `setup.role_lists`: what the setup assistant writes of the lists of the roles. */
 export const SETUP_ROLE_LIST_MODES = ['explicit', 'preset'] as const;
+/** `setup.unenforced_prompt` (N334): the assistant asks about `security.unenforced` (`ask`) or never does (`never`). */
+export const SETUP_UNENFORCED_PROMPT_MODES = ['ask', 'never'] as const;
+export type SetupUnenforcedPromptMode = (typeof SETUP_UNENFORCED_PROMPT_MODES)[number];
 export type SetupRoleListMode = (typeof SETUP_ROLE_LIST_MODES)[number];
 /** `setup.preset_match` (N333): how a model name of a preset finds a model a catalog lists. */
 export const PRESET_MATCH_MODES = ['newest', 'exact'] as const;
@@ -3305,6 +3309,8 @@ export const DaemonConfigSchema = z
         tuiMouse: UiTuiMouseConfigSchema.prefault({}),
         /** Whether the terminal interface opens the setup assistant on its own (P17). */
         setup: UiSetupConfigSchema.prefault({}),
+        /** [proposta] (N334) The fixed warning about the missing layer 3: `on` (default) or `off`. */
+        security: UiSecurityConfigSchema.prefault({}),
         /** What the prompt of "new project" starts with (P22 of docs/18). */
         newProject: UiNewProjectConfigSchema.prefault({}),
         /** The finished plays in the side bar of the terminal interface (P11 of docs/19). */
@@ -3348,6 +3354,14 @@ export const DaemonConfigSchema = z
          * `executors.aliases` comes first in both.
          */
         preset_match: z.enum(PRESET_MATCH_MODES).default('newest'),
+        /**
+         * [proposta] (N334, 2026-11-26) What the assistant does when layer 3 (the sandbox) is
+         * missing and `security.unenforced` is `refuse`, a combination in which the Director does
+         * not open: `ask` (default) adds the step `security` to the first run, which explains the
+         * risk and asks whether to write `security.unenforced: warn`; `never` does not ask (the
+         * review still says the Director will not open here).
+         */
+        unenforced_prompt: z.enum(SETUP_UNENFORCED_PROMPT_MODES).default('ask'),
       })
       .prefault({}),
     /**

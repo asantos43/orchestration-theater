@@ -30,6 +30,8 @@ export interface GeometryInput {
    */
   readonly sidebarWidth?: number | undefined;
   readonly tuning: LayoutTuning;
+  /** Rows taken from the body by a fixed row between the header and the body (N334: the warning of the protection). */
+  readonly reservedRows?: number | undefined;
 }
 
 /** How the side bar is drawn: whole, as a rail of 3 cells, or not at all (a terminal too narrow). */
@@ -109,7 +111,7 @@ export function computeGeometry(input: GeometryInput): Geometry {
   return {
     columns,
     rows,
-    bodyHeight: rows - 2,
+    bodyHeight: Math.max(1, rows - 2 - Math.max(0, Math.floor(input.reservedRows ?? 0))),
     sidebar: { mode, width: sidebarWidth },
     chat: { x: sidebarWidth, width: chatWidth },
     panel: showPanel ? { x: sidebarWidth + chatWidth, width: available - chatWidth } : undefined,

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-import { readFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { FakeClock, InMemorySecretVault, InMemoryStore } from '@otheater/core/testing';
 import type { EventEnvelope } from '@otheater/core';
@@ -177,6 +177,9 @@ describe('the setup routes', () => {
   });
 
   it('first run with no client: detects nothing, and the confirmation writes only the preset', async () => {
+    // The assistant reads the file: a Windows without layer 3 would ask about `security.unenforced`
+    // first (N334), which this test is not about.
+    await writeFile(dataPaths(tmp.dir).config, 'setup:\n  unenforced_prompt: never\n');
     const run = (await send('POST', '/v1/setup/first_run/start')).view();
     expect(run.prompt).toMatchObject({
       step: 'detect',

@@ -258,6 +258,27 @@ function presetLines(
   }));
 }
 
+/**
+ * N334 [proposta]: the risk in words, then the two answers. The first (the cursor start) changes
+ * nothing; the second makes the plan write `security.unenforced: warn`.
+ */
+function securityLines(
+  prompt: Extract<SetupPrompt, { step: 'security' }>,
+  draft: Extract<Draft, { kind: 'security' }>,
+  t: TFunction,
+): SetupLine[] {
+  return [
+    {
+      key: 's.risk',
+      text: t('setup.security.risk', { value: prompt.unenforced }),
+      color: TOKEN.warn,
+    },
+    { key: 's.gap', text: '' },
+    { key: 's.no', text: t('setup.security.no'), selected: draft.cursor === 0 },
+    { key: 's.yes', text: t('setup.security.yes'), selected: draft.cursor === 1 },
+  ];
+}
+
 /** The line of a model of the list (N333): `[x] model ‹effort›  → roles`. */
 function rowText(row: ExecutorRow, roles: readonly string[], t: TFunction): string {
   const box = row.registered ? '[=]' : row.on ? '[x]' : '[ ]';
@@ -772,6 +793,14 @@ function finishedLines(input: SetupLinesInput): SetupLine[] {
       dim: result.written.length === 0,
     });
   }
+  if (result?.restart !== undefined && result.restart.length > 0) {
+    // N334: `security.unenforced` is copied into the adapters when the daemon starts.
+    lines.push({
+      key: 'restart',
+      text: `⚠ ${t('setup.done.restart', { keys: result.restart.join(', ') })}`,
+      color: TOKEN.warn,
+    });
+  }
   lines.push({ key: 'gap.n', text: '' });
   lines.push({
     key: 'next',
@@ -821,6 +850,9 @@ export function setupLines(input: SetupLinesInput): SetupLine[] {
       break;
     case 'preset':
       if (draft.kind === 'preset') lines.push(...presetLines(prompt, draft, t));
+      break;
+    case 'security':
+      if (draft.kind === 'security') lines.push(...securityLines(prompt, draft, t));
       break;
     case 'executors':
       if (draft.kind === 'executors') lines.push(...executorsLines(prompt, draft, t, run));

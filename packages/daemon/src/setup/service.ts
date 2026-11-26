@@ -28,6 +28,7 @@ import {
   SetupDoneStepSchema,
   SetupExecutorsInputSchema,
   SetupPresetInputSchema,
+  SetupSecurityInputSchema,
   SetupStepSubmissionSchema,
   type DaemonEventPayloads,
   type SetupBudget,
@@ -118,6 +119,13 @@ export interface SetupServiceOptions {
    * `PUT /v1/config`. Absent (a test, a tool with no daemon), the file is read at the next start.
    */
   readonly reload?: ConfigReload | undefined;
+  /**
+   * Whether layer 3 (the sandbox) is there in the running daemon (N334, 2026-11-26; [proposta]).
+   * Absent (a test, a tool with no daemon), the assistant says nothing of the layers. With layer 3
+   * missing and `security.unenforced: refuse` the first run gets the step `security`
+   * (`setup.unenforced_prompt: ask`), and the review says the Director does not open.
+   */
+  readonly layer3?: (() => boolean) | undefined;
 }
 
 /** What an install of an adapter did, before the clients are looked for again. */
@@ -137,6 +145,8 @@ interface RunFacts {
   readonly givenBudgets: readonly SetupBudget[];
   /** N333: the roles given at the review to Executors of the run. */
   readonly placements: readonly SetupRolePlacement[];
+  /** N334: what the `security` step got: `warn` (yes), `keep` (no) or `none` (not asked). */
+  readonly security: 'warn' | 'keep' | 'none';
   readonly notes: readonly SetupNote[];
 }
 
@@ -151,8 +161,21 @@ function firstStepOf(flow: SetupFlow): SetupStepId {
   return first;
 }
 
-function stepsOf(flow: SetupFlow): readonly SetupStepId[] {
-  return SETUP_FLOW_STEPS[flow];
+/**
+ * The steps of a flow now. `security` (N334) is in the first run only when it is to be asked: layer 3
+ * missing, `security.unenforced: refuse` and `setup.unenforced_prompt: ask`; a run that already
+ * reached or answered it keeps it, even if the file changed since.
+ */
+function stepsOf(
+  flow: SetupFlow,
+  askSecurity: boolean,
+  run?: Pick<SetupRunRecord, 'step' | 'done'>,
+): readonly SetupStepId[] {
+  const keep =
+    askSecurity ||
+    run?.step === 'security' ||
+    run?.done.some((entry) => entry.step === 'security') === true;
+  return SETUP_FLOW_STEPS[flow].filter((step) => step !== 'security' || keep);
 }
 
 /** The steps answered, as the protocol types them; a row the schema does not read is a bug or a damaged store. */
@@ -173,9 +196,13 @@ function factsOf(done: readonly SetupDoneStep[]): RunFacts {
   let registered: SetupExecutor[] = [];
   let givenBudgets: SetupBudget[] = [];
   let placements: SetupRolePlacement[] = [];
+  let security: RunFacts['security'] = 'none';
   const notes: SetupNote[] = [];
   for (const entry of done) {
     switch (entry.step) {
+      case 'security':
+        security = entry.input.warn ? 'warn' : 'keep';
+        break;
       case 'detect':
         accounts = [...entry.output.accounts];
         break;
@@ -200,7 +227,7 @@ function factsOf(done: readonly SetupDoneStep[]): RunFacts {
       }
     }
   }
-  return { accounts, preset, discovered, registered, givenBudgets, placements, notes };
+  return { accounts, preset, discovered, registered, givenBudgets, placements, security, notes };
 }
 
 /** One change of `config.yaml` the confirmation makes. */
@@ -253,6 +280,9 @@ function opsOf(apply: PlanApply): ConfigOp[] {
       });
     }
   }
+  if (apply.unenforced !== null) {
+    ops.push({ kind: 'set', path: ['security', 'unenforced'], value: apply.unenforced });
+  }
   for (const insertion of apply.insertions) {
     ops.push({
       kind: 'insert',
@@ -301,7 +331,7 @@ export class SetupService {
       const finished = own.filter((run) => run.state !== 'active').at(-1);
       flows.push({
         flow,
-        steps: [...stepsOf(flow)],
+        steps: [...stepsOf(flow, this.#asksSecurity(flow, config))],
         active: active === undefined ? null : await this.#view(active, config),
         lastFinished:
           finished === undefined || finished.finishedAt === null
@@ -461,13 +491,13 @@ export class SetupService {
         `The run ${run.id} waits at the step ${run.step}, not ${body.step}: reload it`,
       );
     }
-    const steps = stepsOf(run.flow);
+    const config = await loadConfig(this.#o.configPath);
+    const steps = stepsOf(run.flow, this.#asksSecurity(run.flow, config), run);
     const index = steps.indexOf(run.step);
     const next = steps[index + 1];
     if (index === -1 || next === undefined) {
       throw new InvalidInput(`The step ${run.step} takes no answer: confirm or cancel the run`);
     }
-    const config = await loadConfig(this.#o.configPath);
     const done = doneOf(run);
     const output = await this.#answer(run, done, body, config);
     const entry = { step: body.step, input: jsonOf(body.input), output: jsonOf(output) };
@@ -540,6 +570,18 @@ export class SetupService {
     await writeSituation(this.#o.store.events, this.#o.logger, type, payload);
   }
 
+  /** N334: whether the first run asks about `security.unenforced` with the file as it is now. */
+  #asksSecurity(flow: SetupFlow, config: DaemonConfig): boolean {
+    const layer3 = this.#o.layer3;
+    return (
+      flow === 'first_run' &&
+      layer3 !== undefined &&
+      !layer3() &&
+      config.security.unenforced === 'refuse' &&
+      config.setup.unenforced_prompt === 'ask'
+    );
+  }
+
   /** The accounts that take part: the confirmed ones (first run) or every active one (the others). */
   async #accountsOf(run: SetupRunRecord, facts: RunFacts): Promise<string[]> {
     if (run.flow === 'first_run') return [...(facts.accounts ?? [])];
@@ -576,6 +618,14 @@ export class SetupService {
       givenBudgets: facts.givenBudgets,
       placements: facts.placements,
       carriedNotes: facts.notes,
+      security:
+        this.#o.layer3 === undefined
+          ? undefined
+          : {
+              layer3: this.#o.layer3(),
+              unenforced: config.security.unenforced,
+              answer: facts.security,
+            },
       settings: {
         suggestedBudget: {
           dailyUsd: config.setup.suggested_budget.daily_usd,
@@ -597,7 +647,7 @@ export class SetupService {
       flow: run.flow,
       state: run.state,
       step: run.step as SetupStepId,
-      steps: [...stepsOf(run.flow)],
+      steps: [...stepsOf(run.flow, this.#asksSecurity(run.flow, config), run)],
       done,
       prompt: run.state === 'active' ? await this.#promptOf(run, done, config) : null,
       result,
@@ -624,6 +674,12 @@ export class SetupService {
         return { step, profiles: await detectProfiles(this.#o.profiles, { checkLogin: false }) };
       case 'preset':
         return { step, current: config.roles.preset ?? null, options: [...ROLE_PRESET_NAMES] };
+      case 'security':
+        return {
+          step,
+          layer3: this.#o.layer3?.() ?? false,
+          unenforced: config.security.unenforced,
+        };
       case 'executors': {
         const facts = factsOf(done);
         const accounts = new Set(await this.#accountsOf(run, facts));
@@ -719,6 +775,13 @@ export class SetupService {
           discovered: found.discovered,
           roles: preview.plan.roles,
           notes: found.notes,
+        };
+      }
+      case 'security': {
+        const input = SetupSecurityInputSchema.parse(body.input);
+        return {
+          unenforced: config.security.unenforced,
+          write: input.warn && config.security.unenforced !== 'warn' ? 'warn' : null,
         };
       }
       case 'executors':
@@ -938,6 +1001,7 @@ export class SetupService {
       preset: apply.preset,
       executors: apply.executors.map((executor) => executor.id),
       written: plan.writes,
+      ...(apply.unenforced === null ? {} : { restart: ['security.unenforced'] }),
     };
     const updated = await store.setupRuns.update(run.id, {
       state: 'confirmed',
