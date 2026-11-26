@@ -1587,6 +1587,14 @@ export const BACKUP_TELEMETRY_MODES = ['exclude', 'include'] as const;
 /** `telemetry.redaction`: `default` also redacts the content (prompts, answers, tool arguments and output); `full` keeps it. */
 export const TELEMETRY_REDACTION_MODES = ['default', 'full'] as const;
 
+/**
+ * `telemetry.vault_warning` (N331; [proposta]): how a vault the telemetry redaction cannot read is
+ * told. `on_change` (default): one warning, again only when the reason changes, and an info line
+ * when it reads again; `every`: a warning at each refresh (every 30 s); `off`: the debug log only.
+ */
+export const TELEMETRY_VAULT_WARNING_MODES = ['on_change', 'every', 'off'] as const;
+export type TelemetryVaultWarningMode = (typeof TELEMETRY_VAULT_WARNING_MODES)[number];
+
 /** `telemetry.receiver.reparent` (Phase 9, P1; [proposta]): `session` puts the clients' spans under the daemon's tree; `off` keeps them in their own traces. */
 export const TELEMETRY_REPARENT_MODES = ['session', 'off'] as const;
 export type TelemetryReparentMode = (typeof TELEMETRY_REPARENT_MODES)[number];
@@ -1780,6 +1788,11 @@ const TelemetryConfigSchema = z
      * size and hash. `full`: the content stays; the identity and secrets are still removed.
      */
     redaction: z.enum(TELEMETRY_REDACTION_MODES).default('default'),
+    /**
+     * How a vault the redaction cannot read (a locked one) is told (N331): see
+     * {@link TELEMETRY_VAULT_WARNING_MODES}. Default `on_change`. [proposta]
+     */
+    vault_warning: z.enum(TELEMETRY_VAULT_WARNING_MODES).default('on_change'),
     /**
      * The spans of the daemon itself (P4; N214 (a)): the play, its stages, the attempts, the
      * sessions, the tool calls and the waits, made by reading the event log with a cursor of their

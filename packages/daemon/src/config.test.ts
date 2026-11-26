@@ -1644,6 +1644,7 @@ describe('telemetry (P1 of Phase 8)', () => {
       },
       receiver: { port: 'auto', max_body: 8 * 1024 * 1024, reparent: 'session' },
       redaction: 'default',
+      vault_warning: 'on_change',
       daemon_spans: { enabled: 'on', waits: 'all' },
       export: 'off',
       otlp: {
@@ -1741,6 +1742,15 @@ describe('telemetry (P1 of Phase 8)', () => {
     expect(parseConfig('telemetry:\n  receiver:\n    port: auto\n').telemetry.receiver.port).toBe(
       'auto',
     );
+  });
+
+  it('takes the modes of telemetry.vault_warning (N331) and refuses another', () => {
+    for (const mode of ['on_change', 'every', 'off'] as const) {
+      expect(parseConfig(`telemetry:\n  vault_warning: ${mode}\n`).telemetry.vault_warning).toBe(
+        mode,
+      );
+    }
+    expect(() => parseConfig('telemetry:\n  vault_warning: always\n')).toThrow();
   });
 
   it('takes the modes of telemetry.receiver.reparent (Phase 9, P1) and refuses another', () => {
