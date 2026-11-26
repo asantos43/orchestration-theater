@@ -27,7 +27,7 @@ import { useTranslation } from 'react-i18next';
 import { Text } from './themed-text.js';
 import { keyLabel, pairLabel } from '../keys/labels.js';
 import { useMouseCopy, type CopyOutcome, type DragInfo } from '../mouse/index.js';
-import { useRawKeys, type KeyEvent, type TuiKeymap } from '../keys/use-keymap.js';
+import { isCtrlC, useRawKeys, type KeyEvent, type TuiKeymap } from '../keys/use-keymap.js';
 import { useRenderControl } from '../render-control.js';
 import {
   DEFAULT_UI_SETTINGS,
@@ -616,7 +616,7 @@ function ShellBody(props: ShellProps): ReactNode {
 
   useRawKeys((event: KeyEvent) => {
     if (notice !== undefined) setNotice(undefined);
-    if (event.data === '\x03') {
+    if (isCtrlC(event)) {
       quit();
       return;
     }

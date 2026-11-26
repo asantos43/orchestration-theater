@@ -28,6 +28,7 @@
     "react-i18next": "17.1.13"
   },
   "devDependencies": {
+    "@microsoft/tui-test": "0.1.1",
     "@otheater/core": "workspace:*",
     "@otheater/daemon": "workspace:*",
     "@types/react": "19.3.0",
