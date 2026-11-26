@@ -695,6 +695,16 @@
       "roles": "Nenhum papel.",
       "overrides": "Este projeto não sobrepõe nenhuma chave."
     },
+    "table": {
+      "account": "conta",
+      "kind": "tipo",
+      "state": "estado",
+      "executor": "Executor",
+      "roles": "papéis",
+      "role": "papel",
+      "executors": "Executores",
+      "whenExhausted": "ao esgotar"
+    },
     "quota": {
       "ok": "ok",
       "near_limit": "perto do limite",
@@ -710,7 +720,6 @@
     },
     "executor": {
       "invalid": "inválido: {{reason}}",
-      "roles": "papéis: {{roles}}",
       "noRoles": "sem papel"
     },
     "role": {
@@ -721,7 +730,8 @@
         "invalid": "inválido",
         "quota": "cota",
         "budget": "orçamento"
-      }
+      },
+      "none": "nenhum Executor"
     },
     "prompt": {
       "limit": "Novo valor de {{key}} ({{hint}})",

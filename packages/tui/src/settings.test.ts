@@ -57,6 +57,7 @@ describe('parseUiSettings', () => {
       newProject: { repo: 'cwd' },
       sidebar: { finishedPlays: 'collapsed', finishedLimit: 20 },
       login: { browser: 'auto' },
+      settingsTab: { limits: 'folded', roles: 'line' },
     });
   });
 
@@ -190,6 +191,7 @@ describe('parseUiSettings', () => {
       newProject: DEFAULT_UI_SETTINGS.newProject,
       sidebar: DEFAULT_UI_SETTINGS.sidebar,
       login: DEFAULT_UI_SETTINGS.login,
+      settingsTab: DEFAULT_UI_SETTINGS.settingsTab,
     });
   });
 
@@ -268,6 +270,16 @@ describe('parseUiSettings', () => {
     expect(parseUiSettings({ theme: 'otheater' }).theme).toBe('otheater');
     expect(parseUiSettings({ theme: 'solarized' }).theme).toBe('otheater');
     expect(parseUiSettings({ theme: 3 }).theme).toBe('otheater');
+  });
+
+  it('reads ui.settingsTab and falls back key by key', () => {
+    expect(parseUiSettings({ settingsTab: { limits: 'open', roles: 'list' } }).settingsTab).toEqual(
+      { limits: 'open', roles: 'list' },
+    );
+    expect(parseUiSettings({ settingsTab: { limits: 'shut' } }).settingsTab).toEqual({
+      limits: 'folded',
+      roles: 'line',
+    });
   });
 
   it('reads ui.login and falls back to auto', () => {

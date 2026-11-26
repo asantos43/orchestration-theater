@@ -37,6 +37,7 @@ import {
   UiRenderConfigSchema,
   UiRuntimeConfigSchema,
   UiNewProjectConfigSchema,
+  UiSettingsTabConfigSchema,
   UiSetupConfigSchema,
   UiSidebarConfigSchema,
   UiThemeModeSchema,
@@ -3293,6 +3294,8 @@ export const DaemonConfigSchema = z
         sidebar: UiSidebarConfigSchema.prefault({}),
         /** Whether the sign-in panel opens the address in the browser: `auto`, `key` or `off`. */
         login: UiLoginConfigSchema.prefault({}),
+        /** How the tab Settings draws its sections: Limits folded or open, the roles on one line or whole. */
+        settingsTab: UiSettingsTabConfigSchema.prefault({}),
       })
       .prefault({}),
     /**

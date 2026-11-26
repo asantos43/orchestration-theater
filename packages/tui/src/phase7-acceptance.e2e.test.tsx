@@ -97,13 +97,14 @@ async function poll<T>(
 }
 
 /** Waits for the frame to show `text`; fails with the last frame. */
-async function seen(app: RenderedApp, text: string): Promise<string> {
+async function seen(app: RenderedApp, text: string | RegExp): Promise<string> {
   const deadline = Date.now() + WAIT_MS;
   for (;;) {
     const frame = app.frame();
-    if (flat(frame).includes(text)) return frame;
+    if (typeof text === 'string' ? flat(frame).includes(text) : text.test(flat(frame)))
+      return frame;
     if (Date.now() > deadline) {
-      throw new Error(`Timed out waiting for the text "${text}". Last frame:\n${frame}`);
+      throw new Error(`Timed out waiting for the text "${String(text)}". Last frame:\n${frame}`);
     }
     await new Promise<void>((resolve) => setTimeout(resolve, 25));
   }
@@ -241,7 +242,7 @@ describe.skipIf(NO_LAUNCHER).each(LOCALES)(
           await typeText(app, 'work');
           await seen(app, `${T('accountForm.field.name')}: work`);
           await press(app, ENTER);
-          await seen(app, 'codex/work token_plan');
+          await seen(app, new RegExp(`codex/work +${t('accountForm.kind.token_plan')}`));
           const profiles = await chat.daemon.store.profiles.list();
           expect(profiles.map((profile) => `${profile.client}/${profile.name}`)).toContain(
             'codex/work',
@@ -259,7 +260,8 @@ describe.skipIf(NO_LAUNCHER).each(LOCALES)(
           await seen(app, '›director');
           await press(app, 'e');
           await seen(app, T('settings.result.hot', { keys: 'roles.director.when_exhausted' }));
-          await seen(app, `director ${T('settings.role.rule', { rule: t('settings.role.wait') })}`);
+          // One line per role (`ui.settingsTab.roles: line`): the role, its list and the rule.
+          await seen(app, new RegExp(`director [^→]*→ ${t('settings.role.wait')}`));
           expect(await readFile(join(chat.dataDir, 'config.yaml'), 'utf8')).toMatch(
             /when_exhausted:\s*wait/,
           );

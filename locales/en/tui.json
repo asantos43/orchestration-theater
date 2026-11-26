@@ -695,6 +695,16 @@
       "roles": "No role.",
       "overrides": "This project overrides no key."
     },
+    "table": {
+      "account": "account",
+      "kind": "kind",
+      "state": "state",
+      "executor": "Executor",
+      "roles": "roles",
+      "role": "role",
+      "executors": "Executors",
+      "whenExhausted": "when exhausted"
+    },
     "quota": {
       "ok": "ok",
       "near_limit": "near the limit",
@@ -710,7 +720,6 @@
     },
     "executor": {
       "invalid": "invalid: {{reason}}",
-      "roles": "roles: {{roles}}",
       "noRoles": "no role"
     },
     "role": {
@@ -721,7 +730,8 @@
         "invalid": "invalid",
         "quota": "quota",
         "budget": "budget"
-      }
+      },
+      "none": "no Executor"
     },
     "prompt": {
       "limit": "New value of {{key}} ({{hint}})",
