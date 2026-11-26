@@ -478,7 +478,8 @@
         "failover": {
           "switched": "O Diretor passou de {{from}} para {{to}} ({{cause}}); o trabalho segue.",
           "waiting": "O Diretor de {{from}} está esperando ({{cause}}) até {{until}}.",
-          "unavailable": "O Diretor está indisponível ({{cause}}); a fila para até o próximo prompt."
+          "unavailable": "O Diretor está indisponível ({{cause}}); a fila para até o próximo prompt.",
+          "detail": "Motivo: {{detail}}"
         },
         "directorSwitch": {
           "live": "O Diretor passou a rodar {{what}} ({{source}}).",

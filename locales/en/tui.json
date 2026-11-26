@@ -478,7 +478,8 @@
         "failover": {
           "switched": "The Director moved from {{from}} to {{to}} ({{cause}}); the work goes on.",
           "waiting": "The Director of {{from}} is waiting ({{cause}}) until {{until}}.",
-          "unavailable": "The Director is unavailable ({{cause}}); the queue stops until the next prompt."
+          "unavailable": "The Director is unavailable ({{cause}}); the queue stops until the next prompt.",
+          "detail": "Why: {{detail}}"
         },
         "directorSwitch": {
           "live": "The Director now runs {{what}} ({{source}}).",

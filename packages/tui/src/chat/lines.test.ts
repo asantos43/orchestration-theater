@@ -246,6 +246,34 @@ describe('a ! command (P18)', () => {
     expect(text).not.toContain('what=?');
   });
 
+  it('says why the Director is unavailable, when the daemon tells (N331)', () => {
+    const text = (detail: string | null): string =>
+      messageOf(
+        t,
+        entry(
+          {
+            kind: 'system',
+            notice: {
+              kind: 'director_failover',
+              scenarioId: 'S1',
+              outcome: 'unavailable',
+              cause: 'client_crash',
+              fromExecutor: null,
+              toExecutor: null,
+              requeued: null,
+              resetsAt: null,
+              detail,
+            },
+          },
+          { who: 'system' },
+        ),
+      ).text;
+    expect(text('no Executor left')).toContain(
+      '[layout.chat.entry.failover.detail detail=no Executor left]',
+    );
+    expect(text(null)).not.toContain('failover.detail');
+  });
+
   it('shows a refusal by its code, with the message of the daemon as the fallback', () => {
     const text = (code: 'forbidden' | 'internal'): string =>
       messageOf(

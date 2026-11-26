@@ -60,13 +60,18 @@ function noticeText(t: Translate, notice: ScenarioSystemMessagePayload): string 
         executor: notice.executor,
         until: whenOf(t, notice.resetsAt),
       });
-    case 'director_failover':
-      return t(`${ROOT}.failover.${notice.outcome}`, {
+    case 'director_failover': {
+      const said = t(`${ROOT}.failover.${notice.outcome}`, {
         from: notice.fromExecutor ?? '?',
         to: notice.toExecutor ?? '?',
         cause: notice.cause,
         until: whenOf(t, notice.resetsAt),
       });
+      // [proposta] (N331) Why the Director is unavailable: the error, masked and cut by the daemon.
+      return notice.outcome === 'unavailable' && notice.detail !== null
+        ? `${said} ${t(`${ROOT}.failover.detail`, { detail: notice.detail })}`
+        : said;
+    }
     case 'director_switch':
       return t(`${ROOT}.directorSwitch.${notice.form}`, {
         from: notice.fromExecutor ?? '?',
