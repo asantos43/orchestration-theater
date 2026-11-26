@@ -260,6 +260,43 @@ describeWithLauncher('the failover of the Director (P20)', { timeout: 180_000 },
     );
   });
 
+  it('says why when the first opening fails, and does not stay in turn (N331)', async () => {
+    await withFailoverDaemon(
+      { extra: rolesConfig(['one', 'two'], '  director_wait: fail\n') },
+      async (harness, clock) => {
+        const resetsAt = clock.now() + HOUR;
+        for (const profile of ['one', 'two']) {
+          await harness.daemon.quota.ingestLimitHit(
+            { client: 'fake', profile },
+            { source: 'limit_hit:test', resetsAt },
+          );
+        }
+        // No Executor can open the Director: the chat opens and the notice says why (N331).
+        const scenarioId = await harness.openGenericChat('talk');
+        const unavailable = await waitFor('the unavailable notice', async () =>
+          (await failovers(harness, scenarioId)).find((item) => item.outcome === 'unavailable'),
+        );
+        expect(unavailable).toMatchObject({ fromExecutor: null, toExecutor: null });
+        expect(unavailable.detail).not.toBeNull();
+        expect((await harness.producer.state(scenarioId)).busy).toBe(false);
+        // The next prompt is kept in the queue, tries again and says why again.
+        await harness.producer.send(scenarioId, '#ot-chat hello');
+        await waitFor('the second notice', async () =>
+          (await failovers(harness, scenarioId)).filter((item) => item.outcome === 'unavailable')
+            .length >= 2
+            ? true
+            : undefined,
+        );
+        expect(
+          (await promptsOf(harness, scenarioId)).filter((item) => item.state === 'pending'),
+        ).toHaveLength(1);
+        await waitFor('the chat out of turn', async () =>
+          (await harness.producer.state(scenarioId)).busy ? undefined : true,
+        );
+      },
+    );
+  });
+
   it('keeps the old behaviour with scenarios.director_failover: off', async () => {
     await withFailoverDaemon(
       { extra: rolesConfig(['one', 'two'], '', '  director_failover: off\n') },

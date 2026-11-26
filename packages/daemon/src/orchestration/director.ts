@@ -513,6 +513,9 @@ export class DirectorSessions {
     if (session.waking === undefined) {
       const parked = deferred();
       session.parked = parked;
+      // [proposta] (N331) A failed opening does not reach `ensure`: its callers queue a prompt right
+      // after it, and that prompt must not be lost. The chat hears why through the `unavailable`
+      // notice that `#reopen` gives, and the log keeps the error.
       session.waking = this.#reopen(session, parked.resolve).finally(() => {
         session.waking = undefined;
         session.parked = undefined;
@@ -569,13 +572,25 @@ export class DirectorSessions {
       await this.#settleFailover(session, 'switched', picked.executor.id);
       if (park.held || slept || failing) this.#arm(session);
     } catch (error) {
-      // A caller of `ensure` that stayed behind the opening sees the error; one that was released
-      // when the wait began cannot, so the log keeps it.
-      if (park.held) {
-        logger.error(
-          { err: error, scenarioId: session.scenarioId },
-          'the Director did not open after its wait',
-        );
+      // A caller of `ensure` does not see the error (see `#wake`), so the log keeps it.
+      logger.error(
+        { err: error, scenarioId: session.scenarioId },
+        park.held
+          ? 'the Director did not open after its wait'
+          : 'the Director session did not open',
+      );
+      // [proposta] (N331) An opening that fails with no failover in course is told in the chat
+      // too, as a failover that found nobody: without it the prompt stayed in the queue, the chat
+      // said "in turn" and nothing explained why.
+      if (session.failover === undefined && !session.abort.signal.aborted) {
+        session.failover = {
+          from: null,
+          cause: directorFailureOf(error)?.cause ?? 'client_crash',
+          resetsAt: null,
+          detail: situationText(error),
+          requeued: null,
+          announcedWaiting: false,
+        };
       }
       await this.#settleFailover(session, 'unavailable', null, error);
       throw error;
