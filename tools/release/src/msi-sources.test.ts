@@ -69,7 +69,7 @@ describe('the sources of the .msi', () => {
 
   it('runs `ot service install` after the files and `ot service uninstall` before they go, as the user', () => {
     const actions = [...product.matchAll(/<CustomAction[\s\S]*?\/>/g)].map((m) => m[0]);
-    expect(actions).toHaveLength(4);
+    expect(actions).toHaveLength(5);
     for (const action of actions) {
       expect(action).toMatch(/Execute="deferred"/);
       expect(action).toMatch(/Impersonate="yes"/);
@@ -78,7 +78,7 @@ describe('the sources of the .msi', () => {
     expect(product).toMatch(/service install --no-start"/);
     expect(product).toMatch(/service uninstall"/);
     expect(product).toMatch(
-      /Action="OtServiceInstall" After="OtAdaptersInstall" Condition="NOT REMOVE AND LOGON_SERVICE AND LOGON_SERVICE&lt;&gt;&quot;0&quot;"/,
+      /Action="OtServiceInstall" After="OtAdaptersInstallCodex" Condition="NOT REMOVE AND LOGON_SERVICE AND LOGON_SERVICE&lt;&gt;&quot;0&quot;"/,
     );
     expect(product).toMatch(
       /Action="OtServiceUninstall" Before="RemoveFiles" Condition="REMOVE=&quot;ALL&quot;"/,
@@ -89,33 +89,78 @@ describe('the sources of the .msi', () => {
     for (const [name, value] of [
       ['VAULT', 'keep'],
       ['LOGON_SERVICE', '1'],
-      ['PREFETCH_ADAPTERS', '1'],
+      ['PREFETCH_ADAPTERS', 'all'],
     ] as const) {
       expect(product).toContain(`<Property Id="${name}" Value="${value}" Secure="yes" />`);
     }
     // The vault and the adapters go after the files and before the service, in this order.
     expect(product).toMatch(/vault use \[VAULT\]"/);
-    expect(product).toMatch(/adapters install"/);
+    expect(product).toMatch(/adapters install claude-code"/);
+    expect(product).toMatch(/adapters install codex"/);
     expect(product).toMatch(
       /Action="OtVaultUse" After="InstallFiles" Condition="NOT REMOVE AND VAULT AND VAULT&lt;&gt;&quot;keep&quot;"/,
     );
-    expect(product).toMatch(
-      /Action="OtAdaptersInstall" After="OtVaultUse" Condition="NOT REMOVE AND PREFETCH_ADAPTERS AND PREFETCH_ADAPTERS&lt;&gt;&quot;0&quot;"/,
+    // One action per adapter (N324): all and 1 run both, claude-code and codex one each.
+    const runs = (client: string) =>
+      `Condition="NOT REMOVE AND (PREFETCH_ADAPTERS=&quot;all&quot; OR PREFETCH_ADAPTERS=&quot;1&quot; OR PREFETCH_ADAPTERS=&quot;${client}&quot;)"`;
+    expect(product).toContain(
+      `Action="OtAdaptersInstallClaude" After="OtVaultUse" ${runs('claude-code')}`,
     );
-    // A value of VAULT the command would refuse stops the install before anything is done.
+    expect(product).toContain(
+      `Action="OtAdaptersInstallCodex" After="OtAdaptersInstallClaude" ${runs('codex')}`,
+    );
+    // A value of VAULT or PREFETCH_ADAPTERS that is not known stops the install before anything is done.
     expect(product).toMatch(/<Launch\s+Condition="Installed OR VAULT=/);
+    const prefetchLaunch = /<Launch\s+Condition="Installed OR NOT PREFETCH_ADAPTERS ([^"]*)"/.exec(
+      product,
+    );
+    expect(prefetchLaunch).not.toBeNull();
+    for (const value of ['all', 'claude-code', 'codex', '0', '1']) {
+      expect(prefetchLaunch?.[1]).toContain(`PREFETCH_ADAPTERS=&quot;${value}&quot;`);
+    }
     // The page: the four vaults, the two check boxes, the Install button with the shield, no EULA.
     for (const vault of ['keep', 'keyring', 'encrypted-file', 'auto']) {
       expect(product).toContain(`<RadioButton Value="${vault}"`);
     }
     expect(product).toMatch(/Type="CheckBox" Property="LOGON_SERVICE" CheckBoxValue="1"/);
-    expect(product).toMatch(/Type="CheckBox" Property="PREFETCH_ADAPTERS" CheckBoxValue="1"/);
+    // One box per adapter (N324), checked from PREFETCH_ADAPTERS before the page and written back to
+    // it by the Install button, one value for each of the four combinations, before EndDialog.
+    expect(product).toMatch(/Type="CheckBox" Property="OtPrefetchClaude" CheckBoxValue="1"/);
+    expect(product).toMatch(/Type="CheckBox" Property="OtPrefetchCodex" CheckBoxValue="1"/);
+    expect(product).not.toMatch(/Type="CheckBox" Property="PREFETCH_ADAPTERS"/);
+    for (const [id, client] of [
+      ['OtPrefetchClaude', 'claude-code'],
+      ['OtPrefetchCodex', 'codex'],
+    ] as const) {
+      expect(product).toMatch(
+        new RegExp(
+          `<SetProperty\\s+Id="${id}"\\s+Value="1"\\s+After="LaunchConditions"\\s+Sequence="ui"\\s+Condition="PREFETCH_ADAPTERS=&quot;all&quot; OR PREFETCH_ADAPTERS=&quot;1&quot; OR PREFETCH_ADAPTERS=&quot;${client}&quot;"`,
+        ),
+      );
+    }
+    const install = /<Control Id="Install"[\s\S]*?<\/Control>/.exec(product)?.[0] ?? '';
+    for (const [value, condition] of [
+      ['all', 'OtPrefetchClaude AND OtPrefetchCodex'],
+      ['claude-code', 'OtPrefetchClaude AND NOT OtPrefetchCodex'],
+      ['codex', 'NOT OtPrefetchClaude AND OtPrefetchCodex'],
+      ['0', 'NOT OtPrefetchClaude AND NOT OtPrefetchCodex'],
+    ] as const) {
+      expect(install).toMatch(
+        new RegExp(
+          `<Publish Property="PREFETCH_ADAPTERS" Value="${value}" Order="[1-4]" Condition="${condition}" />`,
+        ),
+      );
+    }
+    expect(install).toMatch(/<Publish Event="EndDialog" Value="Return" Order="5" \/>/);
     expect(product).toMatch(/Id="Install" Type="PushButton"[^>]*ElevationShield="yes"/);
     expect(product).toContain('needs administrator');
     expect(product).toMatch(/<Show Dialog="OtOptionsDlg" [^>]*Condition="NOT Installed"/);
     expect(product).not.toMatch(/<UIRef|WixUI_|LicenseAgreement|WixUILicenseRtf/);
     // The test of the .msi passes them, and never downloads the adapters.
     expect(testScript).toContain("'VAULT=encrypted-file', 'PREFETCH_ADAPTERS=0'");
+    // And it checks that an unknown value of PREFETCH_ADAPTERS is refused, with nothing installed.
+    expect(testScript).toContain("'PREFETCH_ADAPTERS=gemini'");
+    expect(testScript).toMatch(/\$code -eq 1603/);
   });
 
   it('never touches the data folder', () => {
@@ -125,8 +170,8 @@ describe('the sources of the .msi', () => {
     const asArgument = [
       ...product.matchAll(/--data-dir &quot;\[LocalAppDataFolder\]OTheater&quot;/g),
     ];
-    expect(mentions).toHaveLength(4);
-    expect(asArgument).toHaveLength(4);
+    expect(mentions).toHaveLength(5);
+    expect(asArgument).toHaveLength(5);
   });
 
   it('removes what the updates leave, by exact name, in the install folder only (N303)', () => {

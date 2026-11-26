@@ -30,7 +30,7 @@ Todas as instalações são **por usuário**: sem `sudo`, sem administrador, nad
 3. Abra o `.msi`. Se o SmartScreen avisar, veja a [seção 4.1](#41-windows-smartscreen).
 4. Ou, no PowerShell: `msiexec /i OTheater-<versão>-win32-x64.msi`.
 
-Ao abrir, o `.msi` mostra uma página de opções (N322): onde guardar os segredos, se o daemon sobe no logon e se os adaptadores ACP são baixados já, com o botão Instalar **[V: `installer/wix/Product.wxs`; N: a tela num Windows real]**. Nenhuma das opções precisa de administrador. Sem tela: `msiexec /i ... /qn VAULT=encrypted-file LOGON_SERVICE=0 PREFETCH_ADAPTERS=0` (os padrões são `keep`, `1` e `1`) **[V]** (`installer/wix/README.md`).
+Ao abrir, o `.msi` mostra uma página de opções (N322): onde guardar os segredos, se o daemon sobe no logon e quais adaptadores ACP são baixados já (uma caixa para o Claude Code e outra para o Codex, as duas marcadas; N324), com o botão Instalar **[V: `installer/wix/Product.wxs`; N: a tela num Windows real]**. Nenhuma das opções precisa de administrador. Sem tela: `msiexec /i ... /qn VAULT=encrypted-file LOGON_SERVICE=0 PREFETCH_ADAPTERS=0` (os padrões são `keep`, `1` e `all`; `PREFETCH_ADAPTERS` aceita `all`, `claude-code`, `codex` ou `0`, e outro valor para a instalação antes de qualquer mudança) **[V]** (`installer/wix/README.md`).
 
 O pacote instala o executável como `ot.exe` em `%LOCALAPPDATA%\Programs\OTheater`, põe essa pasta no `PATH` do usuário e registra o serviço de logon (uma Tarefa Agendada, por `ot service install --no-start`: o daemon começa no próximo logon) **[V]** (`installer/wix/README.md`, `Product.wxs`). Abra um terminal novo e rode `ot --version` **[V]** (`packages/daemon/src/cli.ts`).
 

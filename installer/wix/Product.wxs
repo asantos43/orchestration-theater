@@ -12,7 +12,9 @@
     wizard, no folder choice and no EULA page. A silent install (`/qn`) takes them as properties:
       VAULT              keep (default), keyring, encrypted-file or auto (`ot vault use`; keep writes nothing)
       LOGON_SERVICE      1 (default) or 0: `ot service install` (OtServiceInstall below)
-      PREFETCH_ADAPTERS  1 (default) or 0: `ot adapters install` (claude-agent-acp and codex-acp, from npm)
+      PREFETCH_ADAPTERS  all (default), claude-code, codex or 0 (N324): `ot adapters install <client>`
+                         for claude-agent-acp, codex-acp or both, from npm; 1 is kept as all and an
+                         empty value as 0, for the command lines of before [proposta]
     for example `msiexec /i otheater.msi /qn VAULT=encrypted-file PREFETCH_ADAPTERS=0`. A choice that
     needs an administrator is marked with the UAC shield and "needs administrator"; none of these does
     (the package is per user), so the page says so. The names and defaults are [proposta].
@@ -50,10 +52,29 @@
     <!-- The choices of the install (N322). Secure: a silent install passes them to the execution. -->
     <Property Id="VAULT" Value="keep" Secure="yes" />
     <Property Id="LOGON_SERVICE" Value="1" Secure="yes" />
-    <Property Id="PREFETCH_ADAPTERS" Value="1" Secure="yes" />
+    <Property Id="PREFETCH_ADAPTERS" Value="all" Secure="yes" />
     <Launch
       Condition="Installed OR VAULT=&quot;keep&quot; OR VAULT=&quot;keyring&quot; OR VAULT=&quot;encrypted-file&quot; OR VAULT=&quot;auto&quot;"
       Message="VAULT=[VAULT]: use keep, keyring, encrypted-file or auto."
+    />
+    <Launch
+      Condition="Installed OR NOT PREFETCH_ADAPTERS OR PREFETCH_ADAPTERS=&quot;all&quot; OR PREFETCH_ADAPTERS=&quot;claude-code&quot; OR PREFETCH_ADAPTERS=&quot;codex&quot; OR PREFETCH_ADAPTERS=&quot;0&quot; OR PREFETCH_ADAPTERS=&quot;1&quot;"
+      Message="PREFETCH_ADAPTERS=[PREFETCH_ADAPTERS]: use all, claude-code, codex or 0."
+    />
+    <!-- The two boxes of the adapters on the page (see the UI below), checked from PREFETCH_ADAPTERS. -->
+    <SetProperty
+      Id="OtPrefetchClaude"
+      Value="1"
+      After="LaunchConditions"
+      Sequence="ui"
+      Condition="PREFETCH_ADAPTERS=&quot;all&quot; OR PREFETCH_ADAPTERS=&quot;1&quot; OR PREFETCH_ADAPTERS=&quot;claude-code&quot;"
+    />
+    <SetProperty
+      Id="OtPrefetchCodex"
+      Value="1"
+      After="LaunchConditions"
+      Sequence="ui"
+      Condition="PREFETCH_ADAPTERS=&quot;all&quot; OR PREFETCH_ADAPTERS=&quot;1&quot; OR PREFETCH_ADAPTERS=&quot;codex&quot;"
     />
 
     <StandardDirectory Id="LocalAppDataFolder">
@@ -148,10 +169,19 @@
       Impersonate="yes"
       Return="ignore"
     />
+    <!-- One action per adapter (N324): a failed download of one does not keep the other. -->
     <CustomAction
-      Id="OtAdaptersInstall"
+      Id="OtAdaptersInstallClaude"
       Directory="INSTALLFOLDER"
-      ExeCommand="&quot;[INSTALLFOLDER]ot.exe&quot; --data-dir &quot;[LocalAppDataFolder]OTheater&quot; adapters install"
+      ExeCommand="&quot;[INSTALLFOLDER]ot.exe&quot; --data-dir &quot;[LocalAppDataFolder]OTheater&quot; adapters install claude-code"
+      Execute="deferred"
+      Impersonate="yes"
+      Return="ignore"
+    />
+    <CustomAction
+      Id="OtAdaptersInstallCodex"
+      Directory="INSTALLFOLDER"
+      ExeCommand="&quot;[INSTALLFOLDER]ot.exe&quot; --data-dir &quot;[LocalAppDataFolder]OTheater&quot; adapters install codex"
       Execute="deferred"
       Impersonate="yes"
       Return="ignore"
@@ -177,14 +207,18 @@
       <!-- REMOVE="ALL" is also true for the old product in a major upgrade: its service goes first, the new one installs its own. -->
       <Custom Action="OtServiceUninstall" Before="RemoveFiles" Condition="REMOVE=&quot;ALL&quot;" />
       <Custom Action="OtVaultUse" After="InstallFiles" Condition="NOT REMOVE AND VAULT AND VAULT&lt;&gt;&quot;keep&quot;" />
-      <Custom Action="OtAdaptersInstall" After="OtVaultUse" Condition="NOT REMOVE AND PREFETCH_ADAPTERS AND PREFETCH_ADAPTERS&lt;&gt;&quot;0&quot;" />
-      <Custom Action="OtServiceInstall" After="OtAdaptersInstall" Condition="NOT REMOVE AND LOGON_SERVICE AND LOGON_SERVICE&lt;&gt;&quot;0&quot;" />
+      <Custom Action="OtAdaptersInstallClaude" After="OtVaultUse" Condition="NOT REMOVE AND (PREFETCH_ADAPTERS=&quot;all&quot; OR PREFETCH_ADAPTERS=&quot;1&quot; OR PREFETCH_ADAPTERS=&quot;claude-code&quot;)" />
+      <Custom Action="OtAdaptersInstallCodex" After="OtAdaptersInstallClaude" Condition="NOT REMOVE AND (PREFETCH_ADAPTERS=&quot;all&quot; OR PREFETCH_ADAPTERS=&quot;1&quot; OR PREFETCH_ADAPTERS=&quot;codex&quot;)" />
+      <Custom Action="OtServiceInstall" After="OtAdaptersInstallCodex" Condition="NOT REMOVE AND LOGON_SERVICE AND LOGON_SERVICE&lt;&gt;&quot;0&quot;" />
     </InstallExecuteSequence>
 
     <!--
       The page of options (N322), a progress page and the three end pages, all core WiX. A check box
       sets its property to 1 when checked and clears it when not (hence the conditions above take an
       empty value or 0 as no). The texts are in English, like the rest of the package. [proposta]
+      The two boxes of the adapters (N324) have private properties of the page: before the page,
+      they are checked from PREFETCH_ADAPTERS (so `msiexec /i ... PREFETCH_ADAPTERS=codex` opens with
+      only codex checked), and the Install button writes PREFETCH_ADAPTERS back from them.
       The Install button asks the shield of Windows (ElevationShield): Windows draws it only when
       the install needs elevation, which a per-user package does not.
     -->
@@ -200,19 +234,25 @@
         <RadioButton Value="auto" X="0" Y="48" Width="320" Height="15" Text="Auto: the Credential Manager, or the file when it cannot be used" />
       </RadioButtonGroup>
 
-      <Dialog Id="OtOptionsDlg" Width="370" Height="270" Title="[ProductName] [ProductVersion]">
+      <Dialog Id="OtOptionsDlg" Width="370" Height="288" Title="[ProductName] [ProductVersion]">
         <Control Id="Title" Type="Text" X="20" Y="12" Width="330" Height="20" Transparent="yes" NoPrefix="yes" Text="{\OtTitle}Install [ProductName] [ProductVersion]" />
         <Control Id="Where" Type="Text" X="20" Y="34" Width="330" Height="26" NoPrefix="yes" Text="For your user only, in [INSTALLFOLDER]. Your data folder (%LOCALAPPDATA%\OTheater) is never touched." />
         <Control Id="VaultLabel" Type="Text" X="20" Y="64" Width="330" Height="12" NoPrefix="yes" Text="Where to keep the secrets of the accounts:" />
         <Control Id="Vault" Type="RadioButtonGroup" Property="VAULT" X="28" Y="78" Width="322" Height="64" />
         <Control Id="Service" Type="CheckBox" Property="LOGON_SERVICE" CheckBoxValue="1" X="20" Y="148" Width="330" Height="16" Text="Start the OTheater daemon when I log on (a Scheduled Task of my user)" />
-        <Control Id="Prefetch" Type="CheckBox" Property="PREFETCH_ADAPTERS" CheckBoxValue="1" X="20" Y="166" Width="330" Height="26" Text="Download the ACP adapters now (claude-agent-acp and codex-acp, from the npm registry; it needs the internet and can take a minute)" />
-        <Control Id="Elevation" Type="Text" X="20" Y="200" Width="330" Height="26" NoPrefix="yes" Text="None of these choices needs an administrator. A choice that did would show the shield of Windows and say &quot;needs administrator&quot;." />
-        <Control Id="Line" Type="Line" X="0" Y="234" Width="370" Height="0" />
-        <Control Id="Install" Type="PushButton" X="226" Y="243" Width="66" Height="17" Default="yes" ElevationShield="yes" Text="&amp;Install">
-          <Publish Event="EndDialog" Value="Return" />
+        <Control Id="PrefetchLabel" Type="Text" X="20" Y="168" Width="330" Height="12" NoPrefix="yes" Text="Download the ACP adapters now (from the npm registry; it needs the internet):" />
+        <Control Id="PrefetchClaude" Type="CheckBox" Property="OtPrefetchClaude" CheckBoxValue="1" X="28" Y="182" Width="322" Height="15" Text="Claude Code (claude-agent-acp)" />
+        <Control Id="PrefetchCodex" Type="CheckBox" Property="OtPrefetchCodex" CheckBoxValue="1" X="28" Y="198" Width="322" Height="15" Text="Codex (codex-acp)" />
+        <Control Id="Elevation" Type="Text" X="20" Y="218" Width="330" Height="26" NoPrefix="yes" Text="None of these choices needs an administrator. A choice that did would show the shield of Windows and say &quot;needs administrator&quot;." />
+        <Control Id="Line" Type="Line" X="0" Y="252" Width="370" Height="0" />
+        <Control Id="Install" Type="PushButton" X="226" Y="261" Width="66" Height="17" Default="yes" ElevationShield="yes" Text="&amp;Install">
+          <Publish Property="PREFETCH_ADAPTERS" Value="all" Order="1" Condition="OtPrefetchClaude AND OtPrefetchCodex" />
+          <Publish Property="PREFETCH_ADAPTERS" Value="claude-code" Order="2" Condition="OtPrefetchClaude AND NOT OtPrefetchCodex" />
+          <Publish Property="PREFETCH_ADAPTERS" Value="codex" Order="3" Condition="NOT OtPrefetchClaude AND OtPrefetchCodex" />
+          <Publish Property="PREFETCH_ADAPTERS" Value="0" Order="4" Condition="NOT OtPrefetchClaude AND NOT OtPrefetchCodex" />
+          <Publish Event="EndDialog" Value="Return" Order="5" />
         </Control>
-        <Control Id="Cancel" Type="PushButton" X="300" Y="243" Width="56" Height="17" Cancel="yes" Text="Cancel">
+        <Control Id="Cancel" Type="PushButton" X="300" Y="261" Width="56" Height="17" Cancel="yes" Text="Cancel">
           <Publish Event="EndDialog" Value="Exit" />
         </Control>
       </Dialog>
