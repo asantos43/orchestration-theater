@@ -5,10 +5,19 @@ import {
   type SetupBudget,
   type SetupDetectedClient,
   type SetupExecutorRequest,
+  type SetupPlan,
   type SetupPrompt,
+  type SetupRolePlacement,
   type SetupRunView,
   type SetupStepSubmission,
 } from '@otheater/protocol';
+import {
+  rowEffortMoved,
+  rowToggled,
+  rowsSubmission,
+  type ExecutorGroup,
+  type ExecutorRow,
+} from './executor-list.js';
 
 /**
  * What the setup screen keeps between the daemon's views (P17 of Phase 7): the draft of the step on
@@ -37,6 +46,20 @@ export type Draft =
        * (the `exclude` of the step); none when absent.
        */
       readonly exclude?: readonly string[];
+      /**
+       * N333: the models of each account as the client catalog lists them, as rows to check; absent
+       * until the list is read (and always absent with `ui.setup.executorsInput: prompt`).
+       */
+      readonly rows?: readonly ExecutorRow[];
+      /** What the catalog said of each account, for the heading of its rows. */
+      readonly groups?: readonly ExecutorGroup[];
+      /** The list is being read (`loading`) or was read (`ready`); absent: it was not asked for. */
+      readonly list?: 'loading' | 'ready';
+      /**
+       * N333 [proposta]: the roles given at the review to the Executors the preset leaves without
+       * one; kept so the step, answered again, repeats them. Any edit of the step clears them.
+       */
+      readonly placements?: readonly SetupRolePlacement[];
     }
   | { readonly kind: 'review' };
 
@@ -126,9 +149,11 @@ export function itemCount(draft: Draft, prompt: SetupPrompt | null): number {
     case 'preset':
       return prompt.step === 'preset' ? prompt.options.length : 0;
     case 'executors':
-      return prompt.step === 'executors'
-        ? draft.executors.length + prompt.apiProfiles.length
-        : draft.executors.length;
+      return (
+        (draft.rows?.length ?? 0) +
+        draft.executors.length +
+        (prompt.step === 'executors' ? prompt.apiProfiles.length : 0)
+      );
     case 'review':
       return 0;
   }
@@ -141,13 +166,40 @@ export function withCursor(draft: Draft, prompt: SetupPrompt | null, delta: numb
   return { ...draft, cursor: Math.min(last, Math.max(0, draft.cursor + delta)) };
 }
 
-/** Takes the account under the cursor in or out of the detection. */
+/**
+ * Takes the account under the cursor in or out of the detection; at the step of the Executors, the
+ * model under the cursor in or out of the list (N333).
+ */
 export function toggled(draft: Draft): Draft {
+  if (draft.kind === 'executors') {
+    if (draft.rows === undefined || draft.cursor >= draft.rows.length) return draft;
+    return edited(draft, { rows: rowToggled(draft.rows, draft.cursor) });
+  }
   if (draft.kind !== 'detect') return draft;
   return {
     ...draft,
     rows: draft.rows.map((row, index) => (index === draft.cursor ? { ...row, on: !row.on } : row)),
   };
+}
+
+/**
+ * N333: the effort of the model under the cursor, moved by `delta` among the ones it accepts
+ * (←→). Nothing happens off the rows of the list.
+ */
+export function effortMoved(draft: Draft, delta: -1 | 1): Draft {
+  if (draft.kind !== 'executors' || draft.rows === undefined) return draft;
+  if (draft.cursor >= draft.rows.length) return draft;
+  return edited(draft, { rows: rowEffortMoved(draft.rows, draft.cursor, delta) });
+}
+
+/** The draft of the Executors with a change; the roles given at the review are given up (any edit clears them). */
+function edited(
+  draft: Extract<Draft, { kind: 'executors' }>,
+  change: Partial<Extract<Draft, { kind: 'executors' }>>,
+): Draft {
+  const next = { ...draft, ...change };
+  delete next.placements;
+  return next;
 }
 
 /** Moves the account under the cursor up or down the order (the cursor follows it). */
@@ -162,27 +214,71 @@ export function reordered(draft: Draft, delta: -1 | 1): Draft {
   return { ...draft, rows, cursor: to };
 }
 
-/** What the cursor is on at the step of the Executors: a registered line, or a cap of an API account. */
+/**
+ * What the cursor is on at the step of the Executors: a model of the list (N333), a typed line, or
+ * a cap of an API account. The cursor walks them in that order.
+ */
 export type ExecutorsItem =
+  | { readonly kind: 'row'; readonly index: number }
   | { readonly kind: 'executor'; readonly index: number }
   | { readonly kind: 'budget'; readonly profileId: string };
 
 export function executorsItem(draft: Draft, prompt: SetupPrompt | null): ExecutorsItem | undefined {
   if (draft.kind !== 'executors' || prompt?.step !== 'executors') return undefined;
-  if (draft.cursor < draft.executors.length) return { kind: 'executor', index: draft.cursor };
-  const profile = prompt.apiProfiles[draft.cursor - draft.executors.length];
+  const rows = draft.rows?.length ?? 0;
+  if (draft.cursor < rows) return { kind: 'row', index: draft.cursor };
+  const typed = draft.cursor - rows;
+  if (typed < draft.executors.length) return { kind: 'executor', index: typed };
+  const profile = prompt.apiProfiles[typed - draft.executors.length];
   return profile === undefined ? undefined : { kind: 'budget', profileId: profile.profileId };
 }
 
 export function withExecutor(draft: Draft, executor: SetupExecutorRequest): Draft {
   if (draft.kind !== 'executors') return draft;
-  return { ...draft, executors: [...draft.executors, executor], cursor: draft.executors.length };
+  return edited(draft, {
+    executors: [...draft.executors, executor],
+    cursor: (draft.rows?.length ?? 0) + draft.executors.length,
+  });
 }
 
 export function withoutExecutor(draft: Draft, index: number): Draft {
   if (draft.kind !== 'executors') return draft;
   const executors = draft.executors.filter((_, at) => at !== index);
-  return { ...draft, executors, cursor: Math.max(0, Math.min(draft.cursor, executors.length - 1)) };
+  const rows = draft.rows?.length ?? 0;
+  return edited(draft, {
+    executors,
+    cursor: Math.max(0, Math.min(draft.cursor, rows + executors.length - 1)),
+  });
+}
+
+/** What the list of models read gives the step (N333): the rows and groups, merged with the seed of N324. */
+export function withList(
+  draft: Draft,
+  list: {
+    readonly rows: readonly ExecutorRow[];
+    readonly groups: readonly ExecutorGroup[];
+    readonly executors: readonly SetupExecutorRequest[];
+    readonly exclude: readonly string[];
+  },
+): Draft {
+  if (draft.kind !== 'executors') return draft;
+  const next = {
+    ...draft,
+    executors: [...list.executors],
+    rows: [...list.rows],
+    groups: [...list.groups],
+    list: 'ready' as const,
+  };
+  delete next.exclude;
+  return list.exclude.length === 0 ? next : { ...next, exclude: [...list.exclude] };
+}
+
+/** The Executors of the plan the preset leaves without a role: the ones the review can give one. */
+export function noRoleExecutors(plan: SetupPlan | undefined): readonly string[] {
+  if (plan === undefined) return [];
+  return plan.executors
+    .map((executor) => executor.id)
+    .filter((id) => !plan.roles.some((role) => role.executors.includes(id)));
 }
 
 export function withBudget(draft: Draft, budget: SetupBudget): Draft {
@@ -220,15 +316,24 @@ export function submissionOf(
       const preset = prompt.options[draft.cursor];
       return preset === undefined ? undefined : { step: 'preset', input: { preset } };
     }
-    case 'executors':
+    case 'executors': {
+      // N333: the models checked in the list are requests (or exclusions of what the preset names).
+      const listed = rowsSubmission(draft.rows ?? []);
+      const exclude = [...listed.exclude, ...(draft.exclude ?? [])].filter(
+        (id, at, all) => all.indexOf(id) === at,
+      );
       return {
         step: 'executors',
         input: {
-          executors: [...draft.executors],
+          executors: [...listed.executors, ...draft.executors],
           budgets: Object.values(draft.budgets),
-          ...(draft.exclude === undefined ? {} : { exclude: [...draft.exclude] }),
+          ...(exclude.length === 0 ? {} : { exclude }),
+          ...(draft.placements === undefined || draft.placements.length === 0
+            ? {}
+            : { roles: draft.placements.map((place) => ({ ...place, roles: [...place.roles] })) }),
         },
       };
+    }
     case 'review':
       return undefined;
   }

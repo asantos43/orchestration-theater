@@ -102,6 +102,8 @@ describe('the setup assistant of the TUI, with a daemon', () => {
       await key(app, UP);
       await key(app, ENTER);
       await app.waitForText('Register Executors by API or local model');
+      // The step reads the models of each account first (N333); a key before that is held.
+      await app.waitForText('This account has no client that lists models');
       await key(app, ENTER);
       const review = await app.waitForText('This is what will be written.');
       expect(review).toContain('Preset: quality');
@@ -202,6 +204,8 @@ describe('the setup assistant of the TUI, with a daemon', () => {
     await app.waitForText('Pick the preset of the roles.');
     await key(app, ENTER);
     await app.waitForText('Register Executors by API or local model');
+    // The step reads the models of each account first (N333); a key before that is held.
+    await app.waitForText('This account has no client that lists models');
     // An account the daemon does not know: the screen lets the line through and the daemon refuses it.
     await key(app, 'a');
     for (const char of 'nobody/here some-model') await key(app, char);

@@ -742,6 +742,7 @@ function ShellBody(props: ShellProps): ReactNode {
         keymap={tuiKeymap}
         reviewNotes={settings.setup.reviewNotes}
         modelPick={settings.setup.modelPick}
+        executorsInput={settings.setup.executorsInput}
         onClose={() => {
           setAssistant(undefined);
         }}

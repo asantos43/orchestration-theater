@@ -25,6 +25,12 @@ export const UI_SETUP_OPEN_MODES = ['auto', 'never'] as const;
 export const UI_SETUP_REVIEW_NOTES_MODES = ['grouped', 'all'] as const;
 /** `ui.setup.modelPick` (N324) [proposta]: which models of the list after a login start checked. */
 export const UI_SETUP_MODEL_PICK_MODES = ['preset', 'all', 'none'] as const;
+/**
+ * `ui.setup.executorsInput` (N333) [proposta]: how the step "Executores" of the assistant takes the
+ * Executors: `list` (default) a list of the models of each account to check, with the effort on the
+ * arrow keys; `prompt` the line `<conta> <modelo> [esforço]` typed, as before.
+ */
+export const UI_SETUP_EXECUTORS_INPUT_MODES = ['list', 'prompt'] as const;
 export const UI_INK_PATCHES = ['cache', 'grid'] as const;
 export const UI_SCROLL_STEPS = ['page', 'half', 'line'] as const;
 export const UI_DENSITIES = ['comfortable', 'compact'] as const;
@@ -403,12 +409,16 @@ export type UiTuiMouseConfig = z.output<typeof UiTuiMouseConfigSchema>;
  *   into one line; a key of the screen shows the detail. `all` shows every note, one per line.
  * - `modelPick` (N324): after the login of an account, which models of the list start checked:
  *   `preset` (default) the ones the preset names, `all` every model the client lists, `none` none.
+ * - `executorsInput` (N333): how the step of the Executors takes them: `list` (default) a list of
+ *   the models of each account, with the preset's already checked and the effort on the arrows;
+ *   `prompt` the typed line `<account> <model> [effort]`.
  */
 export const UiSetupConfigSchema = z.strictObject({
   open: z.enum(UI_SETUP_OPEN_MODES).default('auto'),
   readTimeoutMs: z.int().min(100).max(60_000).default(5000),
   reviewNotes: z.enum(UI_SETUP_REVIEW_NOTES_MODES).default('grouped'),
   modelPick: z.enum(UI_SETUP_MODEL_PICK_MODES).default('preset'),
+  executorsInput: z.enum(UI_SETUP_EXECUTORS_INPUT_MODES).default('list'),
 });
 export type UiSetupConfig = z.output<typeof UiSetupConfigSchema>;
 

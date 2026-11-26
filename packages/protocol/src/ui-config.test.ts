@@ -187,8 +187,11 @@ describe('ui.* schemas of the terminal', () => {
       readTimeoutMs: 5000,
       reviewNotes: 'grouped',
       modelPick: 'preset',
+      executorsInput: 'list',
     });
     expect(UiSetupConfigSchema.parse({ reviewNotes: 'all' }).reviewNotes).toBe('all');
+    expect(UiSetupConfigSchema.parse({ executorsInput: 'prompt' }).executorsInput).toBe('prompt');
+    expect(UiSetupConfigSchema.safeParse({ executorsInput: 'some' }).success).toBe(false);
     expect(UiSetupConfigSchema.parse({ modelPick: 'all' }).modelPick).toBe('all');
     expect(UiSetupConfigSchema.parse({ modelPick: 'none' }).modelPick).toBe('none');
     expect(UiSetupConfigSchema.safeParse({ modelPick: 'some' }).success).toBe(false);

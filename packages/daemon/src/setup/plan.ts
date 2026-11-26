@@ -12,7 +12,13 @@ import {
   type RolesLayer,
   type SetupFlow,
 } from '@otheater/core';
-import type { SetupBudget, SetupExecutor, SetupNote, SetupPlan } from '@otheater/protocol';
+import type {
+  SetupBudget,
+  SetupExecutor,
+  SetupNote,
+  SetupPlan,
+  SetupRolePlacement,
+} from '@otheater/protocol';
 import type { DaemonConfig, SetupRoleListMode } from '../config.js';
 import { legacyExecutorsOf } from '../orchestration/role-executors.js';
 
@@ -39,6 +45,11 @@ export interface PlanInput {
   readonly registered: readonly SetupExecutor[];
   /** The caps the Producer gave. */
   readonly givenBudgets: readonly SetupBudget[];
+  /**
+   * N333 [proposta]: the roles the Producer gave to Executors of the run at the review; each one
+   * enters at the END of the list of each role named. Default none.
+   */
+  readonly placements?: readonly SetupRolePlacement[] | undefined;
   /** What the notes of the earlier steps said (discovery, checks of the cadastro). */
   readonly carriedNotes: readonly SetupNote[];
   readonly settings: {
@@ -172,8 +183,8 @@ export function buildPlan(input: PlanInput): PlanResult {
 
   // The lists the file keeps get the new Executors where `on_register` puts them.
   const insertions: { role: RoleId; position: number; id: string }[] = [];
+  const explicit: Partial<Record<RoleId, string[]>> = {};
   if (!rewriteLists) {
-    const explicit: Partial<Record<RoleId, string[]>> = {};
     for (const role of ROLE_IDS) {
       const own = base[role]?.executors;
       if (own !== undefined) explicit[role] = [...own];
@@ -197,6 +208,29 @@ export function buildPlan(input: PlanInput): PlanResult {
         shown.splice(Math.min(position, shown.length), 0, executor.id);
         lists.set(placement.role, shown);
       }
+    }
+  }
+
+  // N333: the roles the Producer gave at the review take the Executor at the END of their lists. A
+  // list the file keeps gets an insertion; a role with no list in the file gets the list it has now
+  // (the preset's, resolved) plus the Executor, written whole, since there is nothing to insert in.
+  const known = new Set(catalog.map((entry) => entry.id));
+  const frozen = new Map<RoleId, string[]>();
+  for (const placement of input.placements ?? []) {
+    if (!known.has(placement.executorId)) continue;
+    for (const role of ROLE_IDS.filter((id) => placement.roles.includes(id))) {
+      const shown = lists.get(role) ?? [];
+      if (shown.includes(placement.executorId)) continue;
+      shown.push(placement.executorId);
+      lists.set(role, shown);
+      if (rewriteLists) continue;
+      const own = explicit[role];
+      if (own === undefined) {
+        frozen.set(role, [...shown]);
+        continue;
+      }
+      own.push(placement.executorId);
+      insertions.push({ role, position: own.length - 1, id: placement.executorId });
     }
   }
 
@@ -263,7 +297,10 @@ export function buildPlan(input: PlanInput): PlanResult {
           ? []
           : [{ role, executors: ids }];
       })
-    : [];
+    : ROLE_IDS.flatMap((role) => {
+        const ids = frozen.get(role);
+        return ids === undefined ? [] : [{ role, executors: ids }];
+      });
   for (const list of listsToWrite) writes.push(`roles.${list.role}.executors`);
   for (const role of new Set(insertions.map((insertion) => insertion.role))) {
     writes.push(`roles.${role}.executors`);

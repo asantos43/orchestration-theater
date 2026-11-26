@@ -221,6 +221,17 @@ export const SetupExecutorRequestSchema = z.strictObject({
 export type SetupExecutorRequest = z.infer<typeof SetupExecutorRequestSchema>;
 
 /**
+ * N333 [proposta]: the roles the Producer gives to one Executor of the run, in the review. The
+ * Executor enters at the END of the list of each role named (a role whose list already holds it is
+ * left as it is).
+ */
+export const SetupRolePlacementSchema = z.strictObject({
+  executorId: z.string().min(1).max(512),
+  roles: z.array(z.enum(ROLE_IDS)).min(1).max(ROLE_IDS.length),
+});
+export type SetupRolePlacement = z.infer<typeof SetupRolePlacementSchema>;
+
+/**
  * `executors`: the Executors by API (or local) and the cap of each API account. An API account with
  * an Executor and no entry in `budgets` takes the suggested cap (`setup.suggested_budget`); an entry
  * with both fields `null` is an explicit "no cap". An empty step is valid: no API key, no Executor.
@@ -234,6 +245,12 @@ export const SetupExecutorsInputSchema = z.strictObject({
    * An id that is not one of them is refused.
    */
   exclude: z.array(z.string().min(1).max(512)).max(64).default([]),
+  /**
+   * N333 [proposta]: the roles given, at the review, to an Executor the preset leaves without one
+   * (the review goes back to this step with the same answer plus this field). The id must be one
+   * of the run: found by the catalogs and not excluded, or registered by this answer.
+   */
+  roles: z.array(SetupRolePlacementSchema).max(64).default([]),
 });
 export const SetupExecutorsOutputSchema = z.strictObject({
   executors: z.array(SetupExecutorSchema),
