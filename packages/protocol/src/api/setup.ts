@@ -136,10 +136,18 @@ export const SetupNoteSchema = z.strictObject({
   code: z.string().min(1),
   role: z.enum(ROLE_IDS).nullable(),
   /**
-   * The `<model>-<effort>` of the preset a `no_account` note is about (N324): the screens fold the
-   * notes of one family of models into one line. Absent on the other notes and from older daemons.
+   * The `<model>-<effort>` of the preset a `no_account` (N324) or `effort_not_accepted` note is
+   * about: the screens fold the notes of one family of models into one line. Absent on the other
+   * notes and from older daemons.
    */
   head: z.string().min(1).optional(),
+  /**
+   * The Executor and the account the note is about, when it is about one (2026-11-26): the review
+   * groups the notes by account and words them by `code`, with `message` as the fallback. Absent
+   * on the other notes and from older daemons.
+   */
+  executorId: z.string().min(1).optional(),
+  profileId: profileId.optional(),
   message: z.string(),
 });
 export type SetupNote = z.infer<typeof SetupNoteSchema>;

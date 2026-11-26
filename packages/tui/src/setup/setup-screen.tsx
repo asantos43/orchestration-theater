@@ -4,6 +4,7 @@ import type {
   AddProfileBody,
   SetupAdapterClient,
   SetupModels,
+  SetupPlan,
   SetupRunView,
 } from '@otheater/protocol';
 import { Box, useWindowSize } from 'ink';
@@ -135,6 +136,11 @@ interface State {
   readonly details: boolean;
   /** What the list of models after each login chose, by account (N324), for the Executors step. */
   readonly choices: Readonly<Record<string, ModelChoice>>;
+  /**
+   * The plan the review showed when Enter confirmed it (2026-11-26) [proposta]: the finished screen
+   * repeats its summary. The daemon's result keeps only the keys and the Executors written.
+   */
+  readonly confirmedPlan: SetupPlan | undefined;
 }
 
 const IDLE: Mode = { kind: 'idle' };
@@ -158,6 +164,7 @@ const FIRST: State = {
   installing: undefined,
   details: false,
   choices: {},
+  confirmedPlan: undefined,
 };
 
 /** An account exists already: added in this run, or found by the detection. */
@@ -389,6 +396,7 @@ export function SetupScreen(props: SetupScreenProps): ReactNode {
       return;
     }
     if (run.step === 'review') {
+      if (run.prompt?.step === 'review') update({ confirmedPlan: run.prompt.plan });
       void command(run, () => api.confirm(run.id));
       return;
     }
@@ -1014,6 +1022,7 @@ export function SetupScreen(props: SetupScreenProps): ReactNode {
           t,
           closeKey,
           reviewNotes: { all: state.details, key: keyLabel(keymap, 'setup.details') ?? '' },
+          confirmedPlan: state.confirmedPlan,
           accounts: accountsOn
             ? {
                 active: onAccounts,
@@ -1049,7 +1058,10 @@ export function SetupScreen(props: SetupScreenProps): ReactNode {
   let cursorLine = 0;
   for (const line of [...head, ...body]) {
     if (line.selected === true) cursorLine = wrapped.length;
-    const pieces = wrapText(line.text, Math.max(1, innerWidth - 1));
+    const indent = ' '.repeat(line.indent ?? 0);
+    const pieces = wrapText(line.text, Math.max(1, innerWidth - 1 - indent.length)).map(
+      (piece) => indent + piece,
+    );
     pieces.forEach((piece, index) => {
       wrapped.push(
         <Text

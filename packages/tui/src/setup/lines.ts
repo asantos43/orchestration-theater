@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 import type {
   SetupDetectedClient,
+  SetupDetectedProfile,
   SetupNote,
   SetupPlan,
   SetupPrompt,
@@ -19,6 +20,8 @@ export interface SetupLine {
   readonly bold?: boolean;
   /** The row under the cursor. */
   readonly selected?: boolean;
+  /** Spaces before the text, kept on every row it wraps to (2026-11-26); default none. */
+  readonly indent?: number;
 }
 
 export interface SetupLinesInput {
@@ -31,6 +34,11 @@ export interface SetupLinesInput {
   readonly accounts?: AccountsStage | undefined;
   /** How the review draws its notes (N324); folded with no key label when absent. */
   readonly reviewNotes?: ReviewNotesView | undefined;
+  /**
+   * The plan the review showed, kept by the screen (2026-11-26) [proposta]: the finished screen
+   * repeats its summary. Absent (a run confirmed elsewhere), it lists what the result holds.
+   */
+  readonly confirmedPlan?: SetupPlan | undefined;
 }
 
 /** How the review draws its notes (N324, `ui.setup.reviewNotes`). */
@@ -308,7 +316,82 @@ function executorsLines(
   return lines;
 }
 
-function planLines(plan: SetupPlan, t: TFunction, view?: ReviewNotesView): SetupLine[] {
+/** The `<model>-<effort>` and the account of an Executor id (`<head>@<client>/<profile>`). */
+function splitId(id: string): { head: string; profileId: string | null } {
+  const at = id.lastIndexOf('@');
+  return at <= 0 ? { head: id, profileId: null } : { head: id.slice(0, at), profileId: id.slice(at + 1) };
+}
+
+/** An account that the detection found and that does not take part, with why (2026-11-26). */
+interface AccountOut {
+  readonly profileId: string;
+  readonly reason: string;
+}
+
+/** The accounts that take part in the run, in the order the lists take them. */
+function takingOf(run: SetupRunView | undefined): readonly string[] {
+  for (const step of run?.done ?? []) {
+    if (step.step === 'detect') return step.output.accounts;
+    if (step.step === 'account') return [step.output.profile.profileId];
+  }
+  return [];
+}
+
+/** The accounts the detection found that do not take part, with why. */
+function outOf(run: SetupRunView | undefined, t: TFunction): readonly AccountOut[] {
+  const detect = run?.done.find((step) => step.step === 'detect');
+  if (detect?.step !== 'detect') return [];
+  const taking = detect.output.accounts;
+  return detect.output.profiles
+    .filter((profile) => !taking.includes(profile.profileId))
+    .map((profile) => ({ profileId: profile.profileId, reason: outReason(profile, t) }));
+}
+
+function outReason(profile: SetupDetectedProfile, t: TFunction): string {
+  if (profile.usable) return t('setup.review.out.unmarked');
+  if (profile.state !== 'active') return t(`settings.profile.${profile.state}`);
+  if (profile.login === 'logged_out') return t('setup.review.out.loggedOut');
+  if (profile.kind === 'api' && !profile.hasSecret) return t('setup.review.out.noKey');
+  return t('setup.detect.unusable');
+}
+
+function padded(items: readonly string[]): (item: string) => string {
+  const width = Math.max(0, ...items.map((item) => item.length));
+  return (item) => item.padEnd(width);
+}
+
+/**
+ * The review (2026-11-26, the owner's "Por conta"): the accounts, each with the Executors it gives
+ * and the roles they serve, then the accounts left out with why; the roles one per line with what
+ * happens when they run out; the notes worded by cause; and the keys written folded into a count.
+ * The names of the Executors drop the account when only one account takes part. D (the `details`
+ * key) unfolds the notes and the keys.
+ */
+function planLines(
+  plan: SetupPlan,
+  t: TFunction,
+  view?: ReviewNotesView,
+  run?: SetupRunView,
+): SetupLine[] {
+  return [...summaryLines(plan, t, run), ...notesLines(plan.notes, t, view, nameOf(plan, run)), ...writesLines(plan.writes, t, view)];
+}
+
+/** How the review names an Executor: without the account when only one account takes part. */
+function nameOf(plan: SetupPlan, run: SetupRunView | undefined): (id: string) => string {
+  const ids = [...plan.executors.map((executor) => executor.id), ...plan.roles.flatMap((role) => role.executors)];
+  const accounts = new Set([
+    ...ids.map((id) => splitId(id).profileId ?? id),
+    ...takingOf(run),
+  ]);
+  return accounts.size <= 1 ? (id) => splitId(id).head : (id) => id;
+}
+
+/** The preset, the accounts and the roles: what the review and the finished screen both show. */
+function summaryLines(
+  plan: SetupPlan,
+  t: TFunction,
+  run: SetupRunView | undefined,
+): SetupLine[] {
   const lines: SetupLine[] = [
     {
       key: 'preset',
@@ -318,63 +401,113 @@ function planLines(plan: SetupPlan, t: TFunction, view?: ReviewNotesView): Setup
           : t('setup.review.preset', { preset: plan.preset }),
       bold: true,
     },
-    { key: 'h.roles', text: t('setup.review.roles'), color: TOKEN.accent, bold: true },
   ];
-  for (const role of plan.roles) {
-    lines.push({
-      key: `r.${role.role}`,
-      text: t('setup.review.role', {
-        role: role.role,
-        executors:
-          role.executors.length === 0 ? t('setup.review.noExecutors') : role.executors.join(', '),
-        rule: t(`settings.role.${role.whenExhausted}`),
-      }),
-    });
+  const name = nameOf(plan, run);
+  const taking = takingOf(run);
+  const out = outOf(run, t);
+  const ids = [
+    ...plan.executors.map((executor) => executor.id),
+    ...plan.roles.flatMap((role) => role.executors),
+  ].filter((id, index, all) => all.indexOf(id) === index);
+  const accounts = [
+    ...taking,
+    ...ids.map((id) => splitId(id).profileId).filter((id): id is string => id !== null),
+  ].filter((id, index, all) => all.indexOf(id) === index);
+  // A flow with no account of its own (changing the preset) and nothing in the lists: no section.
+  if (accounts.length > 0 || out.length > 0) {
+    lines.push({ key: 'h.accounts', text: t('setup.review.accounts'), color: TOKEN.accent, bold: true });
   }
-  if (plan.executors.length > 0) {
+  const pad = padded([...accounts, ...out.map((entry) => entry.profileId)]);
+  for (const profileId of accounts) {
+    const fresh = plan.executors.filter((executor) => executor.profileId === profileId).length;
     lines.push({
-      key: 'h.exec',
-      text: t('setup.review.executors'),
-      color: TOKEN.accent,
+      key: `a.${profileId}`,
+      indent: 2,
+      text: `${pad(profileId)}  ${
+        fresh === 0 ? t('setup.review.noNewExecutors') : t('setup.review.newExecutors', { count: fresh })
+      }`,
       bold: true,
     });
-    for (const executor of plan.executors) {
+    const own = ids.filter((id) => splitId(id).profileId === profileId);
+    const padHead = padded(own.map((id) => splitId(id).head));
+    for (const id of own) {
+      const roles = plan.roles.filter((role) => role.executors.includes(id)).map((role) => role.role);
       lines.push({
-        key: `x.${executor.id}`,
-        text: t('setup.review.executor', {
-          id: executor.id,
-          model: executor.model,
-          provider: executor.provider,
-          source: t(`setup.source.${executor.source}`),
-        }),
+        key: `x.${id}`,
+        indent: 4,
+        text: `${padHead(splitId(id).head)}  ${roles.length === 0 ? t('setup.review.noRole') : roles.join(', ')}`,
       });
     }
-  }
-  if (plan.budgets.length > 0) {
-    lines.push({
-      key: 'h.budgets',
-      text: t('setup.review.budgets'),
-      color: TOKEN.accent,
-      bold: true,
-    });
-    for (const budget of plan.budgets) {
+    const budget = plan.budgets.find((entry) => entry.profileId === profileId);
+    if (budget !== undefined) {
       lines.push({
-        key: `b.${budget.profileId}`,
-        text: t('setup.review.budget', {
-          profile: budget.profileId,
+        key: `b.${profileId}`,
+        indent: 4,
+        text: `${t('setup.review.budget', {
           daily: usdText(budget.dailyUsd, t),
           monthly: usdText(budget.monthlyUsd, t),
-        }),
+        })}`,
+        dim: true,
       });
     }
   }
-  lines.push({ key: 'h.writes', text: t('setup.review.writes'), color: TOKEN.accent, bold: true });
-  lines.push({ key: 'writes', text: list(plan.writes, t), dim: true });
-  if (plan.notes.length > 0) {
-    lines.push({ key: 'h.notes', text: t('setup.review.notes'), color: TOKEN.accent, bold: true });
-    lines.push(...notesLines(plan.notes, t, view));
+  for (const entry of out) {
+    lines.push({
+      key: `o.${entry.profileId}`,
+      indent: 2,
+      text: `${pad(entry.profileId)}  ${t('setup.review.out.line', { reason: entry.reason })}`,
+      dim: true,
+    });
   }
+  const shown = plan.roles.map((role) =>
+    role.executors.length === 0 ? t('setup.review.noExecutors') : role.executors.map(name).join(', '),
+  );
+  if (plan.roles.length === 0) return lines;
+  const roleWidth = Math.max(0, ...plan.roles.map((role) => role.role.length));
+  const listWidth = Math.max(0, ...shown.map((text) => text.length));
+  lines.push({
+    key: 'h.roles',
+    text: `${t('setup.review.roles').padEnd(roleWidth + listWidth + 6)}${t('setup.review.whenExhausted')}`,
+    color: TOKEN.accent,
+    bold: true,
+  });
+  plan.roles.forEach((role, index) => {
+    lines.push({
+      key: `r.${role.role}`,
+      indent: 2,
+      text: `${role.role.padEnd(roleWidth)}  ${(shown[index] ?? '').padEnd(listWidth)}  ${t(`settings.role.${role.whenExhausted}`)}`,
+    });
+  });
   return lines;
+}
+
+/** The keys written: a count, or (with D) the list. */
+function writesLines(
+  writes: readonly string[],
+  t: TFunction,
+  view: ReviewNotesView | undefined,
+): SetupLine[] {
+  if (writes.length === 0) return [{ key: 'writes', text: t('setup.review.writesNone'), dim: true }];
+  if (view?.all === true) {
+    return [
+      { key: 'h.writes', text: t('setup.review.writes'), color: TOKEN.accent, bold: true },
+      ...writes.map((key) => ({ key: `w.${key}`, indent: 2, text: key, dim: true })),
+    ];
+  }
+  return [
+    {
+      key: 'writes',
+      text: withMore(t('setup.review.writesCount', { count: writes.length }), view, t),
+      dim: true,
+    },
+  ];
+}
+
+/** A folded line with the key that unfolds it (`· D detalha`), when the screen has that key. */
+function withMore(text: string, view: ReviewNotesView | undefined, t: TFunction): string {
+  return view === undefined || view.key === '' || view.all
+    ? text
+    : `${text} · ${t('setup.review.more', { key: view.key })}`;
 }
 
 /**
@@ -386,90 +519,121 @@ export function familyOf(head: string): string {
   return head.split('-')[0] ?? head;
 }
 
-function noteLine(note: SetupNote, key: string, t: TFunction): SetupLine {
+const NOTE_MARK = { warning: '⚠', info: '·' } as const;
+
+/** What the notes of one cause are about, for the line that words them. */
+interface NoteGroup {
+  readonly severity: SetupNote['severity'];
+  readonly code: string;
+  readonly notes: SetupNote[];
+}
+
+function unique(items: readonly (string | null | undefined)[]): string[] {
+  return items.filter((item, index, all): item is string => typeof item === 'string' && all.indexOf(item) === index);
+}
+
+/**
+ * The words of the notes of one cause (2026-11-26): `setup.review.note.<code>_<severity>` or
+ * `setup.review.note.<code>`, given what they are about; `null` when the locale has neither (a code
+ * the TUI does not know yet), and then the daemon's own messages show.
+ */
+function noteText(group: NoteGroup, t: TFunction, name: (id: string) => string): string | null {
+  const { notes } = group;
+  const text = t([`setup.review.note.${group.code}_${group.severity}`, `setup.review.note.${group.code}`], {
+    defaultValue: '',
+    executors: unique(notes.map((note) => note.executorId)).map(name).join(', '),
+    roles: unique(notes.map((note) => note.role)).join(', '),
+    profiles: unique(notes.map((note) => note.profileId)).join(', '),
+    heads: unique(notes.map((note) => note.head)).join(', '),
+    family: unique(notes.map((note) => (note.head === undefined ? undefined : familyOf(note.head)))).join(', '),
+    count:
+      group.code === 'noAccountFamily'
+        ? unique(notes.map((note) => note.head)).length
+        : notes.length,
+  });
+  return text === '' ? null : text;
+}
+
+function markLine(severity: SetupNote['severity'], key: string, text: string): SetupLine {
   return {
     key,
-    text: `[${t(`setup.review.${note.severity}`)}] ${note.message}`,
-    color: note.severity === 'warning' ? TOKEN.warn : undefined,
-    dim: note.severity === 'info',
+    text: `${NOTE_MARK[severity]} ${text}`,
+    color: severity === 'warning' ? TOKEN.warn : undefined,
+    dim: severity === 'info',
   };
 }
 
 /**
- * The notes of the review (N324). Folded: the notes that say no account has a model of the preset
- * become one line per family of models, and the roles left with no Executor one line; the other notes
- * stay as they are, and a hint names the key that shows each note. `all`: one line per note.
+ * The notes of the review, worded by cause (N324; 2026-11-26). Folded: one line per cause (the
+ * models of the preset with no account, one per family of models), each with the key that unfolds
+ * it. `all`: one line per note, with the daemon's message under it. A code the locale does not word
+ * shows the daemon's messages as they are.
  */
 function notesLines(
   notes: readonly SetupNote[],
   t: TFunction,
   view: ReviewNotesView | undefined,
+  name: (id: string) => string,
 ): SetupLine[] {
-  const families = new Map<string, { heads: string[]; roles: Set<string> }>();
-  const empty: string[] = [];
-  const rest: SetupNote[] = [];
-  for (const note of notes) {
-    if (note.code === 'no_account' && note.head !== undefined) {
-      const family = familyOf(note.head);
-      const entry = families.get(family) ?? { heads: [], roles: new Set<string>() };
-      if (!entry.heads.includes(note.head)) entry.heads.push(note.head);
-      if (note.role !== null) entry.roles.add(note.role);
-      families.set(family, entry);
-    } else if (note.code === 'empty_list' && note.role !== null) {
-      empty.push(note.role);
-    } else {
-      rest.push(note);
-    }
-  }
-  const folds = families.size > 0 || empty.length > 0;
-  const hint: SetupLine[] =
-    folds && view !== undefined && view.key !== ''
-      ? [
-          {
-            key: 'n.hint',
-            text: t(view.all ? 'setup.review.detailsHintAll' : 'setup.review.detailsHint', {
-              key: view.key,
-            }),
-            dim: true,
-          },
-        ]
-      : [];
-  if (view?.all === true || !folds) {
-    return [...notes.map((note, index) => noteLine(note, `n.${String(index)}`, t)), ...hint];
-  }
   const lines: SetupLine[] = [];
-  for (const [family, entry] of families) {
-    lines.push({
-      key: `n.family.${family}`,
-      text: `[${t('setup.review.info')}] ${t('setup.review.noAccountFamily', {
-        family,
-        models: entry.heads.join(', '),
-        count: entry.roles.size,
-      })}`,
-      dim: true,
+  if (view?.all === true) {
+    notes.forEach((note, index) => {
+      const key = `n.${String(index)}`;
+      const text = noteText({ severity: note.severity, code: note.code, notes: [note] }, t, name);
+      lines.push(markLine(note.severity, key, text ?? note.message));
+      if (text !== null) lines.push({ key: `${key}.m`, indent: 2, text: note.message, dim: true });
     });
+    if (notes.length > 0 && view.key !== '') {
+      lines.push({ key: 'n.hint', text: t('setup.review.detailsHintAll', { key: view.key }), dim: true });
+    }
+    return lines;
   }
-  if (empty.length > 0) {
-    lines.push({
-      key: 'n.empty',
-      text: `[${t('setup.review.warning')}] ${t('setup.review.emptyRoles', {
-        count: empty.length,
-        roles: empty.join(', '),
-      })}`,
-      color: TOKEN.warn,
-    });
+  const groups = new Map<string, NoteGroup>();
+  for (const note of notes) {
+    // The models of the preset with no account fold by family; the other notes by their cause.
+    const id =
+      note.code === 'no_account' && note.head !== undefined
+        ? `${note.severity}:${note.code}:${familyOf(note.head)}`
+        : `${note.severity}:${note.code}`;
+    const group = groups.get(id) ?? { severity: note.severity, code: note.code, notes: [] };
+    group.notes.push(note);
+    groups.set(id, group);
   }
-  rest.forEach((note, index) => lines.push(noteLine(note, `n.${String(index)}`, t)));
-  return [...lines, ...hint];
+  for (const [id, group] of groups) {
+    const text = noteText(
+      group.code === 'no_account'
+        ? { ...group, code: 'noAccountFamily', notes: group.notes }
+        : group,
+      t,
+      name,
+    );
+    if (text === null) {
+      group.notes.forEach((note, index) => lines.push(markLine(note.severity, `n.${id}.${String(index)}`, note.message)));
+      continue;
+    }
+    // Only a line that folds several notes names the key that unfolds them.
+    lines.push(
+      markLine(group.severity, `n.${id}`, group.notes.length > 1 ? withMore(text, view, t) : text),
+    );
+  }
+  return lines;
 }
 
-function finishedLines(run: SetupRunView, closeKey: string, t: TFunction): SetupLine[] {
+function finishedLines(input: SetupLinesInput): SetupLine[] {
+  const { run, t, closeKey } = input;
   const lines: SetupLine[] = [];
   if (run.state === 'cancelled') {
     lines.push({ key: 'cancelled', text: t('setup.done.cancelled'), color: TOKEN.warn });
+    lines.push({ key: 'close', text: t('setup.done.close', { key: closeKey }), dim: true });
+    return lines;
+  }
+  lines.push({ key: 'confirmed', text: `✓ ${t('setup.done.confirmed')}`, color: TOKEN.ok, bold: true });
+  const result = run.result;
+  const plan = input.confirmedPlan;
+  if (plan !== undefined) {
+    // The summary of the review, as it was confirmed (the owner's "Resumo igual à Revisão").
+    lines.push({ key: 'gap.s', text: '' }, ...summaryLines(plan, t, run));
   } else {
-    lines.push({ key: 'confirmed', text: t('setup.done.confirmed'), color: TOKEN.ok, bold: true });
-    const result = run.result;
     if (result?.preset !== null && result?.preset !== undefined) {
       lines.push({ key: 'preset', text: t('setup.done.preset', { preset: result.preset }) });
     }
@@ -479,14 +643,24 @@ function finishedLines(run: SetupRunView, closeKey: string, t: TFunction): Setup
         text: t('setup.done.executors', { list: result.executors.join(', ') }),
       });
     }
-    if (result !== null) {
-      lines.push({
-        key: 'written',
-        text: t('setup.done.written', { list: list(result.written, t) }),
-        dim: true,
-      });
-    }
   }
+  if (result !== null) {
+    lines.push({
+      key: 'written',
+      text:
+        result.written.length === 0
+          ? t('setup.review.writesNone')
+          : `✓ ${t('setup.done.writtenCount', { count: result.written.length })}`,
+      color: result.written.length === 0 ? undefined : TOKEN.ok,
+      dim: result.written.length === 0,
+    });
+  }
+  lines.push({ key: 'gap.n', text: '' });
+  lines.push({
+    key: 'next',
+    text: t('setup.done.next'),
+    bold: true,
+  });
   lines.push({ key: 'close', text: t('setup.done.close', { key: closeKey }), dim: true });
   return lines;
 }
@@ -500,7 +674,7 @@ export function setupLines(input: SetupLinesInput): SetupLine[] {
   ];
   const prompt = run.prompt;
   if (run.state !== 'active' || prompt === null) {
-    return [...lines, ...finishedLines(run, input.closeKey, t)];
+    return [...lines, ...finishedLines(input)];
   }
   if (accounts?.active === true) {
     lines.push(
@@ -528,7 +702,7 @@ export function setupLines(input: SetupLinesInput): SetupLine[] {
       if (draft.kind === 'executors') lines.push(...executorsLines(prompt, draft, t));
       break;
     case 'review':
-      lines.push(...planLines(prompt.plan, t, input.reviewNotes));
+      lines.push(...planLines(prompt.plan, t, input.reviewNotes, run));
       break;
   }
   return lines;

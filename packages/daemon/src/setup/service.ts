@@ -793,6 +793,8 @@ export class SetupService {
           severity: issue.severity,
           code: issue.code,
           role: null,
+          executorId: id,
+          profileId: request.profileId,
           message: issue.message,
         });
       }
