@@ -5,6 +5,7 @@ import type {
   ApiConfig,
   ApiExecutor,
   ApiProfile,
+  ApiQuotaStatus,
   ApiRoles,
   ConfigEditBody,
   StartProfileLoginResult,
@@ -28,7 +29,7 @@ import { useTabHost } from '../../layout/tab-host.js';
 import type { TabContentProps } from '../../layout/tab-types.js';
 import { useRenderControl } from '../../render-control.js';
 import { Section } from '../../layout/section.js';
-import { breakLine, cellWidth, fit, wrapText } from '../../layout/text.js';
+import { breakLine, cellWidth, clip, fit, wrapText } from '../../layout/text.js';
 import { paint, TOKEN } from '../../layout/theme.js';
 import { Text } from '../../layout/themed-text.js';
 import { isRemote } from '../../mouse/clipboard.js';
@@ -64,11 +65,13 @@ import {
   SECTION_IDS,
   WHEN_EXHAUSTED_CHOICES,
   addLoginModeOf,
+  alignColumns,
   flatten,
   formatSpan,
   limitEdit,
   limitUnsetEdit,
   limitValueText,
+  moveRoleCursor,
   moved,
   nextChoice,
   parseLimit,
@@ -76,6 +79,9 @@ import {
   reorderEdit,
   roleItems,
   ruleEdit,
+  settingsFolded,
+  windowCell,
+  windowColumns,
   type LimitKey,
   type SettingsSection,
 } from './model.js';
@@ -286,6 +292,13 @@ function SettingsTab({ content, options }: TabProps): ReactNode {
     'settings.roles': 0,
     'settings.limits': 0,
   });
+  // `ui.settingsTab.roles: line`: the role whose list is open; `undefined` is the first one.
+  const [openRole, setOpenRole] = useState<string | null | undefined>(undefined);
+  const rolesMode = settings.settingsTab.roles;
+  const roleView = (roles: ApiRoles): { readonly open: string | null } | undefined =>
+    rolesMode === 'list'
+      ? undefined
+      : { open: openRole === undefined ? (roles.roles[0]?.role ?? null) : openRole };
   const [mode, setModeState] = useState<Mode>(IDLE);
   const [message, setMessage] = useState<Message | undefined>(undefined);
   const modeRef = useRef<Mode>(IDLE);
@@ -417,7 +430,7 @@ function SettingsTab({ content, options }: TabProps): ReactNode {
       case 'settings.executors':
         return loaded.executors.length;
       case 'settings.roles':
-        return roleItems(loaded.roles).length;
+        return roleItems(loaded.roles, roleView(loaded.roles)).length;
       case 'settings.limits':
         return LIMIT_KEYS.length;
     }
@@ -863,6 +876,15 @@ function SettingsTab({ content, options }: TabProps): ReactNode {
   };
 
   const move = (id: SettingsSection, delta: -1 | 1): void => {
+    const data = loadedRef.current;
+    const view = data === undefined ? undefined : roleView(data.roles);
+    if (id === 'settings.roles' && data !== undefined && view !== undefined) {
+      // One line per role: the role the cursor lands on opens its list.
+      const next = moveRoleCursor(data.roles, view.open, cursorOf(id), delta);
+      setOpenRole(next.open);
+      setCursors((now$) => ({ ...now$, [id]: next.at }));
+      return;
+    }
     const last = Math.max(0, itemCount(id) - 1);
     setCursors((now$) => ({
       ...now$,
@@ -939,7 +961,7 @@ function SettingsTab({ content, options }: TabProps): ReactNode {
       return;
     }
     if (section === 'settings.roles') {
-      const item = roleItems(data.roles)[at];
+      const item = roleItems(data.roles, roleView(data.roles))[at];
       const role =
         item === undefined ? undefined : data.roles.roles.find((r) => r.role === item.role);
       if (item === undefined || role === undefined) return;
@@ -1023,25 +1045,58 @@ function SettingsTab({ content, options }: TabProps): ReactNode {
         dim: true,
       });
     }
-    loaded.profiles.forEach((entry, index) => {
-      const id = entry.profile.id;
-      const line = quotaLine(quotas[id] ?? entry.quota, clock);
-      const parts = [id, entry.profile.kind];
-      if (entry.profile.state !== 'active')
-        parts.push(t(`settings.profile.${entry.profile.state}`));
-      if (entry.profile.kind === 'api' && !entry.hasSecret)
-        parts.push(t('settings.profile.noSecret'));
-      parts.push(t(`settings.quota.${line.state}`));
-      if (line.percent !== undefined)
-        parts.push(t('settings.profile.used', { percent: line.percent }));
-      if (line.resetsIn !== undefined) {
-        parts.push(t('settings.profile.resets', { time: formatSpan(line.resetsIn) }));
-      }
+    // The accounts in columns (the owner's "Seções de hoje, em tabela", 2026-11-26): the account,
+    // its kind, the used percent of each window (`—` with no reading) and its state.
+    const quotaOf = (entry: (typeof loaded.profiles)[number]): ApiQuotaStatus | null =>
+      quotas[entry.profile.id] ?? entry.quota;
+    const windows = windowColumns(loaded.profiles.map(quotaOf));
+    const subs = alignColumns(
+      [
+        [
+          t('settings.table.account'),
+          t('settings.table.kind'),
+          ...windows,
+          t('settings.table.state'),
+        ],
+        ...loaded.profiles.map((entry) => {
+          const quota = quotaOf(entry);
+          const line = quotaLine(quota, clock);
+          const state: string[] = [];
+          if (entry.profile.state !== 'active')
+            state.push(t(`settings.profile.${entry.profile.state}`));
+          if (entry.profile.kind === 'api' && !entry.hasSecret)
+            state.push(t('settings.profile.noSecret'));
+          state.push(t(`settings.quota.${line.state}`));
+          if (line.resetsIn !== undefined) {
+            state.push(t('settings.profile.resets', { time: formatSpan(line.resetsIn) }));
+          }
+          return [
+            entry.profile.id,
+            t(`accountForm.kind.${entry.profile.kind}`),
+            ...windows.map((name) => windowCell(quota, name)),
+            state.join(' · '),
+          ];
+        }),
+      ],
+      2,
+      width - 1,
+    );
+    if (loaded.profiles.length > 0) {
       lines.push({
-        key: `s.${id}`,
+        key: 's.head',
         kind: 'row',
         section: 'settings.subscriptions',
-        text: parts.join('  '),
+        text: subs[0] ?? '',
+        dim: true,
+      });
+    }
+    loaded.profiles.forEach((entry, index) => {
+      const line = quotaLine(quotaOf(entry), clock);
+      lines.push({
+        key: `s.${entry.profile.id}`,
+        kind: 'row',
+        section: 'settings.subscriptions',
+        text: subs[index + 1] ?? entry.profile.id,
         color: QUOTA_COLOR[line.state],
         selected: onCursor('settings.subscriptions', index),
       });
@@ -1057,21 +1112,35 @@ function SettingsTab({ content, options }: TabProps): ReactNode {
     if (loaded.executors.length === 0) {
       lines.push({ key: 'e.exec', kind: 'row', text: t('settings.empty.executors'), dim: true });
     }
+    const execs = alignColumns(
+      [
+        [t('settings.table.executor'), t('settings.table.roles')],
+        ...loaded.executors.map((executor) => [
+          executor.id,
+          executor.roles.length === 0 ? t('settings.executor.noRoles') : executor.roles.join(', '),
+          executor.validity === 'invalid'
+            ? t('settings.executor.invalid', { reason: executor.invalidReason ?? '' })
+            : '',
+        ]),
+      ],
+      2,
+      width - 1,
+    );
+    if (loaded.executors.length > 0) {
+      lines.push({
+        key: 'x.head',
+        kind: 'row',
+        section: 'settings.executors',
+        text: execs[0] ?? '',
+        dim: true,
+      });
+    }
     loaded.executors.forEach((executor, index) => {
-      const parts: string[] = [executor.id];
-      if (executor.validity === 'invalid') {
-        parts.push(t('settings.executor.invalid', { reason: executor.invalidReason ?? '' }));
-      }
-      parts.push(
-        executor.roles.length === 0
-          ? t('settings.executor.noRoles')
-          : t('settings.executor.roles', { roles: executor.roles.join(', ') }),
-      );
       lines.push({
         key: `x.${executor.id}`,
         kind: 'row',
         section: 'settings.executors',
-        text: parts.join('  '),
+        text: execs[index + 1] ?? executor.id,
         color: executor.validity === 'invalid' ? TOKEN.warn : undefined,
         selected: onCursor('settings.executors', index),
       });
@@ -1087,16 +1156,69 @@ function SettingsTab({ content, options }: TabProps): ReactNode {
     if (loaded.roles.roles.length === 0) {
       lines.push({ key: 'e.roles', kind: 'row', text: t('settings.empty.roles'), dim: true });
     }
-    roleItems(loaded.roles).forEach((item, index) => {
+    const view = roleView(loaded.roles);
+    // One line per role (`ui.settingsTab.roles: line`): the role, its Executors cut to the room
+    // left, and what happens when they run out.
+    const roleLine = new Map<string, string>();
+    if (view !== undefined && loaded.roles.roles.length > 0) {
+      const ruleOf = (rule: 'next' | 'wait'): string => `→ ${t(`settings.role.${rule}`)}`;
+      const head = [
+        t('settings.table.role'),
+        t('settings.table.executors'),
+        t('settings.table.whenExhausted'),
+      ];
+      const roleWidth = Math.max(
+        cellWidth(head[0] ?? ''),
+        ...loaded.roles.roles.map((role) => cellWidth(role.role)),
+      );
+      const ruleWidth = Math.max(
+        cellWidth(head[2] ?? ''),
+        ...loaded.roles.roles.map((role) => cellWidth(ruleOf(role.whenExhausted))),
+      );
+      const room = Math.max(8, width - 2 - roleWidth - ruleWidth - 4);
+      const cut = (text: string): string =>
+        cellWidth(text) <= room ? text : `${clip(text, room - 1)}…`;
+      const rows = alignColumns(
+        [
+          head,
+          ...loaded.roles.roles.map((role) => [
+            role.role,
+            cut(
+              role.executors.length === 0
+                ? t('settings.role.none')
+                : role.executors.map((executor) => executor.id).join(', '),
+            ),
+            ruleOf(role.whenExhausted),
+          ]),
+        ],
+        2,
+        width - 1,
+      );
+      lines.push({
+        key: 'r.head',
+        kind: 'row',
+        section: 'settings.roles',
+        text: rows[0] ?? '',
+        dim: true,
+      });
+      loaded.roles.roles.forEach((role, index) => {
+        roleLine.set(role.role, rows[index + 1] ?? role.role);
+      });
+    }
+    roleItems(loaded.roles, view).forEach((item, index) => {
       const role = loaded.roles.roles.find((candidate) => candidate.role === item.role);
       if (role === undefined) return;
       const selected = onCursor('settings.roles', index);
       if (item.kind === 'rule') {
+        const blocked = role.executors.some((executor) => executor.blockedBy !== null);
         lines.push({
           key: `r.${item.role}`,
           kind: 'row',
           section: 'settings.roles',
-          text: `${item.role}  ${t('settings.role.rule', { rule: t(`settings.role.${role.whenExhausted}`) })}`,
+          text:
+            roleLine.get(item.role) ??
+            `${item.role}  ${t('settings.role.rule', { rule: t(`settings.role.${role.whenExhausted}`) })}`,
+          color: view !== undefined && blocked ? TOKEN.warn : undefined,
           selected,
         });
         return;
@@ -1111,7 +1233,7 @@ function SettingsTab({ content, options }: TabProps): ReactNode {
         key: `r.${item.role}.${String(item.index)}`,
         kind: 'row',
         section: 'settings.roles',
-        text: `  ${String(item.index + 1)}. ${executor.id}${blocked}`,
+        text: `${view === undefined ? '  ' : '    '}${String(item.index + 1)}. ${executor.id}${blocked}`,
         color: executor.blockedBy === null ? undefined : TOKEN.warn,
         selected,
       });
@@ -1124,20 +1246,29 @@ function SettingsTab({ content, options }: TabProps): ReactNode {
       title: t('settings.sections.limits'),
       right: typeof limits.preset === 'string' ? limits.preset : '-',
     });
+    const limitRows = alignColumns(
+      LIMIT_KEYS.map((spec) => [spec.key, `= ${limitValueText(spec, limits[spec.key])}`]),
+      1,
+    );
     LIMIT_KEYS.forEach((spec, index) => {
       lines.push({
         key: `l.${spec.key}`,
         kind: 'row',
         section: 'settings.limits',
-        text: `${spec.key} = ${limitValueText(spec, limits[spec.key])}`,
+        text: limitRows[index] ?? spec.key,
         selected: onCursor('settings.limits', index),
       });
     });
   }
 
   // The folded sections keep their header only.
+  // Limits starts folded (`ui.settingsTab.limits`); Enter flips the default, as it always did.
+  const sectionControl = {
+    ...content.sections,
+    folded: settingsFolded(content.sections.folded, settings.settingsTab.limits),
+  };
   const visible = lines.filter(
-    (line) => line.kind === 'header' || !content.sections.folded.has(line.section ?? ''),
+    (line) => line.kind === 'header' || !sectionControl.folded.has(line.section ?? ''),
   );
   // The rows the tab keeps in view: from the line of the cursor, so it never leaves the screen.
   const head: Line[] = [];
@@ -1287,7 +1418,7 @@ function SettingsTab({ content, options }: TabProps): ReactNode {
           title={line.title ?? ''}
           right={line.right}
           width={width}
-          control={content.sections}
+          control={sectionControl}
         />,
       );
       continue;
@@ -1312,7 +1443,12 @@ function SettingsTab({ content, options }: TabProps): ReactNode {
       });
       continue;
     }
-    const pieces = wrapText(line.text ?? '', Math.max(1, width - 1));
+    // The leading spaces are the indent (a role's list under its line): kept on every piece.
+    const text = line.text ?? '';
+    const indent = /^ */.exec(text)?.[0] ?? '';
+    const pieces = wrapText(text.slice(indent.length), Math.max(1, width - 1 - indent.length)).map(
+      (piece) => indent + piece,
+    );
     pieces.forEach((piece, index) => {
       wrapped.push(
         <Text

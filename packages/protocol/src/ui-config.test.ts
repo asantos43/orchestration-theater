@@ -11,6 +11,7 @@ import {
   UiRenderConfigSchema,
   UiRuntimeConfigSchema,
   UiNewProjectConfigSchema,
+  UiSettingsTabConfigSchema,
   UiSetupConfigSchema,
   UiThemeModeSchema,
   UiTuiLayoutConfigSchema,
@@ -202,6 +203,16 @@ describe('ui.* schemas of the terminal', () => {
     expect(UiLoginConfigSchema.parse({ browser: 'off' }).browser).toBe('off');
     expect(UiLoginConfigSchema.safeParse({ browser: 'always' }).success).toBe(false);
     expect(UiLoginConfigSchema.safeParse({ open: true }).success).toBe(false);
+  });
+
+  it('has the default of ui.settingsTab and refuses an unknown mode', () => {
+    expect(UiSettingsTabConfigSchema.parse({})).toEqual({ limits: 'folded', roles: 'line' });
+    expect(UiSettingsTabConfigSchema.parse({ limits: 'open', roles: 'list' })).toEqual({
+      limits: 'open',
+      roles: 'list',
+    });
+    expect(UiSettingsTabConfigSchema.safeParse({ limits: 'shut' }).success).toBe(false);
+    expect(UiSettingsTabConfigSchema.safeParse({ table: true }).success).toBe(false);
   });
 
   it('has the modes of ui.theme and refuses an unknown one', () => {
