@@ -115,7 +115,7 @@ describe('creating scenarios by type', () => {
           (error: unknown) => (error instanceof Error ? error.message : String(error)),
         );
       // A project with no repository is refused for that, not for its type.
-      const refusedForType = /cannot be created yet/.test(await made);
+      const refusedForType = (await made).includes('cannot be created yet');
       expect(refusedForType, type).toBe(!CREATABLE_SCENARIO_TYPES.includes(type));
     }
   });
