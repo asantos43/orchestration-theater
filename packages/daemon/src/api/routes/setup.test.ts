@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { FakeClock, InMemorySecretVault, InMemoryStore } from '@otheater/core/testing';
 import type { EventEnvelope } from '@otheater/core';
 import type { SetupRunView } from '@otheater/protocol';
@@ -156,6 +157,23 @@ describe('the setup routes', () => {
     expect(missing.status).toBe(404);
     const bad = await send('POST', '/v1/setup/no_such_flow/start');
     expect(bad.status).toBe(400);
+  });
+
+  it('GET /v1/setup/models/:client/:name gives the models of an account, and 404 for one that does not exist (N324)', async () => {
+    await daemon.store.profiles.create({
+      client: 'codex',
+      name: 'main',
+      kind: 'token_plan',
+      provider: 'openai',
+      dir: join(tmp.dir, 'profiles', 'codex', 'main'),
+      secretRef: null,
+    });
+    const answer = await send('GET', '/v1/setup/models/codex/main');
+    expect(answer.status, answer.text).toBe(200);
+    const models = JSON.parse(answer.text) as { profileId: string; kind: string; preset: unknown };
+    expect(models).toMatchObject({ profileId: 'codex/main', kind: 'token_plan' });
+    expect(typeof models.preset).toBe('string');
+    expect((await send('GET', '/v1/setup/models/codex/ghost')).status).toBe(404);
   });
 
   it('first run with no client: detects nothing, and the confirmation writes only the preset', async () => {

@@ -64,12 +64,10 @@ function matches(info: ModelInfo, short: string): boolean {
 export async function discoverForPreset(input: DiscoverInput): Promise<DiscoverResult> {
   const discovered: SetupExecutor[] = [];
   const notes: SetupNote[] = [];
-  const heads = presetHeads(input.preset);
   for (const profileId of input.accounts) {
     const ref = parseProfileId(profileId);
-    const prefix = HEAD_PREFIX_OF_CLIENT[ref.client];
-    const provider = FIXED_PROVIDER_OF_CLIENT[ref.client];
-    if (prefix === undefined || provider === undefined) continue;
+    if (HEAD_PREFIX_OF_CLIENT[ref.client] === undefined) continue;
+    if (FIXED_PROVIDER_OF_CLIENT[ref.client] === undefined) continue;
     const catalog = input.catalogs(ref.client);
     if (catalog?.discovery !== 'automatic') continue;
     let listed: readonly ModelInfo[];
@@ -86,37 +84,64 @@ export async function discoverForPreset(input: DiscoverInput): Promise<DiscoverR
       });
       continue;
     }
-    for (const head of heads) {
-      const split = splitHead(head);
-      if (typeof split === 'string' || !split.model.startsWith(`${prefix}-`)) continue;
-      const short = split.model.slice(prefix.length + 1);
-      const info = listed.find((candidate) => matches(candidate, short));
-      if (info === undefined) continue;
-      if (
-        split.effort !== null &&
-        info.efforts.length > 0 &&
-        !info.efforts.includes(split.effort)
-      ) {
-        notes.push({
-          severity: 'warning',
-          code: 'effort_not_accepted',
-          role: null,
-          message: `${profileId}: the model ${info.id} does not accept the effort "${split.effort}" the preset names; it is left out`,
-        });
-        continue;
-      }
-      discovered.push({
-        id: formatExecutorId({ model: split.model, effort: split.effort, profileId }),
-        profileId,
-        model: info.id,
-        alias: split.model,
-        effort: split.effort,
-        provider,
-        source: 'discovered',
-        presetExpand: input.presetExpand,
-        local: null,
+    const found = matchPreset({
+      profileId,
+      listed,
+      preset: input.preset,
+      presetExpand: input.presetExpand,
+    });
+    discovered.push(...found.discovered);
+    notes.push(...found.notes);
+  }
+  return { discovered, notes };
+}
+
+export interface MatchPresetInput {
+  readonly profileId: string;
+  /** What the catalog of the account listed. */
+  readonly listed: readonly ModelInfo[];
+  readonly preset: RolePresetName;
+  readonly presetExpand: boolean;
+}
+
+/**
+ * The heads of the preset the models listed for one account fill (N324: also the marks of the list
+ * of models after a login). Nothing for a client whose models the preset does not name.
+ */
+export function matchPreset(input: MatchPresetInput): DiscoverResult {
+  const discovered: SetupExecutor[] = [];
+  const notes: SetupNote[] = [];
+  const { profileId, listed } = input;
+  const ref = parseProfileId(profileId);
+  const prefix = HEAD_PREFIX_OF_CLIENT[ref.client];
+  const provider = FIXED_PROVIDER_OF_CLIENT[ref.client];
+  if (prefix === undefined || provider === undefined) return { discovered, notes };
+  for (const head of presetHeads(input.preset)) {
+    const split = splitHead(head);
+    if (typeof split === 'string' || !split.model.startsWith(`${prefix}-`)) continue;
+    const short = split.model.slice(prefix.length + 1);
+    const info = listed.find((candidate) => matches(candidate, short));
+    if (info === undefined) continue;
+    if (split.effort !== null && info.efforts.length > 0 && !info.efforts.includes(split.effort)) {
+      notes.push({
+        severity: 'warning',
+        code: 'effort_not_accepted',
+        role: null,
+        message: `${profileId}: the model ${info.id} does not accept the effort "${split.effort}" the preset names; it is left out`,
       });
+      continue;
     }
+    discovered.push({
+      id: formatExecutorId({ model: split.model, effort: split.effort, profileId }),
+      profileId,
+      model: info.id,
+      alias: split.model,
+      effort: split.effort,
+      provider,
+      source: 'discovered',
+      presetExpand: input.presetExpand,
+      local: null,
+    });
   }
   return { discovered, notes };
 }
