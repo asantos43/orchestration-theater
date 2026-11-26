@@ -361,6 +361,7 @@
       "empty": "No scenarios yet",
       "noQuota": "No subscription read yet",
       "noReading": "no reading",
+      "firstSession": "read at the 1st session",
       "fiveHour": "5h",
       "week": "7d",
       "settings": "Settings",
@@ -708,7 +709,8 @@
       "ok": "ok",
       "near_limit": "near the limit",
       "exhausted": "exhausted",
-      "unknown": "no reading"
+      "unknown": "no reading",
+      "firstSession": "read at the 1st session"
     },
     "profile": {
       "draining": "draining",

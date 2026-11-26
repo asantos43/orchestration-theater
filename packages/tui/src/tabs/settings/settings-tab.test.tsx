@@ -569,6 +569,21 @@ describe('the tab Settings', () => {
     expect(frame).not.toContain('attempts_per_demand');
   });
 
+  it('says a Claude Code account with no reading is read at its first session (N328, [proposta])', async () => {
+    const api = new FakeSettingsApi();
+    const unread = (entry: ApiProfile): ApiProfile =>
+      ({
+        ...entry,
+        quota: { ...entry.quota, state: 'unknown', windows: [] },
+      }) as unknown as ApiProfile;
+    api.accounts = api.accounts.map(unread);
+    const { app } = await open(api);
+    const frame = await app.settle();
+    // The state column is cut with `…` at this width: "read at the 1st session" and "no reading".
+    expect(frame).toMatch(/claude-code\/main +Subscription +— +— +read a/);
+    expect(frame).toMatch(/codex\/work +Subscription +— +— +no rea/);
+  });
+
   it('opens Limits and draws every list whole with ui.settingsTab open and list', async () => {
     const { app } = await open(new FakeSettingsApi(), {
       settingsTab: { limits: 'open', roles: 'list' },

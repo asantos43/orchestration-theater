@@ -76,7 +76,9 @@ import {
   QuotaService,
   quotaProbeOf,
   type QuotaProbeWiring,
+  addedSubscriptionToTrack,
   quotaSettingsOf,
+  subscriptionsToTrack,
   tapClient,
   WakeupManager,
   wakeupSettingsOf,
@@ -949,6 +951,9 @@ async function run(input: RunInput): Promise<DaemonHandle> {
   for (const prepare of quotaPrepare) {
     for (const ref of await prepare()) quota.track(ref);
   }
+  // `quota.track` `always` ([proposta], 2026-11-26): every subscription is read from the start, not
+  // only once a session of it opens.
+  for (const ref of await subscriptionsToTrack(store, config.quota.track)) quota.track(ref);
   // The catch-up and the readings start here.
   await quota.start();
   // P7 (Phase 8, N218): `GET /metrics`, when `telemetry.export` is `prometheus` or `both`. Otherwise the
@@ -1380,6 +1385,11 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     transport: () => composition.transport,
     roleLists: roleListsOf(config, store),
     redetect: redetectAuto,
+    // `quota.track` `always`: a subscription just registered is read at once.
+    onAdded: (record) => {
+      const ref = addedSubscriptionToTrack(config.quota.track, record);
+      if (ref !== undefined) quota.track(ref);
+    },
     ...(execution === undefined
       ? {}
       : {
@@ -1899,6 +1909,12 @@ function buildExecution(
         : undefined;
       const prepare = handProbe(tapped, tapped.id === 'codex' ? tapped.quota : linked);
       if (prepare !== undefined) for (const ref of await prepare()) quota.track(ref);
+      const subscriptions = await subscriptionsToTrack(
+        composition.store,
+        config.quota.track,
+        tapped.id,
+      );
+      for (const ref of subscriptions) quota.track(ref);
       return tapped;
     },
     logger,

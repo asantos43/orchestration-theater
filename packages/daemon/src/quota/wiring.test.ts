@@ -21,7 +21,12 @@ import { createSilentLogger } from '../logger.js';
 import { apiKeyRefOf } from '../profiles/secret-env.js';
 import { builtClients, clientOf } from './test-clients.js';
 import type { LedgerProbe } from './provider-probe.js';
-import { quotaProbeOf, type QuotaWiringDeps } from './wiring.js';
+import {
+  addedSubscriptionToTrack,
+  quotaProbeOf,
+  subscriptionsToTrack,
+  type QuotaWiringDeps,
+} from './wiring.js';
 
 const T0 = Date.UTC(2026, 10, 18, 12, 0, 0);
 const KEY = 'sk-test-0000-not-a-real-key';
@@ -262,5 +267,62 @@ describe('quotaProbeOf', () => {
       /allowlist/,
     );
     expect(seen).toEqual([]);
+  });
+});
+
+describe('quota.track (2026-11-26, [proposta])', () => {
+  async function storeWithProfiles(): Promise<InMemoryStore> {
+    const store = new InMemoryStore({ clock: new FakeClock(T0) });
+    const add = async (client: string, name: string, kind: 'token_plan' | 'api') =>
+      store.profiles.create({
+        client,
+        name,
+        kind,
+        provider: 'anthropic',
+        dir: `/profiles/${client}/${name}`,
+        secretRef: null,
+      });
+    await add('claude-code', 'main', 'token_plan');
+    await add('codex', 'work', 'token_plan');
+    await add('claude-code', 'api', 'api');
+    const leaving = await add('codex', 'old', 'token_plan');
+    await store.profiles.update(leaving.id, { state: 'draining' });
+    const gone = await add('claude-code', 'gone', 'token_plan');
+    await store.profiles.update(gone.id, { state: 'draining' });
+    await store.profiles.update(gone.id, { state: 'removed' });
+    return store;
+  }
+
+  it('has always as the default, and refuses another mode', () => {
+    expect(parseConfig('').quota.track).toBe('always');
+    expect(parseConfig('quota:\n  track: on_session\n').quota.track).toBe('on_session');
+    expect(() => parseConfig('quota:\n  track: never\n')).toThrow(/quota\.track/);
+  });
+
+  it('always: every active or draining subscription, of all clients or of one', async () => {
+    const store = await storeWithProfiles();
+    const ids = (refs: readonly ProfileRef[]) =>
+      refs.map((ref) => `${ref.client}/${ref.profile}`).sort();
+    expect(ids(await subscriptionsToTrack(store, 'always'))).toEqual([
+      'claude-code/main',
+      'codex/old',
+      'codex/work',
+    ]);
+    expect(ids(await subscriptionsToTrack(store, 'always', 'codex'))).toEqual([
+      'codex/old',
+      'codex/work',
+    ]);
+  });
+
+  it('on_session: none at the start', async () => {
+    expect(await subscriptionsToTrack(await storeWithProfiles(), 'on_session')).toEqual([]);
+  });
+
+  it('a new account is tracked only when it is an active subscription and the mode is always', () => {
+    const sub = { client: 'codex', name: 'work', kind: 'token_plan', state: 'active' } as const;
+    expect(addedSubscriptionToTrack('always', sub)).toEqual({ client: 'codex', profile: 'work' });
+    expect(addedSubscriptionToTrack('on_session', sub)).toBeUndefined();
+    expect(addedSubscriptionToTrack('always', { ...sub, kind: 'api' })).toBeUndefined();
+    expect(addedSubscriptionToTrack('always', { ...sub, state: 'removed' })).toBeUndefined();
   });
 });

@@ -3,12 +3,13 @@ import {
   formatProfileId,
   type ClientAdapterContract,
   type Clock,
+  type ProfileRecord,
   type ProfileRef,
   type QuotaProbe,
   type SecretVault,
   type Store,
 } from '@otheater/core';
-import type { DaemonConfig } from '../config.js';
+import type { DaemonConfig, QuotaTrackMode } from '../config.js';
 import type { Logger } from '../logger.js';
 import type { SituationSink } from '../situations.js';
 import { profileApiKey, profileProvider } from '../profiles/secret-env.js';
@@ -144,4 +145,39 @@ export function quotaProbeOf(
       return refs;
     },
   };
+}
+
+/** The states of a subscription the service reads with `quota.track` `always`. */
+const TRACKED_STATES = ['active', 'draining'] as const;
+
+/**
+ * [proposta] `quota.track` `always` (2026-11-26): the subscriptions (`token_plan`) the service
+ * reads from the start, of one client or of all. `on_session` returns none: an account is then read
+ * once a session of it opens.
+ */
+export async function subscriptionsToTrack(
+  store: Pick<Store, 'profiles'>,
+  mode: QuotaTrackMode,
+  client?: string,
+): Promise<readonly ProfileRef[]> {
+  if (mode !== 'always') return [];
+  const records = await store.profiles.list({
+    kind: 'token_plan',
+    states: TRACKED_STATES,
+    ...(client === undefined ? {} : { client }),
+  });
+  return records.map((record) => ({ client: record.client, profile: record.name }));
+}
+
+/**
+ * [proposta] `quota.track` `always`: the account just registered, when the service is to read it
+ * now (a subscription that is active or draining); `undefined` otherwise.
+ */
+export function addedSubscriptionToTrack(
+  mode: QuotaTrackMode,
+  record: Pick<ProfileRecord, 'client' | 'name' | 'kind' | 'state'>,
+): ProfileRef | undefined {
+  if (mode !== 'always' || record.kind !== 'token_plan') return undefined;
+  if (!(TRACKED_STATES as readonly string[]).includes(record.state)) return undefined;
+  return { client: record.client, profile: record.name };
 }

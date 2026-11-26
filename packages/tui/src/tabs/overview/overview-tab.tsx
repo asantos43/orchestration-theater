@@ -17,7 +17,7 @@ import { useRawKeys, type KeyEvent } from '../../keys/use-keymap.js';
 import { useTabHost } from '../../layout/tab-host.js';
 import type { TabContentProps, TabDefinition } from '../../layout/tab-types.js';
 import type { QuotaRow } from '../../layout/scenario-rows.js';
-import { fillBar } from '../../layout/scenario-rows.js';
+import { fillBar, noReadingKey } from '../../layout/scenario-rows.js';
 import { useDensity } from '../../layout/density-context.js';
 import { Section } from '../../layout/section.js';
 import { cellWidth, fit, wrapText } from '../../layout/text.js';
@@ -183,7 +183,7 @@ function QuotaLine(props: { readonly row: QuotaRow; readonly width: number }): R
   const color = quotaColor(row);
   const values =
     row.fiveHour === undefined && row.week === undefined
-      ? t('layout.sidebar.noReading')
+      ? t(`layout.sidebar.${noReadingKey(row.profile)}`)
       : `${t('layout.sidebar.fiveHour')} ${row.fiveHour === undefined ? '—' : `${String(row.fiveHour)}%`} · ${t('layout.sidebar.week')} ${row.week === undefined ? '—' : `${String(row.week)}%`}`;
   const bar = row.fiveHour === undefined ? '' : ` ${fillBar(8, row.fiveHour)}`;
   const name = fit(row.profile, Math.max(1, width - cellWidth(values) - cellWidth(bar) - 1));

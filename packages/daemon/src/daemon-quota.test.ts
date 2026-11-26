@@ -3,10 +3,11 @@ import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { Secret } from '@otheater/core';
 import { FakeClock, InMemorySecretVault, InMemoryStore } from '@otheater/core/testing';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { parseConfig } from './config.js';
 import { startDaemon, type DaemonHandle } from './daemon.js';
 import { createSilentLogger } from './logger.js';
+import { QuotaService } from './quota/index.js';
 import { itWithLauncher } from './launcher-fixture.js';
 import { apiKeyRefOf } from './profiles/secret-env.js';
 import { makeTempDataDir } from './test-helpers.js';
@@ -154,5 +155,53 @@ describe('startDaemon with the P8 quota probes', () => {
     } finally {
       await cleanUp(tmp);
     }
+  });
+});
+
+describe('startDaemon with quota.track (2026-11-26, [proposta])', () => {
+  async function trackedAtStart(yaml: string): Promise<string[]> {
+    const tmp = await makeTempDataDir();
+    const spy = vi.spyOn(QuotaService.prototype, 'track');
+    try {
+      const clock = new FakeClock(T0);
+      const store = new InMemoryStore({ clock });
+      const add = (client: string, name: string, kind: 'token_plan' | 'api') =>
+        store.profiles.create({
+          client,
+          name,
+          kind,
+          provider: client === 'codex' ? 'openai' : 'anthropic',
+          dir: `/p/${name}`,
+          secretRef: null,
+        });
+      await add('claude-code', 'main', 'token_plan');
+      await add('codex', 'work', 'token_plan');
+      await add('claude-code', 'api', 'api');
+      const daemon = await startDaemon({
+        dataDir: tmp.dir,
+        clientSearch: ALL_FOUND,
+        config: parseConfig(`backup:\n  when: manual\nsecurity:\n  unenforced: allow\n${yaml}`),
+        overrides: { clock, store, vault: new InMemorySecretVault() },
+        logger: createSilentLogger(),
+        version: '9.9.9',
+      });
+      daemons.push(daemon);
+      return spy.mock.calls
+        .map(([target]) =>
+          typeof target === 'string' ? target : `${target.client}/${target.profile}`,
+        )
+        .sort();
+    } finally {
+      spy.mockRestore();
+      await cleanUp(tmp);
+    }
+  }
+
+  it('always (default): every subscription is tracked at the start, before any session', async () => {
+    expect(await trackedAtStart('')).toEqual(['claude-code/main', 'codex/work']);
+  });
+
+  it('on_session: no subscription is tracked at the start', async () => {
+    expect(await trackedAtStart('quota:\n  track: on_session\n')).toEqual([]);
   });
 });

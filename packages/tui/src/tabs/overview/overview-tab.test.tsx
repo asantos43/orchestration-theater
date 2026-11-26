@@ -191,6 +191,19 @@ describe('what the Overview draws', () => {
     expect(frame).toContain('62%');
   });
 
+  it('says a Claude Code account with no reading is read at its first session (N328, [proposta])', async () => {
+    const w = world();
+    w.online.stores.quotas.setState({
+      byProfile: {
+        'claude-code/main': quota('claude-code/main', undefined, undefined, 'unknown'),
+        'codex/work': quota('codex/work', undefined, undefined, 'unknown'),
+      },
+    } as never);
+    const app = await open(w);
+    expect(app.frame()).toMatch(/claude-code\/main\s+read at the 1st session/);
+    expect(app.frame()).toMatch(/codex\/work\s+no reading/);
+  });
+
   it('marks a paused Actor and a paused play', async () => {
     const w = world({ paused: true });
     w.online.stores.activity.setState((s: { pausedPlays: object }) => ({

@@ -71,6 +71,8 @@ interface RigOptions {
   readonly clients?: readonly string[];
   /** P18: the search for the clients again; it gets the adapters to add one. */
   readonly redetect?: (adapters: Map<string, FakeClientAdapter>) => Promise<void>;
+  /** `quota.track` `always`: hears each account once it is registered. */
+  readonly onAdded?: (record: ProfileRecord) => void;
 }
 
 async function setup(options: RigOptions = {}) {
@@ -160,6 +162,7 @@ async function setup(options: RigOptions = {}) {
     ...(options.redetect === undefined
       ? {}
       : { redetect: () => options.redetect?.(adapters) ?? Promise.resolve() }),
+    ...(options.onAdded === undefined ? {} : { onAdded: options.onAdded }),
     pollMs: 1000,
   });
   return {
@@ -445,6 +448,31 @@ describe('ProfileService.add looks for the clients again first (P18, N321)', () 
       rig.service.add({ client: 'nope', name: 'x', kind: 'api', provider: 'anthropic' }),
     ).rejects.toThrow();
     expect(calls).toEqual([]);
+  });
+});
+
+describe('ProfileService.add tells who listens (quota.track always)', () => {
+  it('hands the record of each new account to the listener, once', async () => {
+    const heard: string[] = [];
+    const rig = await setup({
+      onAdded: (record) => heard.push(`${record.id} ${record.kind} ${record.state}`),
+    });
+    await addSub(rig, 'codex', 'work');
+    await addApi(rig, 'claude-code', 'api');
+    expect(heard).toEqual(['codex/work token_plan active', 'claude-code/api api active']);
+  });
+
+  it('a listener that throws is a profile.warning, and the account is still added', async () => {
+    const rig = await setup({
+      onAdded: () => {
+        throw new Error('track exploded');
+      },
+    });
+    const result = await addSub(rig, 'claude-code', 'main');
+    expect(result.profile.id).toBe('claude-code/main');
+    expect(rig.situations.of('profile.warning')).toEqual([
+      { profileId: 'claude-code/main', kind: 'quota_track_failed', detail: 'track exploded' },
+    ]);
   });
 });
 
