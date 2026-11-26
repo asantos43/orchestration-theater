@@ -242,7 +242,7 @@ describe.skipIf(NO_LAUNCHER).each(LOCALES)(
           await typeText(app, 'work');
           await seen(app, `${T('accountForm.field.name')}: work`);
           await press(app, ENTER);
-          await seen(app, 'codex/work token_plan');
+          await seen(app, new RegExp(`codex/work +${t('accountForm.kind.token_plan')}`));
           const profiles = await chat.daemon.store.profiles.list();
           expect(profiles.map((profile) => `${profile.client}/${profile.name}`)).toContain(
             'codex/work',
