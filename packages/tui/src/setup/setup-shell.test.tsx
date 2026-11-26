@@ -56,6 +56,7 @@ const settingsApi: SettingsApi = {
   startLogin: () => Promise.reject(new Error('not used')),
   submitLoginCode: () => Promise.resolve(),
   cancelLogin: () => Promise.resolve(),
+  clients: () => Promise.resolve([]),
 };
 
 const PROFILES = [profileOf('claude-code/main'), profileOf('codex/work')];

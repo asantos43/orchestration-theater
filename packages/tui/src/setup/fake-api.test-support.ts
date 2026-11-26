@@ -50,8 +50,14 @@ export function profileOf(
   };
 }
 
-export function requestError(code: string, status: number, message: string): ApiRequestError {
-  return new ApiRequestError({ status, body: { code, message } } as never, {
+export function requestError(
+  code: string,
+  status: number,
+  message: string,
+  details?: Readonly<Record<string, unknown>>,
+): ApiRequestError {
+  const body = { code, message, ...(details === undefined ? {} : { details }) };
+  return new ApiRequestError({ status, body } as never, {
     routeId: 'setup',
   });
 }

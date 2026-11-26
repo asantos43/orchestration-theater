@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 import { Secret } from '@otheater/core';
+import { CLIENT_IDS } from '../../config.js';
+import { ApiFailure } from '../handlers.js';
 import type { CommandRegistrar } from './command.js';
 import type { CommandRouteDeps } from './deps.js';
 
@@ -15,6 +17,14 @@ export function registerProfileCommands(register: CommandRegistrar, deps: Comman
   const { profiles, logins } = deps;
 
   register('addProfile', async ({ body }) => {
+    // N326: a client the daemon cannot run is refused with what a screen needs to say it.
+    if (!profiles.knowsClient(body.client)) {
+      throw new ApiFailure(
+        'invalid_input',
+        `Unknown client ${JSON.stringify(body.client)}: ${CLIENT_IDS.join(', ')}`,
+        { details: { reason: 'unknown_client', client: body.client, known: [...CLIENT_IDS] } },
+      );
+    }
     const result = await profiles.add({
       client: body.client,
       name: body.name,

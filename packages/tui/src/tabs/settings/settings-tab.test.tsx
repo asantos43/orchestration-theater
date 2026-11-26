@@ -11,6 +11,7 @@ import type {
   ConfigEditBody,
   ConfigEditResult,
   RemoveProfileResult,
+  SetupDetectedClient,
   StartProfileLoginResult,
 } from '@otheater/protocol';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -141,6 +142,16 @@ class FakeSettingsApi implements SettingsApi {
   loginsStarted: string[] = [];
   onCode: (code: string) => void = () => undefined;
 
+  /** The clients ready on the fake machine (N326: the form lists only these). */
+  ready: SetupDetectedClient[] = [
+    { client: 'claude-code', installed: true },
+    { client: 'codex', installed: true },
+    { client: 'opencode', installed: true },
+  ];
+
+  clients(): Promise<readonly SetupDetectedClient[]> {
+    return Promise.resolve(this.ready);
+  }
   profiles(): Promise<readonly ApiProfile[]> {
     return Promise.resolve(this.accounts);
   }
@@ -159,7 +170,10 @@ class FakeSettingsApi implements SettingsApi {
   scenarioOverride(): Promise<Readonly<Record<string, unknown>>> {
     return Promise.resolve({ limits: { plan_reviews: 5 } });
   }
+  /** What the next add fails with (a refusal of the daemon). */
+  failAdd: Error | undefined;
   addProfile(body: AddProfileBody): Promise<AddProfileResult> {
+    if (this.failAdd !== undefined) return Promise.reject(this.failAdd);
     if (this.noticeFirst && body.acceptNotice !== true) {
       return Promise.resolve({
         status: 'needs_notice',
@@ -338,6 +352,30 @@ const LONG_URL =
 const DOWN = '\x1b[B';
 const SHIFT_UP = '\x1b[1;2A';
 const SHIFT_DOWN = '\x1b[1;2B';
+const TAB = '\t';
+const SPACE = ' ';
+
+/**
+ * What the person does in the form "Adicionar conta" (N326), one key or one text per item; the
+ * fake has Claude Code, Codex and OpenCode ready, so the form starts on the client, Claude Code.
+ */
+const FORM_CODEX_ALT = [SPACE, TAB, 'alt'];
+const FORM_ZEN_API = [SPACE, SPACE, TAB, 'zen', TAB, SPACE, TAB, 'openai', TAB, 'sk-fake'];
+const FORM_CLAUDE_SECOND = [TAB, 'second'];
+
+/** Opens the form with A, fills it and sends it with Enter. */
+async function addAccount(
+  app: RenderedApp,
+  steps: readonly string[] = FORM_CODEX_ALT,
+): Promise<void> {
+  await key(app, 'a');
+  await app.waitForText('Client:');
+  for (const step of steps) {
+    if (step.length === 1 || step.startsWith('\x1b')) await key(app, step);
+    else await type(app, step);
+  }
+  await key(app, '\r');
+}
 
 describe('the tab Settings', () => {
   it('draws the accounts with state and quota, the Executors, the roles and the limits', async () => {
@@ -692,26 +730,46 @@ describe('the tab Settings', () => {
     expect(api.edits[1]?.remove).toEqual([['limits', 'attempts_per_demand']]);
   });
 
-  it('adds an account, asking for the key of an API one, and removes one after the confirmation', async () => {
+  it('adds an account with the form, an API one with its key hidden, and removes one after the confirmation', async () => {
     const api = new FakeSettingsApi();
     const { app } = await open(api);
     await key(app, 'a');
-    await type(app, 'codex alt token_plan codex');
-    await key(app, '\r');
+    const form = await app.waitForText('Client:');
+    expect(form).toContain('Add an account');
+    expect(form).toContain('[claude-code]');
+    expect(form).toContain('Name: main');
+    await key(app, '\x1b');
+    expect(await app.settle()).not.toContain('Client:');
+    expect(api.added).toEqual([]);
+
+    await addAccount(app);
     await waitUntil(() => api.added.length === 1);
-    expect(api.added[0]).toMatchObject({ client: 'codex', name: 'alt', kind: 'token_plan' });
+    expect(api.added[0]).toEqual({
+      client: 'codex',
+      name: 'alt',
+      kind: 'token_plan',
+      provider: 'openai',
+    });
     await app.waitForText('codex/alt');
 
     await key(app, 'a');
-    await type(app, 'opencode zen api openai');
-    await key(app, '\r');
-    await app.waitForText('API key');
-    await type(app, 'sk-fake');
+    await app.waitForText('Client:');
+    for (const step of FORM_ZEN_API) {
+      if (step.length === 1) await key(app, step);
+      else await type(app, step);
+    }
     const masked = app.frame();
+    expect(masked).toContain('API key: •••••••');
     expect(masked).not.toContain('sk-fake');
     await key(app, '\r');
     await waitUntil(() => api.added.length === 2);
-    expect(api.added[1]).toMatchObject({ kind: 'api', apiKey: 'sk-fake' });
+    expect(api.added[1]).toEqual({
+      client: 'opencode',
+      name: 'zen',
+      kind: 'api',
+      provider: 'openai',
+      apiKey: 'sk-fake',
+    });
 
     await key(app, 'x');
     await app.waitForText('Remove');
@@ -720,57 +778,82 @@ describe('the tab Settings', () => {
     expect(api.removed).toEqual(['claude-code/main']);
   });
 
+  it('with no client ready, A says so and opens no form (N326)', async () => {
+    const api = new FakeSettingsApi();
+    api.ready = [{ client: 'claude-code', installed: false, reason: 'adapter_missing' }];
+    const { app } = await open(api);
+    await key(app, 'a');
+    const frame = flat(await app.waitForText('No client'));
+    expect(frame).not.toContain('Client:');
+    expect(api.added).toEqual([]);
+  });
+
+  it('with one client ready, the form has it chosen and starts on the name', async () => {
+    const api = new FakeSettingsApi();
+    api.ready = [{ client: 'codex', installed: true }];
+    const { app } = await open(api);
+    await key(app, 'a');
+    const frame = await app.waitForText('Client: codex');
+    expect(frame).toContain('Name: main▏');
+    await type(app, 'solo');
+    await key(app, '\r');
+    await waitUntil(() => api.added.length === 1);
+    expect(api.added[0]).toMatchObject({ client: 'codex', name: 'solo' });
+  });
+
+  it('says in its own words that the daemon does not run the client (N326)', async () => {
+    const api = new FakeSettingsApi();
+    api.failAdd = new ApiRequestError(
+      {
+        status: 400,
+        body: {
+          code: 'invalid_input',
+          message: 'Unknown client "codex"',
+          details: { reason: 'unknown_client', client: 'codex', known: ['claude-code'] },
+        },
+      } as never,
+      { routeId: 'addProfile' },
+    );
+    const { app } = await open(api);
+    await addAccount(app);
+    const frame = flat(await app.waitForText('is not a client'));
+    expect(frame).toContain('codex is not a client the daemon runs; the clients are claude-code.');
+  });
+
   describe('the login that goes with a new account (profiles.add.login)', () => {
-    const ADD_CODEX = 'codex alt token_plan codex';
+    it.each(['ask', 'auto'] as const)(
+      '%s: Enter of the form adds the subscription and starts its login, the same one as L',
+      async (mode) => {
+        const api = new FakeSettingsApi();
+        api.addLogin = mode;
+        const { app } = await open(api);
+        await key(app, 'a');
+        await app.waitForText('Client:');
+        // The form says that Enter opens the sign-in too.
+        expect(flat(app.frame())).toContain('Enter adds and opens the sign-in');
+        await key(app, '\x1b');
+        await addAccount(app);
+        await waitUntil(() => api.loginsStarted.length === 1);
+        expect(api.loginsStarted).toEqual(['codex/alt']);
+        await app.waitForText('https://login.example.test/oauth?state=abc');
+        expect(app.frame()).not.toContain('Log in now?');
+      },
+    );
 
-    async function addAccount(app: RenderedApp, form = ADD_CODEX): Promise<void> {
-      await key(app, 'a');
-      await type(app, form);
-      await key(app, '\r');
-    }
-
-    it('ask: y after "Account added" starts the login of the new account, the same one as L', async () => {
-      const api = new FakeSettingsApi();
-      api.addLogin = 'ask';
-      const { app } = await open(api);
-      await addAccount(app);
-      const frame = await app.waitForText('Log in now?');
-      expect(flat(frame)).toContain('codex/alt was added');
-      expect(api.loginsStarted).toEqual([]);
-      await key(app, 'y');
-      await waitUntil(() => api.loginsStarted.length === 1);
-      expect(api.loginsStarted).toEqual(['codex/alt']);
-      await app.waitForText('https://login.example.test/oauth?state=abc');
-    });
-
-    it('ask: any other key leaves the login for later', async () => {
-      const api = new FakeSettingsApi();
-      api.addLogin = 'ask';
-      const { app } = await open(api);
-      await addAccount(app);
-      await app.waitForText('Log in now?');
-      await key(app, 'n');
-      const frame = await app.settle();
-      expect(frame).not.toContain('Log in now?');
-      expect(frame).toContain('codex/alt');
-      expect(api.loginsStarted).toEqual([]);
-    });
-
-    it('ask: with the notice of a second subscription, the question comes after the acceptance', async () => {
+    it('with the notice of a second subscription, the login comes after the acceptance', async () => {
       const api = new FakeSettingsApi();
       api.addLogin = 'ask';
       api.noticeFirst = true;
       const { app } = await open(api);
-      await addAccount(app, 'claude-code second token_plan claude');
+      await addAccount(app, FORM_CLAUDE_SECOND);
       await app.waitForText('claude-code/main');
-      await key(app, 'y');
-      await app.waitForText('Log in now?');
+      expect(api.loginsStarted).toEqual([]);
       await key(app, 'y');
       await waitUntil(() => api.loginsStarted.length === 1);
       expect(api.loginsStarted).toEqual(['claude-code/second']);
     });
 
-    it('auto: starts the login without asking, and a login that stays at the terminal runs there', async () => {
+    it('a login that stays at the terminal runs there', async () => {
       const api = new FakeSettingsApi();
       api.addLogin = 'auto';
       api.loginAnswer = {
@@ -790,16 +873,18 @@ describe('the tab Settings', () => {
       await waitUntil(() => ran.length === 1);
       expect(api.loginsStarted).toEqual(['codex/alt']);
       expect(ran).toEqual(['fake-cli login --profile alt']);
-      expect(app.frame()).not.toContain('Log in now?');
     });
 
-    it('off: does not ask and does not start the login', async () => {
+    it('off: does not start the login, and the form does not promise it', async () => {
       const api = new FakeSettingsApi();
       api.addLogin = 'off';
       const { app } = await open(api);
+      await key(app, 'a');
+      await app.waitForText('Client:');
+      expect(flat(app.frame())).not.toContain('opens the sign-in');
+      await key(app, '\x1b');
       await addAccount(app);
-      const frame = await app.waitForText('Account added: codex/alt');
-      expect(frame).not.toContain('Log in now?');
+      await app.waitForText('Account added: codex/alt');
       expect(api.loginsStarted).toEqual([]);
     });
 
@@ -809,13 +894,9 @@ describe('the tab Settings', () => {
         const api = new FakeSettingsApi();
         api.addLogin = mode;
         const { app } = await open(api);
-        await addAccount(app, 'opencode zen api openai');
-        await app.waitForText('API key');
-        await type(app, 'sk-fake');
-        await key(app, '\r');
+        await addAccount(app, FORM_ZEN_API);
         await waitUntil(() => api.added.length === 1);
         await app.waitForText('opencode/zen');
-        expect(app.frame()).not.toContain('Log in now?');
         expect(api.loginsStarted).toEqual([]);
       },
       15_000,
@@ -836,9 +917,7 @@ describe('the tab Settings', () => {
     const api = new FakeSettingsApi();
     api.noticeFirst = true;
     const { app } = await open(api);
-    await key(app, 'a');
-    await type(app, 'claude-code second token_plan claude');
-    await key(app, '\r');
+    await addAccount(app, FORM_CLAUDE_SECOND);
     await app.waitForText('claude-code/main');
     await key(app, 'y');
     await waitUntil(() => api.added.length === 1);

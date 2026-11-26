@@ -154,6 +154,8 @@ const SETUP_KEYS: readonly (readonly [
   ['cancel', ['C'], ['bar.setup.cancel', 20]],
   // N324: at the review, the detail of the notes the screen folds (`ui.setup.reviewNotes`). [proposta] D.
   ['details', ['D'], ['bar.setup.details', 19]],
+  // N326: at the step that adds an account, continue without one. [proposta] S.
+  ['skip', ['S'], ['bar.setup.skip', 15]],
 ];
 
 function setupActions(): NonNullable<UiRegistryDefinition['actions']> {

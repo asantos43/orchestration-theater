@@ -62,8 +62,19 @@ function fakes(): ChatFakes {
     codeHost: new FakeCodeHost(),
     clock: new FakeClock(),
     vault: new InMemorySecretVault(),
-    client: (launcher, command, env) =>
+    // The fake agent plays every role; a second fake under the id `codex` is the client ready on
+    // the machine, the one the form that adds an account offers (N326).
+    client: (launcher, command, env) => [
       new FakeClientAdapter({ launcher, baseEnv: {}, env, adapterVersion: '1.0.0', command }),
+      new FakeClientAdapter({
+        id: 'codex',
+        launcher,
+        baseEnv: {},
+        env,
+        adapterVersion: '1.0.0',
+        command,
+      }),
+    ],
   };
 }
 
@@ -220,23 +231,26 @@ describe.skipIf(NO_LAUNCHER).each(LOCALES)(
             T('layout.chat.empty'),
           );
 
-          // 2. Settings (F5): add an account by the line of the prompt.
+          // 2. Settings (F5): add an account with the form (N326). Codex is the one client ready
+          // in this daemon, so the form has it chosen and the cursor on the name.
           await press(app, F5);
           await seen(app, T('settings.sections.subscriptions'));
           await press(app, 'a');
-          await seen(app, T('settings.prompt.add'));
-          await typeText(app, 'codex work token_plan openai');
+          await seen(app, `${T('accountForm.field.client')}: codex`);
+          await seen(app, `${T('accountForm.field.name')}: main`);
+          await typeText(app, 'work');
+          await seen(app, `${T('accountForm.field.name')}: work`);
           await press(app, ENTER);
-          await seen(app, T('settings.result.added', { profile: 'codex/work' }));
           await seen(app, 'codex/work token_plan');
           const profiles = await chat.daemon.store.profiles.list();
           expect(profiles.map((profile) => `${profile.client}/${profile.name}`)).toContain(
             'codex/work',
           );
           await eventsOf(chat, 'profile.added');
-          // `profiles.add.login` is `ask` by default: the new account offers a login, and `n` leaves it.
-          await seen(app, T('settings.prompt.confirmLogin', { profile: 'codex/work' }));
-          await press(app, 'n');
+          // `profiles.add.login` is `ask` by default, and the Enter of the form is the yes: the
+          // login opens at once. The fake client has no login, so the daemon records it as failed
+          // and nothing runs in a terminal.
+          await eventsOf(chat, 'profile.login.failed');
 
           // 3. The roles: the cursor goes to the rule of the Director, and `e` changes it. The
           // Executors section is empty, so the first arrow lands on it with nothing to see.

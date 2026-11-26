@@ -326,6 +326,23 @@ describe('profiles', () => {
     expect(JSON.stringify(lines)).not.toContain(API_KEY);
   });
 
+  it('refuses a client the daemon cannot run, with what a screen needs to say it (N326)', async () => {
+    const refused = await send('POST', '/v1/profiles', {
+      client: 'cursor',
+      name: 'main',
+      kind: 'token_plan',
+      provider: 'anthropic',
+    });
+    expect(refused.status).toBe(400);
+    const error = refused.json<{
+      error: { code: string; details?: { reason?: string; client?: string; known?: string[] } };
+    }>().error;
+    expect(error.code).toBe('invalid_input');
+    expect(error.details).toMatchObject({ reason: 'unknown_client', client: 'cursor' });
+    expect(error.details?.known).toEqual(expect.arrayContaining(['claude-code', 'codex']));
+    expect(await eventsOf('profile.added')).toHaveLength(0);
+  });
+
   it('drains and removes a profile', async () => {
     await send('POST', '/v1/profiles', {
       client: 'claude-code',

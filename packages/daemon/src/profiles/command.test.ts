@@ -290,6 +290,11 @@ describe('ot profile add, list, drain and remove', () => {
       const unknown = await rig.run(['profile', 'drain', 'codex/none']);
       expect(unknown.code).toBe(1);
       expect(unknown.err[0]).toMatch(/^Error: /);
+      // N326: a client the daemon cannot run is a usage error, and nothing is made.
+      const client = await rig.run(['profile', 'add', 'cursor', 'main', '--provider', 'anthropic']);
+      expect(client.code).toBe(2);
+      expect(client.err.join('\n')).toMatch(/unknown client "cursor"; the clients are claude-code/);
+      expect(existsSync(join(dataPaths(rig.dir).profiles, 'cursor'))).toBe(false);
     });
   });
 

@@ -51,6 +51,10 @@ export interface AccountsStage {
   /** The labels of the keys that add an account and that continue. */
   readonly addKey: string;
   readonly nextKey: string;
+  /** The label of the key that continues without an account (N326); default none. */
+  readonly skipKey?: string | undefined;
+  /** An account exists already (added in this run or found): Enter continues; otherwise it adds. */
+  readonly hasAccount?: boolean | undefined;
   /** The labels of the keys that install an adapter and that look again (P18b); default none. */
   readonly installKey?: string | undefined;
   readonly reloadKey?: string | undefined;
@@ -146,7 +150,11 @@ function accountsStageLines(run: SetupRunView, stage: AccountsStage, t: TFunctio
   lines.push({ key: 'gap.keys', text: '' });
   lines.push({
     key: 'keys',
-    text: t('setup.accounts.keys', { add: stage.addKey, next: stage.nextKey }),
+    text: t(stage.hasAccount === false ? 'setup.accounts.keysEmpty' : 'setup.accounts.keys', {
+      add: stage.addKey,
+      next: stage.nextKey,
+      skip: stage.skipKey ?? '',
+    }),
     dim: true,
   });
   return lines;

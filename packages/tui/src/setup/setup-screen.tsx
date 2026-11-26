@@ -17,10 +17,16 @@ import { fieldStep } from '../tabs/settings/field.js';
 import { errorText, runInTerminal } from '../tabs/settings/index.js';
 import type { SetupReviewNotesMode } from '../settings.js';
 import type { SetupApi, SetupFlow } from './api.js';
+import {
+  accountFormKey,
+  accountFormLines,
+  accountFormStart,
+  unknownClientText,
+  type AccountForm,
+} from './account-form.js';
 import { clientStateText, clientTodoText, setupLines, type SetupLine } from './lines.js';
 import {
   accountClients,
-  accountFormOf,
   accountsCursorMoved,
   accountsCursorStart,
   adapterToInstall,
@@ -30,7 +36,6 @@ import {
   initialDraft,
   isFinished,
   loginCommandOf,
-  parseAccountLine,
   parseBudgetLine,
   parseExecutorLine,
   reordered,
@@ -74,11 +79,13 @@ type Mode =
   | { readonly kind: 'idle' }
   | {
       readonly kind: 'prompt';
-      readonly purpose: 'executor' | 'budget' | 'account';
-      /** The account of the cap (`budget`), or the client of the new account (`account`). */
+      readonly purpose: 'executor' | 'budget';
+      /** The account of the cap (`budget`). */
       readonly profileId: string;
       readonly value: string;
     }
+  /** The form "Adicionar conta" (N326): the same one the tab Settings opens with A. */
+  | { readonly kind: 'form'; readonly form: AccountForm }
   | { readonly kind: 'confirmCancel' }
   /** A second subscription of one provider: the daemon wants the notice accepted (N127). */
   | {
@@ -130,15 +137,31 @@ const FIRST: State = {
   details: false,
 };
 
+/** An account exists already: added in this run, or found by the detection. */
+function accountExists(run: SetupRunView, added: readonly string[]): boolean {
+  return added.length > 0 || (run.prompt?.step === 'detect' && run.prompt.profiles.length > 0);
+}
+
 /** The hints of the bar that make sense at the step on screen. */
+/** The bar while the form is open: its own keys, fixed as the form reads them (N326). */
+const FORM_BAR: readonly UiBarItem[] = [
+  { id: 'accountForm.submit', label: 'Enter', text: { key: 'bar.accountForm.submit' } },
+  { id: 'accountForm.next', label: 'Tab', text: { key: 'bar.accountForm.next' } },
+  { id: 'accountForm.change', label: 'Space', text: { key: 'bar.accountForm.change' } },
+  { id: 'accountForm.cancel', label: 'Esc', text: { key: 'bar.accountForm.cancel' } },
+];
+
 function relevantBar(
   item: UiBarItem,
   step: string | undefined,
   finished: boolean,
   accounts: boolean,
+  hasAccount: boolean,
 ): boolean {
   if (finished) return item.id === 'setup.advance';
   if (accounts) {
+    // N326: S continues without an account only where there is none yet.
+    if (item.id === 'setup.skip') return !hasAccount;
     return ![
       'setup.toggle',
       'setup.edit',
@@ -150,6 +173,7 @@ function relevantBar(
   }
   switch (item.id) {
     case 'setup.install':
+    case 'setup.skip':
       return false;
     case 'setup.toggle':
       return step === 'detect';
@@ -471,7 +495,10 @@ export function SetupScreen(props: SetupScreenProps): ReactNode {
     }
   };
 
-  /** Adds the subscription account and logs in to it at once (N274). */
+  /**
+   * Adds the account; a subscription logs in at once (N274), an API account has no login (its key
+   * went with it).
+   */
   const addAccount = async (body: AddProfileBody): Promise<void> => {
     const accounts = api.accounts;
     if (accounts === undefined) return;
@@ -495,15 +522,19 @@ export function SetupScreen(props: SetupScreenProps): ReactNode {
       const profileId = result.profile.id;
       update({ added: [...ref.current.added, profileId] });
       message =
-        result.login === 'logged_in'
-          ? { text: t('setup.accounts.result.loggedIn', { profile: profileId }), tone: 'ok' }
-          : await loginOf(profileId);
+        body.kind === 'api'
+          ? { text: t('setup.accounts.result.added', { profile: profileId }), tone: 'ok' }
+          : result.login === 'logged_in'
+            ? { text: t('setup.accounts.result.loggedIn', { profile: profileId }), tone: 'ok' }
+            : await loginOf(profileId);
     } catch (error) {
       if (!alive.current) return;
       update({
         busy: false,
         message: {
-          text: t('setup.accounts.result.failed', { message: errorText(error) }),
+          text: t('setup.accounts.result.failed', {
+            message: unknownClientText(error, t) ?? errorText(error),
+          }),
           tone: 'error',
         },
       });
@@ -513,21 +544,6 @@ export function SetupScreen(props: SetupScreenProps): ReactNode {
   };
 
   const submitPrompt = (current: Extract<Mode, { kind: 'prompt' }>, draft: Draft): void => {
-    if (current.purpose === 'account') {
-      const account = parseAccountLine(current.profileId, current.value);
-      if (account === undefined) {
-        update({ mode: IDLE });
-        say(t('setup.prompt.badAccount', { form: accountFormOf(current.profileId) }), 'warn');
-        return;
-      }
-      void addAccount({
-        client: current.profileId,
-        name: account.name,
-        kind: 'token_plan',
-        provider: account.provider,
-      });
-      return;
-    }
     if (current.purpose === 'executor') {
       const executor = parseExecutorLine(current.value);
       if (executor === undefined) {
@@ -552,12 +568,43 @@ export function SetupScreen(props: SetupScreenProps): ReactNode {
     reload: keyLabel(keymap, 'setup.reload') ?? '',
   });
 
+  const hasAccount = (run: SetupRunView): boolean => accountExists(run, ref.current.added);
+
+  /**
+   * Opens the form "Adicionar conta" over the clients ready on the machine (N326), the one under
+   * the cursor chosen; with none ready, says how to get one instead.
+   */
+  const openForm = (run: SetupRunView, preferred?: string): void => {
+    const ready = accountClients(run.prompt)
+      .filter((entry) => entry.installed)
+      .map((entry) => entry.client);
+    const form = accountFormStart(ready, preferred);
+    if (form === undefined) {
+      say(
+        t('setup.accounts.noReady', {
+          install: keyLabel(keymap, 'setup.install') ?? '',
+          reload: keyLabel(keymap, 'setup.reload') ?? '',
+          skip: keyLabel(keymap, 'setup.skip') ?? '',
+        }),
+        'warn',
+      );
+      return;
+    }
+    update({ mode: { kind: 'form', form } });
+  };
+
   /** The keys of the step that adds an account. */
   const onAccountsKey = (run: SetupRunView, name: string): void => {
     const cursor = ref.current.accountsCursor;
     switch (name) {
       case 'advance':
+        // N324/N326: with no account yet, Enter opens the form; S continues without one.
+        if (hasAccount(run)) update({ stage: 'steps' });
+        else openForm(run, accountClients(run.prompt)[cursor]?.client);
+        return;
+      case 'skip':
         update({ stage: 'steps' });
+        if (!hasAccount(run)) say(t('setup.accounts.skipped'), 'warn');
         return;
       case 'back':
         onClose('left');
@@ -584,9 +631,7 @@ export function SetupScreen(props: SetupScreenProps): ReactNode {
           );
           return;
         }
-        update({
-          mode: { kind: 'prompt', purpose: 'account', profileId: entry.client, value: '' },
-        });
+        openForm(run, entry.client);
         return;
       }
       case 'install': {
@@ -643,6 +688,13 @@ export function SetupScreen(props: SetupScreenProps): ReactNode {
       if ((event.combo ?? '').toUpperCase() === t('setup.prompt.yes').toUpperCase()) {
         void addAccount({ ...mode.body, acceptNotice: true });
       }
+      return;
+    }
+    if (mode.kind === 'form') {
+      const step = accountFormKey(mode.form, event.combo, event.data);
+      if (step.done === 'cancel') update({ mode: IDLE });
+      else if (step.done === 'submit') void addAccount(step.body);
+      else update({ mode: { kind: 'form', form: step.form } });
       return;
     }
     if (mode.kind === 'prompt') {
@@ -737,16 +789,23 @@ export function SetupScreen(props: SetupScreenProps): ReactNode {
       text:
         mode.purpose === 'executor'
           ? t('setup.prompt.executor')
-          : mode.purpose === 'account'
-            ? t('setup.prompt.account', {
-                client: mode.profileId,
-                form: accountFormOf(mode.profileId),
-              })
-            : t('setup.prompt.budget', { profile: mode.profileId }),
+          : t('setup.prompt.budget', { profile: mode.profileId }),
       color: TOKEN.accent,
     });
     head.push({ key: 'p.value', text: `> ${mode.value}▏` });
     head.push({ key: 'p.hint', text: t('setup.prompt.hintEnter'), dim: true });
+  } else if (mode.kind === 'form') {
+    for (const line of accountFormLines(mode.form, t, { login: true })) {
+      head.push({
+        key: line.key,
+        text: line.text,
+        color:
+          line.tone === 'accent' ? TOKEN.accent : line.tone === 'warn' ? TOKEN.warn : undefined,
+        ...(line.dim === true ? { dim: true } : {}),
+        ...(line.selected === true ? { selected: true } : {}),
+      });
+    }
+    head.push({ key: 'f.gap', text: '' });
   } else if (mode.kind === 'confirmNotice') {
     head.push({
       key: 'n.q',
@@ -796,10 +855,13 @@ export function SetupScreen(props: SetupScreenProps): ReactNode {
           accounts: accountsOn
             ? {
                 active: onAccounts,
-                cursor: state.accountsCursor,
+                // While the form is open, its field holds the cursor.
+                cursor: mode.kind === 'form' ? -1 : state.accountsCursor,
                 added: state.added,
                 addKey: keyLabel(keymap, 'setup.add') ?? '',
                 nextKey: keyLabel(keymap, 'setup.advance') ?? '',
+                skipKey: keyLabel(keymap, 'setup.skip') ?? '',
+                hasAccount: accountExists(run, state.added),
                 installKey: keyLabel(keymap, 'setup.install') ?? '',
                 reloadKey: keyLabel(keymap, 'setup.reload') ?? '',
                 installing:
@@ -842,9 +904,18 @@ export function SetupScreen(props: SetupScreenProps): ReactNode {
   }
   const first = Math.max(0, cursorLine - Math.max(1, innerHeight - 1));
 
-  const bar = deriveShortcutBar(keymap.registry, keymap.keymap, ['setup']).filter((item) =>
-    relevantBar(item, run?.step, finished, onAccounts),
-  );
+  const hasAccountNow = run !== undefined && accountExists(run, state.added);
+  const bar =
+    mode.kind === 'form'
+      ? FORM_BAR
+      : deriveShortcutBar(keymap.registry, keymap.keymap, ['setup'])
+          .filter((item) => relevantBar(item, run?.step, finished, onAccounts, hasAccountNow))
+          .map((item) =>
+            // N326: with no account yet, Enter at the step opens the form instead of going on.
+            onAccounts && !hasAccountNow && item.id === 'setup.advance'
+              ? { ...item, text: { key: 'bar.setup.openForm' } }
+              : item,
+          );
 
   return (
     <Box flexDirection="column" width={columns} height={rows}>

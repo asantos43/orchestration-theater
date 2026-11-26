@@ -41,6 +41,13 @@ import {
   type OpenPorts,
 } from '../../open-url.js';
 import { useStoreValue } from '../../use-store-value.js';
+import {
+  accountFormKey,
+  accountFormLines,
+  accountFormStart,
+  unknownClientText,
+  type AccountForm,
+} from '../../setup/account-form.js';
 import { apiOf, type SettingsApi } from './api.js';
 import { fieldStep } from './field.js';
 import {
@@ -55,7 +62,6 @@ import {
   limitValueText,
   moved,
   nextChoice,
-  parseAddForm,
   parseLimit,
   quotaLine,
   reorderEdit,
@@ -146,10 +152,11 @@ interface Loaded {
   readonly config: ApiConfig;
 }
 
-type Prompt =
-  | { readonly purpose: 'add' }
-  | { readonly purpose: 'apiKey'; readonly draft: AddProfileBody }
-  | { readonly purpose: 'limit'; readonly spec: LimitKey };
+/** What a typed line is for: the value of a key of `limits` (the account has its form, N326). */
+interface Prompt {
+  readonly purpose: 'limit';
+  readonly spec: LimitKey;
+}
 
 type Mode =
   | { readonly kind: 'idle' }
@@ -160,6 +167,8 @@ type Mode =
       readonly secret: boolean;
       readonly value: string;
     }
+  /** The form that adds an account (N326). */
+  | { readonly kind: 'form'; readonly form: AccountForm }
   | {
       readonly kind: 'confirm';
       readonly question: string;
@@ -446,27 +455,18 @@ function SettingsTab({ content, options }: TabProps): ReactNode {
         return;
       }
       say(t('settings.result.added', { profile: result.profile.id }), 'ok');
-      // `profiles.add.login`: a subscription account with no login yet is offered one (or gets it at
-      // once), the same login as the key `L`. Read before the reload, from the config the tab holds.
+      // `profiles.add.login`: a subscription account with no login yet gets it at once, the same
+      // login as the key `L` (N326: the Enter of the form is the yes, so `ask` logs in as `auto`
+      // does here [proposta]); `off` never does. Read before the reload, from the config the tab holds.
       const mode = addLoginModeOf(loadedRef.current?.config.config ?? {});
       const wantsLogin =
         result.profile.kind === 'token_plan' && result.login !== 'logged_in' && mode !== 'off';
       await reload();
-      if (!wantsLogin) return;
-      const profileId = result.profile.id;
-      if (mode === 'auto') {
-        await startLogin(profileId);
-        return;
-      }
-      setMode({
-        kind: 'confirm',
-        question: t('settings.prompt.confirmLogin', { profile: profileId }),
-        then: () => {
-          void startLogin(profileId);
-        },
-      });
+      if (wantsLogin) await startLogin(result.profile.id);
     } catch (error) {
-      failed(error);
+      const unknown = unknownClientText(error, t);
+      if (unknown === undefined) failed(error);
+      else say(unknown, 'error');
     }
   };
 
@@ -583,46 +583,21 @@ function SettingsTab({ content, options }: TabProps): ReactNode {
   const submitPrompt = (current: Extract<Mode, { kind: 'prompt' }>): void => {
     const { prompt, value } = current;
     setMode(IDLE);
-    switch (prompt.purpose) {
-      case 'add': {
-        const form = parseAddForm(value);
-        if (form === undefined) {
-          say(t('settings.result.badAdd'), 'warn');
-          return;
-        }
-        if (form.kind === 'api') {
-          openPrompt(
-            { purpose: 'apiKey', draft: form },
-            t('settings.prompt.apiKey', { profile: `${form.client}/${form.name}` }),
-            true,
-          );
-          return;
-        }
-        void addProfile(form);
-        return;
-      }
-      case 'apiKey':
-        if (value === '') return;
-        void addProfile({ ...prompt.draft, apiKey: value });
-        return;
-      case 'limit': {
-        const parsed = parseLimit(prompt.spec, value);
-        if (parsed === undefined) {
-          say(
-            t(
-              prompt.spec.kind === 'count'
-                ? 'settings.result.badWhole'
-                : 'settings.result.badDuration',
-              { key: prompt.spec.key, min: prompt.spec.min ?? 0 },
-            ),
-            'warn',
-          );
-          return;
-        }
-        void write(limitEdit(prompt.spec.key, parsed));
-        return;
-      }
+    const parsed = parseLimit(prompt.spec, value);
+    if (parsed === undefined) {
+      say(
+        t(
+          prompt.spec.kind === 'count' ? 'settings.result.badWhole' : 'settings.result.badDuration',
+          {
+            key: prompt.spec.key,
+            min: prompt.spec.min ?? 0,
+          },
+        ),
+        'warn',
+      );
+      return;
     }
+    void write(limitEdit(prompt.spec.key, parsed));
   };
 
   const endLogin = (current: Extract<Mode, { kind: 'login' }>): void => {
@@ -633,7 +608,49 @@ function SettingsTab({ content, options }: TabProps): ReactNode {
     });
   };
 
+  /**
+   * Opens the form that adds an account (N326) over the clients ready on the machine; with none
+   * ready it says so and what opens the assistant, which installs an adapter.
+   */
+  const openForm = async (): Promise<void> => {
+    if (busy.current) return;
+    busy.current = true;
+    try {
+      const clients = await api.clients();
+      const form = accountFormStart(
+        clients.filter((entry) => entry.installed).map((entry) => entry.client),
+      );
+      if (!mounted.current) return;
+      if (form === undefined) {
+        say(
+          t('settings.result.noClient', {
+            assistant: keyLabel(keymap, 'settings.assistantAccount') ?? '',
+          }),
+          'warn',
+        );
+        return;
+      }
+      setMode({ kind: 'form', form });
+    } catch (error) {
+      failed(error);
+    } finally {
+      busy.current = false;
+    }
+  };
+
   const handleMode = (event: KeyEvent, current: Exclude<Mode, { kind: 'idle' }>): void => {
+    if (current.kind === 'form') {
+      const step = accountFormKey(current.form, event.combo, event.data);
+      if (step.done === 'cancel') {
+        setMode(IDLE);
+      } else if (step.done === 'submit') {
+        setMode(IDLE);
+        void addProfile(step.body);
+      } else {
+        setMode({ kind: 'form', form: step.form });
+      }
+      return;
+    }
     if (current.kind === 'confirm') {
       setMode(IDLE);
       const yes = t('settings.prompt.yes').toUpperCase();
@@ -700,7 +717,7 @@ function SettingsTab({ content, options }: TabProps): ReactNode {
       return;
     }
     if (name === 'add') {
-      openPrompt({ purpose: 'add' }, t('settings.prompt.add'));
+      void openForm();
       return;
     }
     // The setup assistant (P17): the same screen, on the flow that fits the key.
@@ -982,6 +999,19 @@ function SettingsTab({ content, options }: TabProps): ReactNode {
       text: `> ${mode.secret ? '•'.repeat(Array.from(mode.value).length) : mode.value}▏`,
     });
     head.push({ key: 'p.hint', kind: 'row', text: t('settings.prompt.hintEnter'), dim: true });
+  } else if (mode.kind === 'form') {
+    const login = addLoginModeOf(loaded?.config.config ?? {}) !== 'off';
+    for (const line of accountFormLines(mode.form, t, { login })) {
+      head.push({
+        key: line.key,
+        kind: 'row',
+        text: line.text,
+        color:
+          line.tone === 'accent' ? TOKEN.accent : line.tone === 'warn' ? TOKEN.warn : undefined,
+        dim: line.dim === true,
+        selected: line.selected === true,
+      });
+    }
   } else if (mode.kind === 'confirm') {
     head.push({ key: 'c.q', kind: 'row', text: mode.question, color: TOKEN.warn });
     head.push({ key: 'c.hint', kind: 'row', text: t('settings.prompt.hintConfirm'), dim: true });

@@ -80,7 +80,8 @@
     "missingVaultAction": "Missing action for \"ot vault\". Use status or use.",
     "unknownVaultAction": "Unknown action \"{{action}}\" for \"ot vault\". Use status or use.",
     "missingVaultMode": "Missing vault for \"ot vault use\". Use keyring, encrypted-file or auto.",
-    "unknownVaultMode": "Unknown vault \"{{mode}}\" for \"ot vault use\". Use keyring, encrypted-file or auto."
+    "unknownVaultMode": "Unknown vault \"{{mode}}\" for \"ot vault use\". Use keyring, encrypted-file or auto.",
+    "profileUnknownClient": "\"ot profile add\": unknown client \"{{client}}\"; the clients are {{known}}."
   },
   "daemon": {
     "running": "OTheater daemon running (pid {{pid}}), data in {{dataDir}}. Press Ctrl+C to stop.",
