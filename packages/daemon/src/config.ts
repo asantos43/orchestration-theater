@@ -134,6 +134,9 @@ import {
 /** `setup.role_lists`: what the setup assistant writes of the lists of the roles. */
 export const SETUP_ROLE_LIST_MODES = ['explicit', 'preset'] as const;
 export type SetupRoleListMode = (typeof SETUP_ROLE_LIST_MODES)[number];
+/** `setup.preset_match` (N333): how a model name of a preset finds a model a catalog lists. */
+export const PRESET_MATCH_MODES = ['newest', 'exact'] as const;
+export type PresetMatchMode = (typeof PRESET_MATCH_MODES)[number];
 
 /** [proposta] What the logon service does when the daemon exits (`service.restart`, Phase 10, P3). */
 export const SERVICE_RESTART_MODES = ['on_failure', 'always', 'never'] as const;
@@ -3325,6 +3328,13 @@ export const DaemonConfigSchema = z
          * following the preset.
          */
         role_lists: z.enum(SETUP_ROLE_LIST_MODES).default('explicit'),
+        /**
+         * [proposta] (N333) How a model name of the preset (`codex-sol`) finds the model the
+         * catalog of the account lists: `newest` takes an id equal to the family, else the newest
+         * id with the family as a word (`gpt-6.2-sol`); `exact` only the equal id. The table
+         * `executors.aliases` comes first in both.
+         */
+        preset_match: z.enum(PRESET_MATCH_MODES).default('newest'),
       })
       .prefault({}),
     /**

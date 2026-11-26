@@ -20,11 +20,29 @@ describe('the defaults', () => {
       cross_client: 'api_only',
       on_register: 'ask',
       test_session: 'off',
+      aliases: {},
       entries: {},
       budgets: {},
     });
     expect(config.roles).toEqual({});
     expect(config.orchestration.executor).toBeUndefined();
+  });
+});
+
+describe('executors.aliases (N333)', () => {
+  it('maps a model name of a preset to the id a catalog lists', () => {
+    const config = parseConfig('executors:\n  aliases:\n    codex-sol: gpt-6.2-sol\n');
+    expect(config.executors.aliases).toEqual({ 'codex-sol': 'gpt-6.2-sol' });
+    expect(config.executors.entries).toEqual({});
+  });
+
+  it('refuses a key that is not a model name and an empty model, by path', () => {
+    expect(refusal('executors:\n  aliases:\n    Codex Sol: gpt-6.2-sol\n')).toMatch(
+      /executors\.aliases\.Codex Sol: /u,
+    );
+    expect(refusal('executors:\n  aliases:\n    codex-sol: ""\n')).toMatch(
+      /executors\.aliases\.codex-sol: /u,
+    );
   });
 });
 

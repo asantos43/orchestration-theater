@@ -63,7 +63,7 @@ import {
   type ClientReasons,
   type InstalledClients,
 } from './detect.js';
-import { discoverForPreset, matchPreset } from './discover.js';
+import { discoverForPreset, matchPreset, presetMatchOf } from './discover.js';
 import { buildPlan, type PlanApply, type PlanResult } from './plan.js';
 
 /**
@@ -388,7 +388,13 @@ export class SetupService {
         notes: [],
       };
     }
-    const found = matchPreset({ profileId, listed, preset, presetExpand: true });
+    const found = matchPreset({
+      profileId,
+      listed,
+      preset,
+      presetExpand: true,
+      match: presetMatchOf(config),
+    });
     const registered = Object.entries(config.executors.entries).filter(
       ([, entry]) => entry.client === ref.client && entry.profile === ref.profile,
     );
@@ -667,6 +673,7 @@ export class SetupService {
           preset: config.roles.preset ?? DEFAULT_ROLE_PRESET,
           catalogs: this.#o.catalogs,
           presetExpand: true,
+          match: presetMatchOf(config),
         });
         return {
           profile: detectedProfileOf(summary),
@@ -682,6 +689,7 @@ export class SetupService {
           preset: input.preset,
           catalogs: this.#o.catalogs,
           presetExpand: true,
+          match: presetMatchOf(config),
         });
         const preview = buildPlan({
           flow: run.flow,

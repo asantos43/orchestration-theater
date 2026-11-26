@@ -828,6 +828,20 @@ Passos da primeira execução no assistente:
 3. acrescenta ao fim da lista de cada papel o Executor por API que encontrar (ex.: `minimax-m2-medium@opencode/minimax-api`), com o teto de gasto que o Produtor confirmar (5.6). Sem chave de API, a lista fica como está e vale o `when_exhausted` do papel;
 4. mostra o resultado, e o Produtor confirma ou ajusta; só então a configuração é gravada.
 
+**Modelo da predefinição e catálogo do cliente** (N333, decidida pelo dono em 2026-11-26): a predefinição nomeia o modelo pela família (`codex-sol`), e o catálogo do Codex lista o nome com a versão (`gpt-6.2-sol`, `gpt-5.6-sol`) [V: print do dono, 2026-11-26]. Até o N333, o assistente só aceitava um id igual à família, e os Executores do Codex ficavam sem papel. Agora a busca segue esta ordem:
+- primeiro, a tabela `executors.aliases` (`codex-sol: gpt-6.2-sol`), que vale nos dois modos;
+- depois, um id igual à família;
+- com `setup.preset_match: newest` (padrão **[proposta]**), por fim o id mais novo que tem a família como palavra inteira (`sol`, não `solar`), comparado pelos números do nome, entre os que aceitam o esforço do item. Com `exact`, só o id igual.
+
+O Executor fica com o nome da predefinição (`codex-sol-high@codex/main`) e guarda o id real em `model`. Se a tabela citar um id que o catálogo não lista, o assistente dá a nota `alias_not_listed` e segue a regra do modo.
+
+No passo `executors` da TUI, os modelos dos catálogos aparecem numa lista por conta, já marcada pela predefinição e com os papéis ao lado:
+- Espaço marca e desmarca;
+- ←→ troca o esforço entre os que o modelo aceita;
+- `/` abre o campo de texto, para API ou modelo local.
+
+Na revisão, um Executor que nenhum papel cita ("sem papel") ganha uma tecla para escolher os papéis, e entra no fim da lista de cada papel escolhido.
+
 Predefinição padrão, `quality`, depois da primeira execução numa máquina com as contas `claude-code/empresa`, `codex/conta-1`, `opencode/minimax-api` e `opencode/local`:
 
 ```yaml
@@ -975,6 +989,7 @@ roles:
 **O que entrou na Fase 7 (P4, PR #212, 2026-11-20 [S: descrição do PR; testado só com perfis falsos]):** o assistente roda no daemon (`packages/daemon/src/setup/`: `SetupService`, `detect.ts`, `discover.ts` e `plan.ts`). O estado de cada corrida fica no registro `setupRuns` do store (migração 0010; porta do `Store` **0.7.0**), com uma corrida ativa por fluxo; a segunda dá `Conflict`. Rotas, com `Idempotency-Key` nas de ação: `GET /v1/setup`, `POST /v1/setup/:flow/start`, `POST /v1/setup/:runId/step`, `.../back`, `.../confirm` e `.../cancel`. Eventos: `setup.started`, `setup.step`, `setup.back`, `setup.confirmed` e `setup.cancelled`. Nada entra na configuração antes da confirmação, que grava pelo editor do `PUT /v1/config`. O fluxo `first_run` é completo; `add_account` e `change_preset` usam o mesmo mecanismo. Escolhas: `executors.on_register: ask` vira `preset_only` no assistente (a revisão do passo final é a pergunta); com `roles.api_fallback` ativo, os Executores por API vão ao fim das listas; o plano é recalculado na confirmação. Chaves **[proposta]**:
 - `setup.role_lists: explicit | preset`, padrão `explicit`. `explicit` grava `roles.<papel>.executors`, troca as listas do Produtor (nota `lists_replaced`) e avisa do formato antigo `orchestration.executor/roles` (nota `legacy_executors`); `preset` grava só `roles.preset` e os Executores, e usa a ordem do store;
 - `setup.suggested_budget.daily_usd` (padrão 20) e `setup.suggested_budget.monthly_usd` (padrão 200): o teto sugerido no passo `executors`, número maior que 0; `null` nos dois campos quer dizer sem teto.
+- `setup.preset_match: newest | exact`, padrão `newest` **[proposta]** (N333). Diz como o modelo da predefinição acha o modelo do catálogo (acima, "Modelo da predefinição e catálogo do cliente"). A tabela `executors.aliases` (modelo da predefinição → id do catálogo, vazia por padrão) vale antes, nos dois modos.
 
 Limites: a confirmação roda numa cadeia de promessas própria, e pode correr com um `PUT /v1/config` (o último vence); `notes[].message` fica em inglês. A tela entrou no P17 (PR #227; ver a seção 5.13), e a sessão de teste do Executor (`testSession`) segue desligada.
 

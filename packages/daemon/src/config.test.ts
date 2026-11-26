@@ -1577,16 +1577,19 @@ describe('setup (the setup assistant, P4 of Phase 7)', () => {
     const { setup } = parseConfig('');
     expect(setup.suggested_budget).toEqual({ daily_usd: 20, monthly_usd: 200 });
     expect(setup.role_lists).toBe('explicit');
+    expect(setup.preset_match).toBe('newest');
   });
 
   it('takes each mode and a cap of its own', () => {
     expect(parseConfig('setup:\n  role_lists: preset\n').setup.role_lists).toBe('preset');
+    expect(parseConfig('setup:\n  preset_match: exact\n').setup.preset_match).toBe('exact');
     const { setup } = parseConfig('setup:\n  suggested_budget:\n    daily_usd: 5\n');
     expect(setup.suggested_budget).toEqual({ daily_usd: 5, monthly_usd: 200 });
   });
 
   it('rejects an unknown mode, a cap that is not positive and unknown keys', () => {
     expect(() => parseConfig('setup:\n  role_lists: some\n')).toThrow(InvalidInput);
+    expect(() => parseConfig('setup:\n  preset_match: closest\n')).toThrow(InvalidInput);
     expect(() => parseConfig('setup:\n  suggested_budget:\n    daily_usd: 0\n')).toThrow(
       InvalidInput,
     );

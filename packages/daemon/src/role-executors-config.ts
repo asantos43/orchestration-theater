@@ -153,6 +153,14 @@ export const rolesBlockKeys = {
   api_fallback: z.enum(API_FALLBACK_MODES, oneOf('api_fallback', API_FALLBACK_MODES)).optional(),
 };
 
+/** `executors.aliases`: a model name of a preset (`codex-sol`) to the id a catalog lists. */
+const AliasesSchema = z.record(
+  z.string().regex(/^[a-z0-9][a-z0-9._-]*$/, {
+    message: 'a model name of a preset, such as "codex-sol"',
+  }),
+  z.string().min(1, { message: 'the model id the catalog lists, such as "gpt-6.2-sol"' }),
+);
+
 /** One `executors.<id>` as written. */
 const ExecutorEntryInputSchema = z.strictObject({
   client: z
@@ -177,6 +185,12 @@ export interface ExecutorsConfig {
   readonly cross_client: CrossClientMode;
   readonly on_register: OnRegisterMode;
   readonly test_session: TestSessionMode;
+  /**
+   * `executors.aliases` (N333, 2026-11-26): the model a name of a preset (`codex-sol`) stands for,
+   * as the catalog of the client lists it (`gpt-6.2-sol`). The setup assistant reads it before the
+   * rule of `setup.preset_match`. Empty by default.
+   */
+  readonly aliases: Readonly<Record<string, string>>;
   /** The `executors.<id>` entries by id, with the provider settled (5.7). */
   readonly entries: Readonly<Record<string, ExecutorEntry>>;
   /** The `executors.<id>.budget` of the Executors that have one, by Executor name (P11). */
@@ -198,6 +212,7 @@ export const ExecutorsConfigSchema = z
     let cross_client: CrossClientMode = 'api_only';
     let on_register: OnRegisterMode = 'ask';
     let test_session: TestSessionMode = 'off';
+    let aliases: Record<string, string> = {};
     const entries: Record<string, ExecutorEntry> = {};
     const budgets: Record<string, ExecutorBudgetConfig> = {};
 
@@ -220,11 +235,19 @@ export const ExecutorsConfigSchema = z
         else issue([key], parsed.error.issues[0]?.message ?? 'not accepted');
         continue;
       }
+      if (key === 'aliases') {
+        const parsed = AliasesSchema.safeParse(value);
+        if (parsed.success) aliases = parsed.data;
+        else
+          for (const inner of parsed.error.issues)
+            issue([key, ...inner.path.map(String)], inner.message);
+        continue;
+      }
       const name = tryParseExecutorId(key);
       if (typeof name === 'string') {
         issue(
           [key],
-          `${name}; the keys of executors are "cross_client", "on_register", "test_session" and Executor names`,
+          `${name}; the keys of executors are "cross_client", "on_register", "test_session", "aliases" and Executor names`,
         );
         continue;
       }
@@ -269,7 +292,7 @@ export const ExecutorsConfigSchema = z
       };
       if (entry.budget !== undefined) budgets[key] = entry.budget;
     }
-    return { cross_client, on_register, test_session, entries, budgets };
+    return { cross_client, on_register, test_session, aliases, entries, budgets };
   });
 
 /** `selection.unregistered_profiles` (P16, [proposta]). */
