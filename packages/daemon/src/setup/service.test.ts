@@ -840,3 +840,116 @@ describe('SetupService installs an adapter when asked (P18b, N321)', () => {
     await expect(rig.service().installAdapter('codex')).rejects.toBeInstanceOf(AdapterUnavailable);
   });
 });
+
+describe('the security step: the question of security.unenforced (N334, [proposta])', () => {
+  const noLayer3 = { layer3: () => false };
+
+  /** The answers of a first run up to the step after the preset. */
+  async function toSecurity(rig: SetupRig, service = rig.service(noLayer3)): Promise<SetupRunView> {
+    const run = await service.start('first_run');
+    await service.submit(run.id, { step: 'detect', input: {} });
+    return service.submit(run.id, { step: 'preset', input: { preset: 'quality' } });
+  }
+
+  it('asks, before the Executors, when layer 3 is missing and the value is refuse', async () => {
+    const rig = await rigOf();
+    const service = rig.service(noLayer3);
+    expect((await service.overview()).flows[0]?.steps).toEqual([
+      'detect',
+      'preset',
+      'security',
+      'executors',
+      'review',
+    ]);
+    const asked = await toSecurity(rig, service);
+    expect(asked.steps).toEqual(['detect', 'preset', 'security', 'executors', 'review']);
+    expect(asked.step).toBe('security');
+    expect(asked.prompt).toEqual({ step: 'security', layer3: false, unenforced: 'refuse' });
+  });
+
+  it('on a yes the review lists the key and the confirmation writes warn, saying a restart is needed', async () => {
+    const rig = await rigOf();
+    const service = rig.service(noLayer3);
+    const asked = await toSecurity(rig, service);
+    await service.submit(asked.id, { step: 'security', input: { warn: true } });
+    const review = await service.submit(asked.id, { step: 'executors', input: API_EXECUTORS });
+    if (review.prompt?.step !== 'review') throw new Error('expected the review prompt');
+    expect(review.prompt.plan.writes).toContain('security.unenforced');
+    expect(review.prompt.plan.notes.map((note) => note.code)).toContain('unenforced_warn');
+    // Nothing is written before the confirmation.
+    expect(await rig.text()).toBe('');
+    const done = await service.confirm(review.id);
+    expect((await rig.config()).security.unenforced).toBe('warn');
+    expect(done.result?.written).toContain('security.unenforced');
+    expect(done.result?.restart).toEqual(['security.unenforced']);
+    expect(await eventTypes(rig)).toContain('setup.confirmed');
+  });
+
+  it('on a no nothing changes, and the review says the Director will not open here', async () => {
+    const rig = await rigOf();
+    const service = rig.service(noLayer3);
+    const asked = await toSecurity(rig, service);
+    await service.submit(asked.id, { step: 'security', input: { warn: false } });
+    const review = await service.submit(asked.id, { step: 'executors', input: API_EXECUTORS });
+    if (review.prompt?.step !== 'review') throw new Error('expected the review prompt');
+    expect(review.prompt.plan.writes).not.toContain('security.unenforced');
+    expect(review.prompt.plan.notes.map((note) => note.code)).toContain('director_will_not_open');
+    const done = await service.confirm(review.id);
+    expect((await rig.config()).security.unenforced).toBe('refuse');
+    expect(await rig.text()).not.toContain('unenforced');
+    expect(done.result?.restart).toBeUndefined();
+  });
+
+  it('goes back from the Executors to the question, and the answer can change', async () => {
+    const rig = await rigOf();
+    const service = rig.service(noLayer3);
+    const asked = await toSecurity(rig, service);
+    await service.submit(asked.id, { step: 'security', input: { warn: true } });
+    const back = await service.back(asked.id);
+    expect(back.step).toBe('security');
+    await service.submit(asked.id, { step: 'security', input: { warn: false } });
+    const review = await service.submit(asked.id, { step: 'executors', input: API_EXECUTORS });
+    if (review.prompt?.step !== 'review') throw new Error('expected the review prompt');
+    expect(review.prompt.plan.writes).not.toContain('security.unenforced');
+  });
+
+  it('setup.unenforced_prompt: never does not ask, writes nothing, and the review still says it', async () => {
+    const rig = await rigOf({ configYaml: 'setup:\n  unenforced_prompt: never\n' });
+    const service = rig.service(noLayer3);
+    const run = await service.start('first_run');
+    expect(run.steps).toEqual(['detect', 'preset', 'executors', 'review']);
+    await service.submit(run.id, { step: 'detect', input: {} });
+    await service.submit(run.id, { step: 'preset', input: { preset: 'quality' } });
+    const review = await service.submit(run.id, { step: 'executors', input: API_EXECUTORS });
+    if (review.prompt?.step !== 'review') throw new Error('expected the review prompt');
+    expect(review.prompt.plan.writes).not.toContain('security.unenforced');
+    expect(review.prompt.plan.notes.map((note) => note.code)).toContain('director_will_not_open');
+    await service.confirm(review.id);
+    expect((await rig.config()).security.unenforced).toBe('refuse');
+  });
+
+  it('does not ask with layer 3, with warn or allow already in the file, or without the wiring', async () => {
+    for (const [yaml, extra] of [
+      ['', { layer3: () => true }],
+      ['security:\n  unenforced: warn\n', noLayer3],
+      ['security:\n  unenforced: allow\n', noLayer3],
+      ['', {}],
+    ] as const) {
+      const rig = await rigOf({ configYaml: yaml });
+      const run = await rig.service(extra).start('first_run');
+      expect(run.steps).toEqual(['detect', 'preset', 'executors', 'review']);
+    }
+  });
+
+  it('refuses an answer that does not fit the schema, and the other flows have no such step', async () => {
+    const rig = await rigOf();
+    const service = rig.service(noLayer3);
+    const asked = await toSecurity(rig, service);
+    await expect(
+      service.submit(asked.id, { step: 'security', input: { warn: 'yes' } } as never),
+    ).rejects.toThrow();
+    expect(await service.get(asked.id)).toMatchObject({ step: 'security' });
+    expect((await service.start('add_account')).steps).toEqual(['account', 'executors', 'review']);
+    expect((await service.start('change_preset')).steps).toEqual(['preset', 'review']);
+  });
+});

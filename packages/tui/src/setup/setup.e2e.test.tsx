@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-import { readFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { API_ROUTES } from '@otheater/protocol';
 import { FakeClock, InMemorySecretVault, InMemoryStore } from '@otheater/core/testing';
@@ -11,7 +11,11 @@ import {
   waitFor,
   type RenderedApp,
 } from '../ink.test-support.js';
-import { startTuiTestDaemon, type TuiTestDaemon } from '../test-daemon.test-support.js';
+import {
+  startTuiTestDaemon,
+  type TuiTestDaemon,
+  type TuiTestDaemonOptions,
+} from '../test-daemon.test-support.js';
 
 /**
  * The acceptance of the assistant in the TUI (P17 of Phase 7), against a real daemon of this
@@ -29,10 +33,13 @@ const SIZE = { columns: 140, rows: 50 };
 const ENTER = '\r';
 const ESC = '\x1b';
 const UP = '\x1b[A';
+const DOWN = '\x1b[B';
 
 const daemons: TuiTestDaemon[] = [];
 
-async function startDaemon(): Promise<{ daemon: TuiTestDaemon; store: InMemoryStore }> {
+async function startDaemon(
+  options: TuiTestDaemonOptions = {},
+): Promise<{ daemon: TuiTestDaemon; store: InMemoryStore }> {
   const clock = new FakeClock();
   const store = new InMemoryStore({ clock });
   for (const [client, name, provider] of [
@@ -48,7 +55,11 @@ async function startDaemon(): Promise<{ daemon: TuiTestDaemon; store: InMemorySt
       secretRef: null,
     });
   }
-  const daemon = await startTuiTestDaemon({ clock, store, vault: new InMemorySecretVault() });
+  const daemon = await startTuiTestDaemon(
+    { clock, store, vault: new InMemorySecretVault() },
+    '',
+    options,
+  );
   daemons.push(daemon);
   return { daemon, store };
 }
@@ -215,4 +226,83 @@ describe('the setup assistant of the TUI, with a daemon', () => {
     expect(frame).toMatch(/nobody\/here/);
     expect(frame).toContain('● Executors');
   }, 30_000);
+
+  /**
+   * N334 [proposta]: the sandbox of the daemon of the test is simulated as unavailable
+   * (`layer3: 'missing'`) and the default `security.unenforced` is `refuse`, so with the default
+   * `setup.unenforced_prompt: ask` the assistant asks.
+   */
+  describe('the question about security.unenforced (N334)', () => {
+    /** The steps of the first run up to the question, one key at a time. */
+    async function toTheQuestion(app: RenderedApp): Promise<string> {
+      await skipAccounts(app);
+      await app.waitForText('Pick the accounts that take part');
+      await key(app, ENTER);
+      await app.waitForText('Pick the preset of the roles.');
+      await key(app, ENTER);
+      return app.waitForText('Choose whether the assistant writes security.unenforced: warn.');
+    }
+
+    it('on a yes writes warn, says the daemon must restart, and the review lists the key first', async () => {
+      const { daemon } = await startDaemon({ layer3: 'missing' });
+      const app = await openTui(daemon);
+      expect(await app.waitForText('Add an account of a client')).toContain('Step 1 of 6');
+      const asked = await toTheQuestion(app);
+      expect(asked).toContain('Protection');
+      expect(asked).toContain('the Director will not open');
+      expect(asked).toMatch(/›No: keep it as it is/);
+      await key(app, DOWN);
+      expect(app.frame()).toMatch(/›Yes: write security\.unenforced: warn/);
+      await key(app, ENTER);
+      await app.waitForText('Register Executors by API or local model');
+      await app.waitForText('This account has no client that lists models');
+      await key(app, ENTER);
+      const review = await app.waitForText('This is what will be written.');
+      expect(review).toContain('security.unenforced becomes warn');
+      expect(review).not.toContain('the Director will not open here');
+      // Nothing is written before the confirmation.
+      expect(await configFile(daemon)).not.toContain('unenforced');
+
+      await key(app, ENTER);
+      const done = await app.waitForText('Done. The configuration was written.');
+      expect(done).toContain('Restart the daemon for it to apply: security.unenforced');
+      expect(await configFile(daemon)).toMatch(/unenforced:\s*warn/);
+    }, 30_000);
+
+    it('on a no changes nothing and the review says the Director will not open here', async () => {
+      const { daemon } = await startDaemon({ layer3: 'missing' });
+      const app = await openTui(daemon);
+      await toTheQuestion(app);
+      await key(app, ENTER);
+      await app.waitForText('Register Executors by API or local model');
+      await app.waitForText('This account has no client that lists models');
+      await key(app, ENTER);
+      const review = await app.waitForText('This is what will be written.');
+      expect(review).toContain('the Director will not open here');
+      await key(app, ENTER);
+      const done = await app.waitForText('Done. The configuration was written.');
+      expect(done).not.toContain('Restart the daemon');
+      expect(await configFile(daemon)).not.toContain('unenforced');
+    }, 30_000);
+
+    it('does not ask with setup.unenforced_prompt: never in the file, and the review still says it', async () => {
+      const { daemon } = await startDaemon({ layer3: 'missing' });
+      // The assistant reads the file at each step, so the key takes effect without a restart.
+      await writeFile(join(daemon.dataDir, 'config.yaml'), 'setup:\n  unenforced_prompt: never\n');
+      const app = await openTui(daemon);
+      expect(await app.waitForText('Add an account of a client')).toContain('Step 1 of 5');
+      await skipAccounts(app);
+      await app.waitForText('Pick the accounts that take part');
+      await key(app, ENTER);
+      await app.waitForText('Pick the preset of the roles.');
+      await key(app, ENTER);
+      await app.waitForText('Register Executors by API or local model');
+      expect(app.frame()).not.toContain('Choose whether the assistant writes');
+      await app.waitForText('This account has no client that lists models');
+      await key(app, ENTER);
+      expect(await app.waitForText('This is what will be written.')).toContain(
+        'the Director will not open here',
+      );
+    }, 30_000);
+  });
 });

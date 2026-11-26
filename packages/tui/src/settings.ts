@@ -235,6 +235,14 @@ export interface UiLoginSettings {
   readonly browser: LoginBrowserMode;
 }
 
+export const SECURITY_BANNER_MODES = ['on', 'off'] as const;
+export type SecurityBannerMode = (typeof SECURITY_BANNER_MODES)[number];
+
+/** `ui.security` [proposta] (N334): the fixed row about the reduced protection (`on`) or none (`off`). */
+export interface UiSecuritySettings {
+  readonly banner: SecurityBannerMode;
+}
+
 export interface UiSettings {
   readonly locale: LocaleSetting;
   readonly render: UiRenderSettings;
@@ -261,6 +269,7 @@ export interface UiSettings {
   readonly login: UiLoginSettings;
   readonly settingsTab: UiSettingsTabSettings;
   readonly quota: UiQuotaSettings;
+  readonly security: UiSecuritySettings;
 }
 
 export const DEFAULT_RENDER: UiRenderSettings = {
@@ -342,6 +351,8 @@ export const DEFAULT_SETTINGS_TAB: UiSettingsTabSettings = {
 
 export const DEFAULT_QUOTA: UiQuotaSettings = { show: 'remaining' };
 
+export const DEFAULT_SECURITY: UiSecuritySettings = { banner: 'on' };
+
 export const DEFAULT_UI_SETTINGS: UiSettings = {
   locale: 'auto',
   render: DEFAULT_RENDER,
@@ -364,6 +375,7 @@ export const DEFAULT_UI_SETTINGS: UiSettings = {
   login: DEFAULT_LOGIN,
   settingsTab: DEFAULT_SETTINGS_TAB,
   quota: DEFAULT_QUOTA,
+  security: DEFAULT_SECURITY,
 };
 
 /** `value` as an object (an empty one when it is not an object). */
@@ -429,6 +441,7 @@ export function parseUiSettings(ui: unknown): UiSettings {
   const login = record(field(source, 'login'));
   const settingsTab = record(field(source, 'settingsTab'));
   const quota = record(field(source, 'quota'));
+  const security = record(field(source, 'security'));
   return {
     locale: oneOf(field(source, 'locale'), LOCALE_SETTINGS, DEFAULT_UI_SETTINGS.locale),
     render: {
@@ -618,6 +631,9 @@ export function parseUiSettings(ui: unknown): UiSettings {
     },
     quota: {
       show: oneOf(field(quota, 'show'), QUOTA_SHOW_MODES, DEFAULT_QUOTA.show),
+    },
+    security: {
+      banner: oneOf(field(security, 'banner'), SECURITY_BANNER_MODES, DEFAULT_SECURITY.banner),
     },
   };
 }

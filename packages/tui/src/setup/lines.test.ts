@@ -247,3 +247,50 @@ describe('the finished screen', () => {
     expect(lines).toContain('nothing is written');
   });
 });
+
+describe('the security step and the restart line (N334, [proposta])', () => {
+  it('says the risk and lists the two options, the chosen one selected', () => {
+    const prompt = { step: 'security', layer3: false, unenforced: 'refuse' } as const;
+    for (const cursor of [0, 1]) {
+      const lines = setupLines({
+        run: run(null, [], { step: 'security', prompt }),
+        draft: { kind: 'security', cursor },
+        t,
+        closeKey: 'Esc',
+      });
+      const risk = lines.find((line) => line.key === 's.risk')?.text;
+      expect(risk).toContain('security.unenforced is refuse');
+      expect(risk).toContain('the Director will not open');
+      const options = lines.filter((line) => line.key === 's.no' || line.key === 's.yes');
+      expect(options.map((line) => line.selected)).toEqual([cursor === 0, cursor === 1]);
+      expect(options[0]?.text).toContain('No:');
+      expect(options[1]?.text).toContain('security.unenforced: warn');
+    }
+  });
+
+  it('the finished screen says the daemon has to restart for a key that was written', () => {
+    const base = { state: 'confirmed', prompt: null } as const;
+    const lines = (restart?: string[]): string[] =>
+      texts(
+        setupLines({
+          run: run(null, [], {
+            ...base,
+            result: {
+              preset: null,
+              executors: [],
+              written: ['security.unenforced'],
+              ...(restart === undefined ? {} : { restart }),
+            },
+          }),
+          draft: { kind: 'review' },
+          t,
+          closeKey: 'Esc',
+        }),
+      );
+    expect(lines(['security.unenforced'])).toContain(
+      '⚠ Restart the daemon for it to apply: security.unenforced',
+    );
+    expect(lines().some((line) => line.includes('Restart the daemon'))).toBe(false);
+    expect(lines([]).some((line) => line.includes('Restart the daemon'))).toBe(false);
+  });
+});

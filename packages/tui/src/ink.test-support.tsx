@@ -127,6 +127,8 @@ export const TEST_UI_SETTINGS: UiSettings = {
   tuiLayout: { ...DEFAULT_UI_SETTINGS.tuiLayout, density: 'compact' },
   // The sign-in panel would start the browser of the machine that runs the tests.
   login: { browser: 'off' },
+  // N334: the fixed row about the protection would take a row of every screen the tests compare.
+  security: { banner: 'off' },
 };
 
 /** The labels of the tests are the ones of Linux (`Alt+K`), whatever system runs them. */

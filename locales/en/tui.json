@@ -621,6 +621,10 @@
         "no_tool": "No clipboard tool was found for ui.clipboard.copy: system.",
         "tool_failed": "The clipboard tool failed to copy."
       }
+    },
+    "security": {
+      "reduced": "Protection reduced: no layer 3 (sandbox), security.unenforced={{value}}",
+      "refuse": "The Director will not open: no layer 3 (sandbox), security.unenforced=refuse. Fix: {{key}} in Settings (assistant) or edit the key."
     }
   },
   "input": {
@@ -1225,7 +1229,8 @@
       "preset": "Preset",
       "executors": "Executors",
       "review": "Review",
-      "accounts": "New account"
+      "accounts": "New account",
+      "security": "Protection"
     },
     "loading": "Reading the assistant...",
     "loadFailed": "Could not open the assistant: {{message}}",
@@ -1241,7 +1246,8 @@
       "executors": "Register Executors by API or local model and set the spending cap of each API account.",
       "review": "This is what will be written. Nothing is written before you confirm.",
       "accounts": "Add an account of a client (a subscription) and log in to it now, or continue without one: you can add accounts later in the Settings tab.",
-      "executorsList": "Check the models that become Executors (Space), change the effort with Left/Right and set the spending cap of each API account. The / key types an Executor by API or local model."
+      "executorsList": "Check the models that become Executors (Space), change the effort with Left/Right and set the spending cap of each API account. The / key types an Executor by API or local model.",
+      "security": "Choose whether the assistant writes security.unenforced: warn. If not, nothing changes."
     },
     "detect": {
       "clients": "Clients on this machine: {{list}}",
@@ -1332,7 +1338,9 @@
         "budget_suggested": "suggested cap for {{profiles}} (an API account with no cap)",
         "no_accounts": "no account takes part: the lists stay empty until one is added",
         "catalog_unavailable": "the model catalog of {{profiles}} could not be read: its models are not proposed",
-        "effort_not_accepted": "{{profiles}}: the model does not accept the effort of {{heads}}; left out"
+        "effort_not_accepted": "{{profiles}}: the model does not accept the effort of {{heads}}; left out",
+        "unenforced_warn": "security.unenforced becomes warn: the Director opens without layer 3 (reduced protection), after the daemon restarts",
+        "director_will_not_open": "without layer 3 and with security.unenforced at refuse, the Director will not open here"
       },
       "giveRole": "{{key}} gives roles",
       "rolesGiven": "{{executor}} joined the end of the list of: {{roles}}.",
@@ -1350,7 +1358,8 @@
       "close": "{{key}} closes the assistant.",
       "writtenCount_one": "{{count}} key written",
       "writtenCount_other": "{{count}} keys written",
-      "next": "Next step: close the assistant to see the panel, or run `ot status` in a terminal."
+      "next": "Next step: close the assistant to see the panel, or run `ot status` in a terminal.",
+      "restart": "Restart the daemon for it to apply: {{keys}}"
     },
     "gateFailed": "Could not check whether the first run is needed: {{message}}",
     "accounts": {
@@ -1423,6 +1432,11 @@
     "roles": {
       "title": "Roles of {{executor}}: it joins the end of the list of each role checked",
       "keys": "Up/Down move, Space checks, Enter gives the roles, Esc goes back"
+    },
+    "security": {
+      "risk": "Layer 3 (the sandbox) is not available on this system and security.unenforced is {{value}}: the Director will not open. With warn it opens, but without the sandbox limit: an Executor can change files and use the network without that barrier.",
+      "no": "No: keep it as it is (the Director will not open here)",
+      "yes": "Yes: write security.unenforced: warn (the Director opens with reduced protection)"
     }
   },
   "plugins": {

@@ -98,7 +98,7 @@ export interface SetupRig {
   readonly catalogs: Record<string, ModelCatalog>;
   /** A service over the store of the rig: calling it again is what a restart of the daemon is. */
   service(
-    extra?: Pick<SetupServiceOptions, 'redetect' | 'clientReasons' | 'installAdapter'>,
+    extra?: Pick<SetupServiceOptions, 'redetect' | 'clientReasons' | 'installAdapter' | 'layer3'>,
   ): SetupService;
   config(): ReturnType<typeof loadConfig>;
   text(): Promise<string>;
@@ -172,7 +172,10 @@ export async function makeSetupRig(options: RigOptions): Promise<SetupRig> {
   const installed = new Set(options.installed ?? ['claude-code', 'codex', 'opencode']);
   /** `extra`: the search for the clients again and its reasons (P18), absent by default. */
   const service = (
-    extra: Pick<SetupServiceOptions, 'redetect' | 'clientReasons' | 'installAdapter'> = {},
+    extra: Pick<
+      SetupServiceOptions,
+      'redetect' | 'clientReasons' | 'installAdapter' | 'layer3'
+    > = {},
   ): SetupService => {
     const lookup = (client: string): ModelCatalog | undefined => catalogs[client];
     return new SetupService({

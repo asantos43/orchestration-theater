@@ -621,6 +621,10 @@
         "no_tool": "Nenhuma ferramenta de área de transferência foi achada para ui.clipboard.copy: system.",
         "tool_failed": "A ferramenta de área de transferência não conseguiu copiar."
       }
+    },
+    "security": {
+      "reduced": "Proteção reduzida: sem a camada 3 (sandbox), security.unenforced={{value}}",
+      "refuse": "O Diretor não abre: sem a camada 3 (sandbox), security.unenforced=refuse. Corrija: {{key}} em Configurações (assistente) ou edite a chave."
     }
   },
   "input": {
@@ -1225,7 +1229,8 @@
       "preset": "Preset",
       "executors": "Executores",
       "review": "Revisão",
-      "accounts": "Nova conta"
+      "accounts": "Nova conta",
+      "security": "Proteção"
     },
     "loading": "Lendo o assistente...",
     "loadFailed": "Não deu para abrir o assistente: {{message}}",
@@ -1241,7 +1246,8 @@
       "executors": "Cadastre Executores por API ou modelo local e defina o teto de gasto de cada conta de API.",
       "review": "Isto é o que será gravado. Nada é gravado antes de você confirmar.",
       "accounts": "Adicione uma conta de um cliente (uma assinatura) e entre nela agora, ou continue sem nenhuma: dá para adicionar contas depois na aba Configurações.",
-      "executorsList": "Marque os modelos que viram Executores (Espaço), mude o esforço com ←/→ e defina o teto de gasto de cada conta de API. A tecla / digita um Executor por API ou modelo local."
+      "executorsList": "Marque os modelos que viram Executores (Espaço), mude o esforço com ←/→ e defina o teto de gasto de cada conta de API. A tecla / digita um Executor por API ou modelo local.",
+      "security": "Escolha se o assistente grava security.unenforced: warn. Sem gravar, nada muda."
     },
     "detect": {
       "clients": "Clientes nesta máquina: {{list}}",
@@ -1332,7 +1338,9 @@
         "budget_suggested": "teto sugerido para {{profiles}} (conta de API sem teto)",
         "no_accounts": "nenhuma conta participa: as listas ficam vazias até uma ser adicionada",
         "catalog_unavailable": "o catálogo de modelos de {{profiles}} não pôde ser lido: os modelos dela não são propostos",
-        "effort_not_accepted": "{{profiles}}: o modelo não aceita o esforço de {{heads}}; fica fora"
+        "effort_not_accepted": "{{profiles}}: o modelo não aceita o esforço de {{heads}}; fica fora",
+        "unenforced_warn": "security.unenforced passa a warn: o Diretor abre sem a camada 3 (proteção reduzida), depois de reiniciar o daemon",
+        "director_will_not_open": "sem a camada 3 e com security.unenforced em refuse, o Diretor não abre aqui"
       },
       "giveRole": "{{key}} dá papéis",
       "rolesGiven": "{{executor}} entrou no fim da lista de: {{roles}}.",
@@ -1350,7 +1358,8 @@
       "close": "{{key}} fecha o assistente.",
       "writtenCount_one": "{{count}} chave gravada",
       "writtenCount_other": "{{count}} chaves gravadas",
-      "next": "Próximo passo: feche o assistente para ver o painel, ou rode `ot status` num terminal."
+      "next": "Próximo passo: feche o assistente para ver o painel, ou rode `ot status` num terminal.",
+      "restart": "Reinicie o daemon para valer: {{keys}}"
     },
     "gateFailed": "Não deu para checar se a primeira execução é necessária: {{message}}",
     "accounts": {
@@ -1423,6 +1432,11 @@
     "roles": {
       "title": "Papéis de {{executor}}: ele entra no fim da lista de cada papel marcado",
       "keys": "↑/↓ andam, Espaço marca, Enter dá os papéis, Esc volta"
+    },
+    "security": {
+      "risk": "A camada 3 (o sandbox) não está disponível neste sistema e security.unenforced está em {{value}}: o Diretor não abre. Com warn, ele abre, mas sem o limite do sandbox: um Executor pode alterar arquivos e usar a rede sem essa barreira.",
+      "no": "Não: manter como está (o Diretor não abre aqui)",
+      "yes": "Sim: gravar security.unenforced: warn (o Diretor abre com a proteção reduzida)"
     }
   },
   "plugins": {

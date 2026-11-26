@@ -52,6 +52,20 @@ export interface PlanInput {
   readonly placements?: readonly SetupRolePlacement[] | undefined;
   /** What the notes of the earlier steps said (discovery, checks of the cadastro). */
   readonly carriedNotes: readonly SetupNote[];
+  /**
+   * N334 [proposta]: what the daemon says of the layers of guarantee. Absent: the plan says
+   * nothing of them (a flow of a test, a tool with no daemon). `layer3` false with `unenforced:
+   * refuse` means the Director does not open on this machine; `answer` is what the `security` step
+   * got (`warn`: write `security.unenforced: warn`; `keep`: the question was asked and refused;
+   * `none`: it was not asked).
+   */
+  readonly security?:
+    | {
+        readonly layer3: boolean;
+        readonly unenforced: 'refuse' | 'warn' | 'allow';
+        readonly answer: 'warn' | 'keep' | 'none';
+      }
+    | undefined;
   readonly settings: {
     readonly suggestedBudget: { readonly dailyUsd: number; readonly monthlyUsd: number };
     readonly roleLists: SetupRoleListMode;
@@ -74,6 +88,8 @@ export interface PlanApply {
   readonly executors: readonly SetupExecutor[];
   /** The caps to write; a `null` field takes the key out. */
   readonly budgets: readonly SetupBudget[];
+  /** `security.unenforced` to write (N334), or `null`. It is read at the start: a restart takes it in. */
+  readonly unenforced: 'warn' | null;
 }
 
 export interface PlanResult {
@@ -285,9 +301,37 @@ export function buildPlan(input: PlanInput): PlanResult {
     });
   }
 
+  // N334: the layers of guarantee. A "yes" to the question writes `warn`; a "no" (or no question,
+  // `setup.unenforced_prompt: never`) leaves the file, and the review says the Director does not open.
+  const security = input.security;
+  const unenforced: 'warn' | null =
+    security?.answer === 'warn' && !security.layer3 && security.unenforced !== 'warn'
+      ? 'warn'
+      : null;
+  if (security !== undefined && flow === 'first_run' && !security.layer3) {
+    if (unenforced !== null) {
+      notes.push({
+        severity: 'warning',
+        code: 'unenforced_warn',
+        role: null,
+        message:
+          'security.unenforced: warn is written: without layer 3 (the sandbox) the write scope and the network have no guarantee; the daemon takes it in after a restart',
+      });
+    } else if (security.unenforced === 'refuse') {
+      notes.push({
+        severity: 'warning',
+        code: 'director_will_not_open',
+        role: null,
+        message:
+          'layer 3 (the sandbox) is missing here and security.unenforced is refuse: the Director will not open; set security.unenforced to warn or allow, or run the assistant again',
+      });
+    }
+  }
+
   // What gets written, as the dotted keys of `config.yaml`.
   const writes: string[] = [];
   if (choosesPreset) writes.push('roles.preset');
+  if (unenforced !== null) writes.push('security.unenforced');
   // An empty list is never written: a role that has none in the file falls back to the preset, and
   // a list the file had for a role that now has none is taken out.
   const listsToWrite = rewriteLists
@@ -332,6 +376,7 @@ export function buildPlan(input: PlanInput): PlanResult {
       insertions,
       executors: toWrite,
       budgets,
+      unenforced,
     },
   };
 }

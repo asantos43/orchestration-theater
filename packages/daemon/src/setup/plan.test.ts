@@ -277,3 +277,56 @@ describe('the plan of the assistant', () => {
     expect(plan.roles.every((role) => role.executors.length === 0)).toBe(true);
   });
 });
+
+describe('the plan and the layers of guarantee (N334, [proposta])', () => {
+  const security = (
+    over: Partial<NonNullable<PlanInput['security']>> = {},
+  ): NonNullable<PlanInput['security']> => ({
+    layer3: false,
+    unenforced: 'refuse',
+    answer: 'none',
+    ...over,
+  });
+  const codes = (result: ReturnType<typeof buildPlan>): string[] =>
+    result.plan.notes.map((note) => note.code);
+
+  it('writes security.unenforced: warn only on a yes', () => {
+    const yes = buildPlan(input({ security: security({ answer: 'warn' }) }));
+    expect(yes.apply.unenforced).toBe('warn');
+    expect(yes.plan.writes).toContain('security.unenforced');
+    expect(codes(yes)).toContain('unenforced_warn');
+    expect(codes(yes)).not.toContain('director_will_not_open');
+
+    for (const answer of ['keep', 'none'] as const) {
+      const no = buildPlan(input({ security: security({ answer }) }));
+      expect(no.apply.unenforced).toBeNull();
+      expect(no.plan.writes).not.toContain('security.unenforced');
+      // A "no" changes nothing, and the review says the Director will not open here.
+      expect(codes(no)).toContain('director_will_not_open');
+      expect(codes(no)).not.toContain('unenforced_warn');
+    }
+  });
+
+  it('writes nothing, and says nothing, with layer 3 or when the value is already warn or allow', () => {
+    for (const over of [
+      { layer3: true, answer: 'warn' as const },
+      { unenforced: 'warn' as const, answer: 'warn' as const },
+      { unenforced: 'allow' as const, answer: 'none' as const },
+    ]) {
+      const result = buildPlan(input({ security: security(over) }));
+      expect(result.apply.unenforced).toBeNull();
+      expect(result.plan.writes).not.toContain('security.unenforced');
+      expect(codes(result)).not.toContain('director_will_not_open');
+      expect(codes(result)).not.toContain('unenforced_warn');
+    }
+  });
+
+  it('says nothing of the layers when the plan is built without them, and in the other flows', () => {
+    expect(codes(buildPlan(input()))).not.toContain('director_will_not_open');
+    const other = buildPlan(
+      input({ flow: 'change_preset', security: security({ answer: 'warn' }) }),
+    );
+    expect(codes(other)).not.toContain('director_will_not_open');
+    expect(codes(other)).not.toContain('unenforced_warn');
+  });
+});

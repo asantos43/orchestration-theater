@@ -767,6 +767,8 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     language: () => resolveLocale(config.ui.locale, detectSystemLocale(process.env)),
   });
   const startedAt = clock.now();
+  // N334: `security.unenforced` is copied into the adapters at the start, so this is what runs.
+  const startedUnenforced = config.security.unenforced;
   let state: DaemonState = 'starting';
 
   const status = (): DaemonStatus =>
@@ -849,7 +851,16 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     },
   });
   apiRef.server = api;
-  api.handlers.register('getStatus', () => ({ ...status(), daemonId, apiVersion: API_VERSION }));
+  api.handlers.register('getStatus', () => ({
+    ...status(),
+    daemonId,
+    apiVersion: API_VERSION,
+    // N334: the layers of guarantee the daemon runs with (`security.unenforced` is read at the start).
+    security: {
+      layer3: composition.sandbox !== undefined,
+      unenforced: startedUnenforced,
+    },
+  }));
   // P8 (Phase 10): what the applier asks of a daemon that has just replaced another. A 200 says the
   // recovery finished without an error (the state is `running`) and the API answers; it is not held
   // by the gate (a read), so a daemon still recovering answers 503 `recovering` at once.
@@ -1603,6 +1614,7 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     clientReasons: (client) => clientRedetector?.reasonOf(client),
     redetect: redetectClients,
     installAdapter: built?.installAdapter,
+    layer3: () => composition.sandbox !== undefined,
   });
 
   // P5 (Phase 6): the read routes of the REST API. They need the services above, so they are

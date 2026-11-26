@@ -26,6 +26,10 @@ const detail = z.string().min(1).max(512).nullable();
  * - `deprecated_config`: a configuration key that still works and has a new place;
  * - `execution_off`: the execution of attempts is off (`subject`: `no_launcher` or `no_client`);
  * - `sandbox_unavailable`: layer 3 is not there, so `writeScope` and `network` have no guarantee;
+ * - `protection_reduced` (N334, 2026-11-26; [proposta]): told right after `sandbox_unavailable`,
+ *   with what `security.unenforced` makes of it (`subject`: `refuse`, `warn` or `allow`; `detail`:
+ *   with `refuse` the Director and every session that needs the layer do not open; with `warn` or
+ *   `allow` they open with the protection reduced);
  * - `sandbox_nested`: `clients.codex.inner_sandbox: nested` weakens the write denies of the sandbox;
  * - `client_not_found`: a client is enabled by force and its executable is not in `PATH`
  *   (`subject`: the client id);
@@ -133,6 +137,7 @@ export const DAEMON_NOTICE_KINDS = [
   'deprecated_config',
   'execution_off',
   'sandbox_unavailable',
+  'protection_reduced',
   'sandbox_nested',
   'client_not_found',
   'client_added',

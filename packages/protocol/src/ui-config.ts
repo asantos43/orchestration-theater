@@ -422,6 +422,23 @@ export const UiSetupConfigSchema = z.strictObject({
 });
 export type UiSetupConfig = z.output<typeof UiSetupConfigSchema>;
 
+// ---- The warning about the layers of guarantee (N334) -------------------------------------------
+
+/** `ui.security.banner`: whether the fixed warning about the missing layer 3 is drawn (`on`) or not (`off`). */
+export const UI_SECURITY_BANNER_MODES = ['on', 'off'] as const;
+export type UiSecurityBannerMode = (typeof UI_SECURITY_BANNER_MODES)[number];
+
+/**
+ * `ui.security` (N334, 2026-11-26), [proposta]: `banner` is `on` (default) or `off`. With `on` the
+ * interface draws a fixed row under the header while layer 3 (the sandbox) is missing: "protection
+ * reduced" when `security.unenforced` is `warn` or `allow`, and "the Director will not open, here
+ * is how to fix it" when it is `refuse`.
+ */
+export const UiSecurityConfigSchema = z.strictObject({
+  banner: z.enum(UI_SECURITY_BANNER_MODES).default('on'),
+});
+export type UiSecurityConfig = z.output<typeof UiSecurityConfigSchema>;
+
 // ---- A new project from the terminal interface (N208; P22 of docs/18) ---------------------------
 
 /**

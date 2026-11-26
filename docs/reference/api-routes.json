@@ -18707,6 +18707,62 @@
                                 "properties": {
                                   "step": {
                                     "type": "string",
+                                    "const": "security"
+                                  },
+                                  "input": {
+                                    "type": "object",
+                                    "properties": {
+                                      "warn": {
+                                        "type": "boolean"
+                                      }
+                                    },
+                                    "required": [
+                                      "warn"
+                                    ],
+                                    "additionalProperties": false
+                                  },
+                                  "output": {
+                                    "type": "object",
+                                    "properties": {
+                                      "unenforced": {
+                                        "type": "string",
+                                        "enum": [
+                                          "refuse",
+                                          "warn",
+                                          "allow"
+                                        ]
+                                      },
+                                      "write": {
+                                        "anyOf": [
+                                          {
+                                            "type": "string",
+                                            "const": "warn"
+                                          },
+                                          {
+                                            "type": "null"
+                                          }
+                                        ]
+                                      }
+                                    },
+                                    "required": [
+                                      "unenforced",
+                                      "write"
+                                    ],
+                                    "additionalProperties": false
+                                  }
+                                },
+                                "required": [
+                                  "step",
+                                  "input",
+                                  "output"
+                                ],
+                                "additionalProperties": false
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "step": {
+                                    "type": "string",
                                     "const": "executors"
                                   },
                                   "input": {
@@ -18890,6 +18946,32 @@
                                   "properties": {
                                     "step": {
                                       "type": "string",
+                                      "const": "security"
+                                    },
+                                    "layer3": {
+                                      "type": "boolean"
+                                    },
+                                    "unenforced": {
+                                      "type": "string",
+                                      "enum": [
+                                        "refuse",
+                                        "warn",
+                                        "allow"
+                                      ]
+                                    }
+                                  },
+                                  "required": [
+                                    "step",
+                                    "layer3",
+                                    "unenforced"
+                                  ],
+                                  "additionalProperties": false
+                                },
+                                {
+                                  "type": "object",
+                                  "properties": {
+                                    "step": {
+                                      "type": "string",
                                       "const": "executors"
                                     },
                                     "apiProfiles": {
@@ -19042,6 +19124,13 @@
                                     "type": "string",
                                     "minLength": 1
                                   }
+                                },
+                                "restart": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string",
+                                    "minLength": 1
+                                  }
                                 }
                               },
                               "required": [
@@ -19163,6 +19252,7 @@
               "detect",
               "account",
               "preset",
+              "security",
               "executors",
               "review"
             ]
@@ -19804,6 +19894,62 @@
                   "properties": {
                     "step": {
                       "type": "string",
+                      "const": "security"
+                    },
+                    "input": {
+                      "type": "object",
+                      "properties": {
+                        "warn": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "warn"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "output": {
+                      "type": "object",
+                      "properties": {
+                        "unenforced": {
+                          "type": "string",
+                          "enum": [
+                            "refuse",
+                            "warn",
+                            "allow"
+                          ]
+                        },
+                        "write": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "const": "warn"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "unenforced",
+                        "write"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "step",
+                    "input",
+                    "output"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "step": {
+                      "type": "string",
                       "const": "executors"
                     },
                     "input": {
@@ -19987,6 +20133,32 @@
                     "properties": {
                       "step": {
                         "type": "string",
+                        "const": "security"
+                      },
+                      "layer3": {
+                        "type": "boolean"
+                      },
+                      "unenforced": {
+                        "type": "string",
+                        "enum": [
+                          "refuse",
+                          "warn",
+                          "allow"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "step",
+                      "layer3",
+                      "unenforced"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "step": {
+                        "type": "string",
                         "const": "executors"
                       },
                       "apiProfiles": {
@@ -20139,6 +20311,13 @@
                       "type": "string",
                       "minLength": 1
                     }
+                  },
+                  "restart": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    }
                   }
                 },
                 "required": [
@@ -20205,6 +20384,7 @@
               "detect",
               "account",
               "preset",
+              "security",
               "executors",
               "review"
             ]
@@ -20877,6 +21057,62 @@
                   "properties": {
                     "step": {
                       "type": "string",
+                      "const": "security"
+                    },
+                    "input": {
+                      "type": "object",
+                      "properties": {
+                        "warn": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "warn"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "output": {
+                      "type": "object",
+                      "properties": {
+                        "unenforced": {
+                          "type": "string",
+                          "enum": [
+                            "refuse",
+                            "warn",
+                            "allow"
+                          ]
+                        },
+                        "write": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "const": "warn"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "unenforced",
+                        "write"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "step",
+                    "input",
+                    "output"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "step": {
+                      "type": "string",
                       "const": "executors"
                     },
                     "input": {
@@ -21060,6 +21296,32 @@
                     "properties": {
                       "step": {
                         "type": "string",
+                        "const": "security"
+                      },
+                      "layer3": {
+                        "type": "boolean"
+                      },
+                      "unenforced": {
+                        "type": "string",
+                        "enum": [
+                          "refuse",
+                          "warn",
+                          "allow"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "step",
+                      "layer3",
+                      "unenforced"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "step": {
+                        "type": "string",
                         "const": "executors"
                       },
                       "apiProfiles": {
@@ -21212,6 +21474,13 @@
                       "type": "string",
                       "minLength": 1
                     }
+                  },
+                  "restart": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    }
                   }
                 },
                 "required": [
@@ -21278,6 +21547,7 @@
               "detect",
               "account",
               "preset",
+              "security",
               "executors",
               "review"
             ]
@@ -21949,6 +22219,62 @@
                   "properties": {
                     "step": {
                       "type": "string",
+                      "const": "security"
+                    },
+                    "input": {
+                      "type": "object",
+                      "properties": {
+                        "warn": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "warn"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "output": {
+                      "type": "object",
+                      "properties": {
+                        "unenforced": {
+                          "type": "string",
+                          "enum": [
+                            "refuse",
+                            "warn",
+                            "allow"
+                          ]
+                        },
+                        "write": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "const": "warn"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "unenforced",
+                        "write"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "step",
+                    "input",
+                    "output"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "step": {
+                      "type": "string",
                       "const": "executors"
                     },
                     "input": {
@@ -22132,6 +22458,32 @@
                     "properties": {
                       "step": {
                         "type": "string",
+                        "const": "security"
+                      },
+                      "layer3": {
+                        "type": "boolean"
+                      },
+                      "unenforced": {
+                        "type": "string",
+                        "enum": [
+                          "refuse",
+                          "warn",
+                          "allow"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "step",
+                      "layer3",
+                      "unenforced"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "step": {
+                        "type": "string",
                         "const": "executors"
                       },
                       "apiProfiles": {
@@ -22284,6 +22636,13 @@
                       "type": "string",
                       "minLength": 1
                     }
+                  },
+                  "restart": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    }
                   }
                 },
                 "required": [
@@ -22350,6 +22709,7 @@
               "detect",
               "account",
               "preset",
+              "security",
               "executors",
               "review"
             ]
@@ -23021,6 +23381,62 @@
                   "properties": {
                     "step": {
                       "type": "string",
+                      "const": "security"
+                    },
+                    "input": {
+                      "type": "object",
+                      "properties": {
+                        "warn": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "warn"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "output": {
+                      "type": "object",
+                      "properties": {
+                        "unenforced": {
+                          "type": "string",
+                          "enum": [
+                            "refuse",
+                            "warn",
+                            "allow"
+                          ]
+                        },
+                        "write": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "const": "warn"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "unenforced",
+                        "write"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "step",
+                    "input",
+                    "output"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "step": {
+                      "type": "string",
                       "const": "executors"
                     },
                     "input": {
@@ -23204,6 +23620,32 @@
                     "properties": {
                       "step": {
                         "type": "string",
+                        "const": "security"
+                      },
+                      "layer3": {
+                        "type": "boolean"
+                      },
+                      "unenforced": {
+                        "type": "string",
+                        "enum": [
+                          "refuse",
+                          "warn",
+                          "allow"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "step",
+                      "layer3",
+                      "unenforced"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "step": {
+                        "type": "string",
                         "const": "executors"
                       },
                       "apiProfiles": {
@@ -23356,6 +23798,13 @@
                       "type": "string",
                       "minLength": 1
                     }
+                  },
+                  "restart": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    }
                   }
                 },
                 "required": [
@@ -23422,6 +23871,7 @@
               "detect",
               "account",
               "preset",
+              "security",
               "executors",
               "review"
             ]
@@ -24093,6 +24543,62 @@
                   "properties": {
                     "step": {
                       "type": "string",
+                      "const": "security"
+                    },
+                    "input": {
+                      "type": "object",
+                      "properties": {
+                        "warn": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "warn"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "output": {
+                      "type": "object",
+                      "properties": {
+                        "unenforced": {
+                          "type": "string",
+                          "enum": [
+                            "refuse",
+                            "warn",
+                            "allow"
+                          ]
+                        },
+                        "write": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "const": "warn"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "unenforced",
+                        "write"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "step",
+                    "input",
+                    "output"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "step": {
+                      "type": "string",
                       "const": "executors"
                     },
                     "input": {
@@ -24276,6 +24782,32 @@
                     "properties": {
                       "step": {
                         "type": "string",
+                        "const": "security"
+                      },
+                      "layer3": {
+                        "type": "boolean"
+                      },
+                      "unenforced": {
+                        "type": "string",
+                        "enum": [
+                          "refuse",
+                          "warn",
+                          "allow"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "step",
+                      "layer3",
+                      "unenforced"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "step": {
+                        "type": "string",
                         "const": "executors"
                       },
                       "apiProfiles": {
@@ -24428,6 +24960,13 @@
                       "type": "string",
                       "minLength": 1
                     }
+                  },
+                  "restart": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    }
                   }
                 },
                 "required": [
@@ -24494,6 +25033,7 @@
               "detect",
               "account",
               "preset",
+              "security",
               "executors",
               "review"
             ]
@@ -25015,6 +25555,32 @@
                 },
                 "required": [
                   "preset"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "step",
+              "input"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "step": {
+                "type": "string",
+                "const": "security"
+              },
+              "input": {
+                "type": "object",
+                "properties": {
+                  "warn": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "warn"
                 ],
                 "additionalProperties": false
               }
@@ -25741,7 +26307,7 @@
       "method": "GET",
       "path": "/v1/status",
       "kind": "json",
-      "summary": "State of the daemon: pid, version, data folder, state, daemon id and API version",
+      "summary": "State of the daemon: pid, version, data folder, state, daemon id, API version, and layer 3 and security.unenforced",
       "pathParams": [],
       "response": {
         "type": "object",
@@ -25782,6 +26348,27 @@
             "type": "integer",
             "minimum": 1,
             "maximum": 9007199254740991
+          },
+          "security": {
+            "type": "object",
+            "properties": {
+              "layer3": {
+                "type": "boolean"
+              },
+              "unenforced": {
+                "type": "string",
+                "enum": [
+                  "refuse",
+                  "warn",
+                  "allow"
+                ]
+              }
+            },
+            "required": [
+              "layer3",
+              "unenforced"
+            ],
+            "additionalProperties": false
           }
         },
         "required": [

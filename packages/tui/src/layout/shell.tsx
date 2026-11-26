@@ -74,6 +74,7 @@ import {
 } from './sidebar.js';
 import { ShortcutBar, type Hint } from './shortcut-bar.js';
 import { TAB_CONTENT, type TabContentMap } from './tab-content.js';
+import { bannerOf, useSecurityStatus } from './use-security-status.js';
 import { useUpdateHint } from './use-update-status.js';
 import { useWatched } from './use-watched.js';
 import { TabHostProvider, type TabHost } from './tab-host.js';
@@ -193,6 +194,10 @@ function ShellBody(props: ShellProps): ReactNode {
   const link = useLink(stores);
   const live = link === 'live';
   const update = useUpdateHint(props.client, stores, live);
+  // N334 [proposta]: the fixed row about the protection (no layer 3), when `ui.security.banner` is `on`.
+  const securityStatus = useSecurityStatus(props.client, stores, live);
+  const securityBanner = bannerOf(securityStatus, settings.security.banner);
+  const bannerRoom = securityBanner !== undefined && rows >= 6;
   const plays = useStoreValue(stores.plays, (s) => s.byId);
   // The "Terminadas" section (P11 of docs/19): `ui.sidebar.finishedPlays` says whether it exists
   // and how it starts; the person opens and closes it for the session.
@@ -219,7 +224,10 @@ function ShellBody(props: ShellProps): ReactNode {
     chatWidth: preferences.chatWidth,
     sidebarWidth: preferences.sidebarWidth,
     tuning,
+    // The row of the protection needs the screen to have room for a body of 3 rows beside it.
+    reservedRows: bannerRoom ? 1 : 0,
   });
+
   // `ui.tuiLayout.sidebarEdge` (N277): `tab` has the border as a stop of Tab and a drag, `mouse` the drag only, `off` neither.
   const sidebarAdjustable = tuning.sidebarEdge !== 'off' && geometry.sidebar.mode === 'expanded';
   const folded = useMemo(() => foldedSections(preferences), [preferences]);
@@ -763,6 +771,17 @@ function ShellBody(props: ShellProps): ReactNode {
           link={link}
           update={update}
         />
+        {securityBanner !== undefined && bannerRoom && (
+          <Text color={TOKEN.warn} wrap="truncate">
+            {` ⚠ ${
+              securityBanner.kind === 'refuse'
+                ? t('layout.security.refuse', {
+                    key: keyLabel(tuiKeymap, 'settings.assistantFirstRun') ?? '',
+                  })
+                : t('layout.security.reduced', { value: securityBanner.value })
+            }`}
+          </Text>
+        )}
         <Box height={height}>
           {geometry.sidebar.mode !== 'hidden' && (
             <Sidebar

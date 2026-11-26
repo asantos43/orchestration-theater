@@ -553,9 +553,49 @@ describe('compose: layer 3 (the sandbox)', () => {
     const sandbox = fakeSandbox({ ok: false, reason: 'no bubblewrap' });
     const { composition, dispose } = await composed('', sandbox);
     try {
+      // N334: with the default `security.unenforced: refuse`, the missing layer 3 also says the
+      // sessions that need it do not open.
       expect(await noticesOf(composition)).toEqual([
         { kind: 'sandbox_unavailable', subject: 'fake-sandbox', detail: 'no bubblewrap' },
+        {
+          kind: 'protection_reduced',
+          subject: 'refuse',
+          detail: expect.stringContaining('do not open') as string,
+        },
       ]);
+    } finally {
+      await composition.close();
+      await dispose();
+    }
+  });
+
+  it.each(['warn', 'allow'] as const)(
+    'daemon.notice protection_reduced: without layer 3 and unenforced: %s the protection is reduced (N334, [proposta])',
+    async (mode) => {
+      const sandbox = fakeSandbox({ ok: false, reason: 'no bubblewrap' });
+      const { composition, dispose } = await composed(
+        `security:\n  unenforced: ${mode}\n`,
+        sandbox,
+      );
+      try {
+        const notices = await noticesOf(composition);
+        expect(notices.map((notice) => (notice as { kind: string }).kind)).toEqual([
+          'sandbox_unavailable',
+          'protection_reduced',
+        ]);
+        expect(notices[1]).toMatchObject({ subject: mode });
+        expect((notices[1] as { detail: string }).detail).not.toContain('do not open');
+      } finally {
+        await composition.close();
+        await dispose();
+      }
+    },
+  );
+
+  it('does not say the protection is reduced when layer 3 works (N334)', async () => {
+    const { composition, dispose } = await composed('', fakeSandbox({ ok: true }));
+    try {
+      expect(await noticesOf(composition)).toEqual([]);
     } finally {
       await composition.close();
       await dispose();

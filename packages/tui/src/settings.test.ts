@@ -66,6 +66,7 @@ describe('parseUiSettings', () => {
       login: { browser: 'auto' },
       settingsTab: { limits: 'folded', roles: 'line', modelsAfterLogin: 'empty' },
       quota: { show: 'remaining' },
+      security: { banner: 'on' },
     });
   });
 
@@ -203,6 +204,7 @@ describe('parseUiSettings', () => {
       login: DEFAULT_UI_SETTINGS.login,
       settingsTab: DEFAULT_UI_SETTINGS.settingsTab,
       quota: DEFAULT_UI_SETTINGS.quota,
+      security: DEFAULT_UI_SETTINGS.security,
     });
   });
 
@@ -311,6 +313,13 @@ describe('parseUiSettings', () => {
     expect(parseUiSettings({ quota: { show: 'used' } }).quota.show).toBe('used');
     expect(parseUiSettings({ quota: { show: 'left' } }).quota.show).toBe('remaining');
     expect(parseUiSettings({ quota: 3 }).quota.show).toBe('remaining');
+  });
+
+  it('reads ui.security.banner and falls back to on (N334, [proposta])', () => {
+    expect(parseUiSettings({}).security).toEqual({ banner: 'on' });
+    expect(parseUiSettings({ security: { banner: 'off' } }).security.banner).toBe('off');
+    expect(parseUiSettings({ security: { banner: 'hide' } }).security.banner).toBe('on');
+    expect(parseUiSettings({ security: 3 }).security.banner).toBe('on');
   });
 
   it('reads ui.login and falls back to auto', () => {

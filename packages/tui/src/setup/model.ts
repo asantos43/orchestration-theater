@@ -35,6 +35,8 @@ export type Draft =
   | { readonly kind: 'detect'; readonly rows: readonly DetectRow[]; readonly cursor: number }
   | { readonly kind: 'account'; readonly cursor: number }
   | { readonly kind: 'preset'; readonly cursor: number }
+  /** N334: the cursor is on 0 (keep: do not write) or 1 (write `security.unenforced: warn`). */
+  | { readonly kind: 'security'; readonly cursor: number }
   | {
       readonly kind: 'executors';
       readonly executors: readonly SetupExecutorRequest[];
@@ -98,6 +100,9 @@ export function initialDraft(prompt: SetupPrompt | null, seed?: ExecutorsSeed): 
       const at = prompt.options.indexOf(prompt.current ?? DEFAULT_PRESET);
       return { kind: 'preset', cursor: Math.max(0, at) };
     }
+    case 'security':
+      // [proposta] The cursor starts on "no": the safe answer is the one Enter gives.
+      return { kind: 'security', cursor: 0 };
     case 'executors':
       return {
         kind: 'executors',
@@ -148,6 +153,8 @@ export function itemCount(draft: Draft, prompt: SetupPrompt | null): number {
       return prompt.step === 'account' ? prompt.profiles.length : 0;
     case 'preset':
       return prompt.step === 'preset' ? prompt.options.length : 0;
+    case 'security':
+      return prompt.step === 'security' ? 2 : 0;
     case 'executors':
       return (
         (draft.rows?.length ?? 0) +
@@ -316,6 +323,10 @@ export function submissionOf(
       const preset = prompt.options[draft.cursor];
       return preset === undefined ? undefined : { step: 'preset', input: { preset } };
     }
+    case 'security':
+      return prompt.step === 'security'
+        ? { step: 'security', input: { warn: draft.cursor === 1 } }
+        : undefined;
     case 'executors': {
       // N333: the models checked in the list are requests (or exclusions of what the preset names).
       const listed = rowsSubmission(draft.rows ?? []);

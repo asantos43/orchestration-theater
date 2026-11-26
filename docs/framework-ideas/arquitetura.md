@@ -252,7 +252,7 @@ Regras da hierarquia, para a base não virar o lugar onde tudo se acumula:
 security:
   min_layers:               # camadas exigidas por campo da RolePolicy
     default: 1              # <número>; ex.: nativeShell: 2 exige cliente e sistema operacional (no Windows sem sandbox, recusa o Claude)
-  unenforced: refuse        # refuse (não abre a sessão do papel) | warn (abre e registra evento) | allow
+  unenforced: refuse        # refuse (não abre a sessão do papel) | warn (abre e registra evento) | allow; lido na subida do daemon, mudar pede reinício; sem camada 3 o assistente pergunta se grava warn (N334, abaixo)
   catalog_probe: allow      # allow (a sessão que só lê o catálogo de modelos passa pela trava acima) | refuse (v0.55, N65)
   catalog_probe_log: once   # once (grava o aviso da isenção uma vez por cliente e versão do adaptador, a cada execução do daemon) | every | off (v0.56, N69)
   conformance: on_version_change   # on_version_change (roda as sondas na primeira vez de cada versão do adaptador) | every_start | off
@@ -286,7 +286,7 @@ tools:                      # as cascas do daemon (5.8)
   env_allow: []
   http: { timeout_ms: 30000, redirects: refuse } # refuse (padrão) | follow_allowed, no máximo 5 saltos (N104)
 sandbox:                    # camada 3 (5.8)
-  mode: runtime             # runtime (padrão, onde houver adaptador) | off; sem adaptador ou com off, vale security.unenforced (padrão refuse) (N106)
+  mode: runtime             # runtime (padrão, onde houver adaptador) | off; sem adaptador ou com off, vale security.unenforced (padrão refuse) (N106); o daemon registra o evento daemon.notice `protection_reduced` e a TUI mostra uma linha fixa (N334, 5.7)
   extra_write_paths: []     # pastas absolutas que o cliente confinado pode escrever, além do worktree, do perfil dele e da pasta temporária
   extra_domains: []         # domínios a mais, além do network.allow do papel e dos do provedor do cliente
   mcp_bridge: auto          # auto (padrão: unix no macOS, proxy nos outros) | proxy | unix (só macOS) | off; deixa o cliente confinado alcançar o MCP do daemon (N115, N161, 5.8)
@@ -828,6 +828,16 @@ Passos da primeira execução no assistente:
 3. acrescenta ao fim da lista de cada papel o Executor por API que encontrar (ex.: `minimax-m2-medium@opencode/minimax-api`), com o teto de gasto que o Produtor confirmar (5.6). Sem chave de API, a lista fica como está e vale o `when_exhausted` do papel;
 4. mostra o resultado, e o Produtor confirma ou ajusta; só então a configuração é gravada.
 
+**Camada 3 ausente: o assistente pergunta (N334, decidida pelo dono em 2026-11-26; escolhas de nome e de forma [proposta]).** No Windows não há a camada 3 (sandbox) (5.8), e o padrão `security.unenforced: refuse` recusa a sessão do Diretor: o Produtor terminava o assistente e o Diretor não abria. Agora, na primeira execução, quando o daemon sobe sem camada 3, com `security.unenforced: refuse` e `setup.unenforced_prompt: ask`, o fluxo ganha o passo condicional `security`, antes de `executors` (assim a volta da Revisão ainda leva ao passo dos Executores). Ele explica o risco (sem o limite do sandbox, um Executor pode alterar arquivos e usar a rede sem essa barreira) e pergunta se grava `security.unenforced: warn`:
+- **sim:** a revisão lista a chave `security.unenforced` e a nota `unenforced_warn`; a confirmação grava `warn` e o resultado traz `restart: ["security.unenforced"]`, porque o valor é lido na subida do daemon e não é recarregado a quente; a TUI avisa na tela final que o daemon precisa reiniciar;
+- **não:** nada muda no arquivo, e a revisão traz a nota `director_will_not_open` (sem camada 3 e com `refuse`, o Diretor não abre aqui). A mesma nota aparece com `setup.unenforced_prompt: never`, em que o passo não existe;
+- com camada 3, ou com `warn` ou `allow` já no arquivo, o passo não existe e nada é dito. Os outros fluxos (`add_account`, `change_preset`) não têm o passo;
+- o passo é um evento como os outros (`setup.step`), e o `GET /v1/setup` o lista nos `steps` da corrida só quando ele vale.
+
+**Aviso fixo na TUI e rota de estado (N334; [proposta]).** `GET /v1/status` ganha `security: { layer3: boolean, unenforced: refuse | warn | allow }`, com a camada 3 que o daemon montou e o valor com que ele subiu; um daemon antigo não responde o campo, e a TUI então não mostra a linha. Sem camada 3, a TUI mostra uma linha fixa entre o cabeçalho e o corpo, que tira uma linha do corpo (só com a tela de pelo menos 6 linhas): com `refuse`, "O Diretor não abre" e como corrigir (a tecla do assistente da primeira execução, `settings.assistantFirstRun`, na aba Configurações, ou editar a chave); com `warn` ou `allow`, "Proteção reduzida". Com a camada 3 não há linha. Quem já tem configuração e não passa pela primeira execução vê o aviso do mesmo jeito. O estado é lido de novo a cada evento `daemon.notice`. **Evento:** a situação também gera `daemon.notice` com `kind: protection_reduced`, `subject` o valor de `security.unenforced` e `detail` (com `refuse`, diz que as sessões que exigem a camada 3 não abrem), logo depois de `sandbox_unavailable`, para hooks e plugins.
+
+**Chaves novas [proposta]:** `setup.unenforced_prompt: ask | never` (padrão `ask`; `never` não pergunta, e a revisão ainda avisa) e `ui.security.banner: on | off` (padrão `on`; `off` esconde a linha fixa). **Verificação (2026-11-26):** [V] testes do daemon (plano, serviço, composição, rota de estado, chaves), do protocolo e da TUI (passo, tela final, linha fixa nos três estados, fim a fim com o daemon real e a sandbox simulada como indisponível); [N] não foi rodado no Windows nem com o cliente real: o que se afirma do Windows vem da decisão N94 e não foi medido de novo.
+
 **Modelo da predefinição e catálogo do cliente** (N333, decidida pelo dono em 2026-11-26): a predefinição nomeia o modelo pela família (`codex-sol`), e o catálogo do Codex lista o nome com a versão (`gpt-6.2-sol`, `gpt-5.6-sol`) [V: print do dono, 2026-11-26]. Até o N333, o assistente só aceitava um id igual à família, e os Executores do Codex ficavam sem papel. Agora a busca segue esta ordem:
 - primeiro, a tabela `executors.aliases` (`codex-sol: gpt-6.2-sol`), que vale nos dois modos;
 - depois, um id igual à família;
@@ -990,6 +1000,7 @@ roles:
 - `setup.role_lists: explicit | preset`, padrão `explicit`. `explicit` grava `roles.<papel>.executors`, troca as listas do Produtor (nota `lists_replaced`) e avisa do formato antigo `orchestration.executor/roles` (nota `legacy_executors`); `preset` grava só `roles.preset` e os Executores, e usa a ordem do store;
 - `setup.suggested_budget.daily_usd` (padrão 20) e `setup.suggested_budget.monthly_usd` (padrão 200): o teto sugerido no passo `executors`, número maior que 0; `null` nos dois campos quer dizer sem teto.
 - `setup.preset_match: newest | exact`, padrão `newest` **[proposta]** (N333). Diz como o modelo da predefinição acha o modelo do catálogo (acima, "Modelo da predefinição e catálogo do cliente"). A tabela `executors.aliases` (modelo da predefinição → id do catálogo, vazia por padrão) vale antes, nos dois modos.
+- `setup.unenforced_prompt: ask | never`, padrão `ask` **[proposta]** (N334). `ask`: sem camada 3 e com `security.unenforced: refuse`, a primeira execução pergunta se grava `warn` (acima, "Camada 3 ausente: o assistente pergunta"); `never` não pergunta.
 
 Limites: a confirmação roda numa cadeia de promessas própria, e pode correr com um `PUT /v1/config` (o último vence); `notes[].message` fica em inglês. A tela entrou no P17 (PR #227; ver a seção 5.13), e a sessão de teste do Executor (`testSession`) segue desligada.
 
@@ -1539,6 +1550,7 @@ O patch fica, com a versão do Ink travada em 8.0.0: se a versão mudar, o patch
 | `ui.settingsTab.roles` **[proposta]** | `line` | `line` ou `list` (N328): `line` mostra cada papel numa linha (o primeiro Executor e o que acontece quando ele acaba) e abre a lista do papel sob o cursor para reordenar; `list` mostra todas as listas inteiras, como antes |
 | `ui.settingsTab.modelsAfterLogin` | `empty` | `empty`, `added` ou `always` (N330): depois de um login bem-sucedido na aba Configurações, abre a escolha de modelos da conta quando ela ainda não tem Executores (`empty`), só para a conta recém-adicionada (`added`) ou sempre (`always`); a tecla M abre a escolha a qualquer momento; decidido pelo dono em 2026-11-26 |
 | `ui.quota.show` | `remaining` | `remaining` ou `used` (N330): a cota das assinaturas aparece como quanto falta para 0 (`remaining`) ou como o consumo (`used`), nas Configurações, na lateral e na Visão geral; o título da seção diz o modo; decidido pelo dono em 2026-11-26 |
+| `ui.security.banner` **[proposta]** | `on` | `on` ou `off` (N334, 2026-11-26): `on` mostra a linha fixa entre o cabeçalho e o corpo quando o daemon não tem a camada 3 (sandbox): com `security.unenforced: refuse`, que o Diretor não abre e como corrigir; com `warn` ou `allow`, que a proteção está reduzida. Com a camada 3 não há linha; `off` esconde a linha |
 | `ui.runtime.exitGraceMs` **[proposta]** | 2000 | inteiro de 0 a 60000: a folga que o processo da TUI espera pelo próprio fim, para o `layoutStore.flush()` do desmonte terminar, antes de forçar o `process.exit`; `0` sai na hora (PR #226 [S]) |
 | `ui.layout.store` | `daemon` | `daemon` (grava pela rota REST), `local` (arquivo `layout.tui.json` na pasta de configuração do cliente) |
 | `ui.tuiLayout.sidebarWidth` **[proposta]** | 30 | inteiro de 16 a 80; a largura inicial da barra lateral: depois do primeiro ajuste vale a largura salva em `LayoutPreferences.sidebarWidth` (N277, 2026-11-22) |

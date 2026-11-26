@@ -19,6 +19,15 @@ const base: GeometryInput = {
   tuning: DEFAULT_TUI_LAYOUT,
 };
 
+describe('computeGeometry: the rows reserved by the fixed row of the protection (N334)', () => {
+  it('takes them from the body, and leaves at least one row', () => {
+    expect(computeGeometry({ ...base, reservedRows: 1 }).bodyHeight).toBe(39);
+    expect(computeGeometry({ ...base, reservedRows: 0 }).bodyHeight).toBe(40);
+    expect(computeGeometry(base).bodyHeight).toBe(40);
+    expect(computeGeometry({ ...base, rows: 3, reservedRows: 1 }).bodyHeight).toBe(1);
+  });
+});
+
 describe('computeGeometry: the four screens of the mockup (140x42)', () => {
   it('main: side bar 30, chat 56, panel 54', () => {
     const g = computeGeometry(base);
