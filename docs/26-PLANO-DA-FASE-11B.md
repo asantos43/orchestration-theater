@@ -481,6 +481,10 @@ Todos **[proposta]** quanto ao nome. Cada um entra no catálogo do protocolo e n
 - **Aceite da cor** [V]: com a borda ativa trocada para `#7d8cfe` na paleta, o teste falhou com "expected '#7d8cfe' to be '#7d8cff'"; com a cor de volta, passou.
 - [N] Com o `signal('TERM')` do tui-test 0.1.1, o código de saída é 129 e não 143, provavelmente porque a sessão termina com um hang-up (não confirmado no código dele). O teste aceita qualquer código de sinal; o código de cada sinal continua testado no `run.test.tsx`.
 - CI: o job novo `tui-terminal` roda os dois arquivos no Ubuntu, no macOS e no Windows, com `OT_REQUIRE_PTY=1`, nas mesmas condições do `linux`. No Windows, ele compila antes o `ot-job-launcher.exe`. Na falha, sobe o artefato `tui-terminal-<sistema>`. Os dois arquivos levam `// ot-ci: no-cross`, para o `cross` não repetir.
+- O que a CI mostrou (2026-11-26):
+  - Nos runners, a tela ficava vazia. O Ink 8 (`is-in-ci`) trata como CI qualquer `CI` cujo valor não seja `0` nem `false`, até a vazia, e aí só escreve o último quadro. O `supports-color` tira a cor quando a chave `CI` existe. O suporte apaga `CI` e `CONTINUOUS_INTEGRATION` do processo do teste [V: com `CI=true`, os 10 testes passam].
+  - No macOS, o aviso da tecla Option toma o lugar da barra de atalhos até a primeira tecla. Depois de desenhar a tela, o suporte aperta F12, que não tem atalho.
+  - No Windows, o ConPTY do runner descarta o desligamento do mouse (`?1006l ?1002l ?1000l`). A TUI escreve as sequências duas vezes, como no Linux, e o `?2004l` e o `?1049l` entre elas passam [N: visto no trace, não no código do ConPTY]. Lá o teste não confere o modo do mouse. Fica para o roteiro manual: no Windows Terminal, sair com Ctrl+C e mexer o mouse não pode escrever nada no shell.
 - **[proposta]** (perguntas ao dono):
   - o `alacritty` como terminal padrão;
   - as cores escritas em hexadecimal no teste, em vez de lidas da paleta;

@@ -175,6 +175,17 @@ function tuiEnv(home: string, dataDir: string, entry: TuiEntry): Record<string, 
   };
 }
 
+/**
+ * The first notice of the keymap takes the place of the bar of shortcuts until a key is pressed: on
+ * macOS it is always there (the Alt shortcuts need "Use Option as Meta"), so the bar the tests read
+ * would never show. Once the layout is drawn, F12 (bound to nothing) puts the bar back.
+ */
+async function dismissFirstNotice(term: TuiTestClass): Promise<void> {
+  await term.getByText('Navigation').expect();
+  await term.waitIdle();
+  await term.press('F12');
+}
+
 function safeName(name: string): string {
   return name.replace(/[^a-z0-9._-]+/giu, '-').slice(0, 80);
 }
@@ -213,6 +224,7 @@ export async function withTui(
         OT_TUI_UI: JSON.stringify({ ...SAFE_UI, ...options.ui }),
       },
     });
+    await dismissFirstNotice(term);
     await body({ term, home });
   } catch (error) {
     failed = true;

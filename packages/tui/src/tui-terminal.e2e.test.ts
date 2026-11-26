@@ -77,7 +77,11 @@ async function expectCleanExit(term: TuiTest, codes: readonly number[]): Promise
   expect(state.modes.alternate_screen).toBe(false);
   expect(state.modes.cursor_visible).toBe(true);
   expect(state.modes.bracketed_paste).toBe(false);
-  expect(state.mouse_mode).toBe('none');
+  // The ConPTY of the Windows runner drops the resets of the mouse modes (`?1006l ?1002l ?1000l`):
+  // the TUI writes them twice, as on Linux, and the `?2004l` and `?1049l` between them get through
+  // [N: seen in the trace of 2026-11-26, not in the code of ConPTY]. A real Windows Terminal is
+  // checked by hand.
+  if (process.platform !== 'win32') expect(state.mouse_mode).toBe('none');
 }
 
 if (skipReason !== undefined) {
