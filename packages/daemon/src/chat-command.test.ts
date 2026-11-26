@@ -169,7 +169,27 @@ describe('renderSystemMessage, the failover of the Director (P20)', () => {
     const [line] = renderSystemMessage(t, FAILOVER);
     expect(line).toContain('fake-model@fake/one');
     expect(line).toContain('fake-model@fake/two');
-    expect(line).toContain('quota_exhausted');
+    expect(line).toContain('quota exhausted');
+  });
+
+  it('says a refusal of the security policy in words, not as a code (N334)', async () => {
+    const en = renderSystemMessage(await createTranslator('en'), {
+      ...FAILOVER,
+      outcome: 'unavailable',
+      cause: 'permission',
+      fromExecutor: null,
+      toExecutor: null,
+    });
+    expect(en[0]).toContain('refused by the security policy');
+    expect(en[0]).not.toContain('permission');
+    const pt = renderSystemMessage(await createTranslator('pt-BR'), {
+      ...FAILOVER,
+      outcome: 'unavailable',
+      cause: 'permission',
+      fromExecutor: null,
+      toExecutor: null,
+    });
+    expect(pt[0]).toContain('recusado pela política de segurança');
   });
 
   it('says it waits, with the end of the limit, in Brazilian Portuguese', async () => {

@@ -43,6 +43,7 @@ import type { QuotaStatus } from '../quota/state.js';
 import { situationText } from '../situations.js';
 import {
   directorFailureOf,
+  directorOpenCauseOf,
   failoverApplies,
   PROFILE_REMOVED,
   type DirectorFailure,
@@ -150,6 +151,12 @@ interface PendingFailover {
   announcedWaiting: boolean;
 }
 
+/** The failure of an opening that no turn has taken yet (N334). */
+interface OpenFailure {
+  readonly error: unknown;
+  taken: boolean;
+}
+
 interface DirectorSession {
   readonly scenarioId: string;
   /** `undefined` while the Director sleeps: the lease went back to the pool. */
@@ -177,6 +184,13 @@ interface DirectorSession {
   active: boolean;
   /** The last turn failed: the queue does not move until the session is opened again. */
   failed: boolean;
+  /**
+   * [proposta] (N334) How the last opening failed, until a turn takes it. `ensure` opens the session
+   * (and tells the chat why it could not), and the prompt that follows reaches `#turn`: that turn
+   * hears the same failure instead of opening again, so one try gives one notice. A new opening
+   * (the next `ensure`) replaces it.
+   */
+  openFailure: OpenFailure | undefined;
   /** The Executor the open session runs with (complete name); `undefined` while it sleeps. */
   executor: string | undefined;
   /**
@@ -299,13 +313,15 @@ export class DirectorSessions {
    */
   async ensure(scenarioId: string): Promise<void> {
     let opening = this.#sessions.get(scenarioId);
+    const created = opening === undefined;
     if (opening === undefined) {
       opening = this.#open(scenarioId);
       this.#sessions.set(scenarioId, opening);
       opening.catch(() => this.#sessions.delete(scenarioId));
     }
     const session = await opening;
-    await this.#wake(session);
+    // [proposta] (N334) `#open` has just tried to open the session: not a second try in the same call.
+    if (!created) await this.#wake(session);
     this.#arm(session);
   }
 
@@ -537,9 +553,33 @@ export class DirectorSessions {
     await session.waking;
   }
 
+  /** Fails the turn with the opening that just failed and no turn has heard yet (N334). */
+  #throwOpenFailure(session: DirectorSession): void {
+    const { openFailure } = session;
+    if (session.lease !== undefined || openFailure === undefined || openFailure.taken) return;
+    openFailure.taken = true;
+    throw openFailure.error;
+  }
+
+  /**
+   * `#awake` for a turn: the opening it makes (or waits for) that fails is the failure of the
+   * turn, told once, and the turn does not open again (N334).
+   */
+  async #awakeForTurn(session: DirectorSession): Promise<void> {
+    try {
+      await this.#awake(session);
+    } catch (error) {
+      if (session.openFailure !== undefined) session.openFailure.taken = true;
+      throw error;
+    }
+    this.#throwOpenFailure(session);
+  }
+
   async #reopen(session: DirectorSession, parked: () => void): Promise<void> {
     const { store, logger } = this.#options;
     const park = { held: false };
+    // A new try: what the last one left is not what this one will say.
+    session.openFailure = undefined;
     try {
       const { lease, grant, picked, settings } = await this.#acquire(session, {
         signal: session.abort.signal,
@@ -572,7 +612,9 @@ export class DirectorSessions {
       await this.#settleFailover(session, 'switched', picked.executor.id);
       if (park.held || slept || failing) this.#arm(session);
     } catch (error) {
-      // A caller of `ensure` does not see the error (see `#wake`), so the log keeps it.
+      // A caller of `ensure` does not see the error (see `#wake`), so the log keeps it, and the
+      // turn that comes after it hears it (N334).
+      session.openFailure = { error, taken: false };
       logger.error(
         { err: error, scenarioId: session.scenarioId },
         park.held
@@ -585,7 +627,7 @@ export class DirectorSessions {
       if (session.failover === undefined && !session.abort.signal.aborted) {
         session.failover = {
           from: null,
-          cause: directorFailureOf(error)?.cause ?? 'client_crash',
+          cause: directorOpenCauseOf(error),
           resetsAt: null,
           detail: situationText(error),
           requeued: null,
@@ -777,6 +819,7 @@ export class DirectorSessions {
       seq: 0,
       active: false,
       failed: false,
+      openFailure: undefined,
       executor: undefined,
       failedExecutors: new Set(),
       failover: undefined,
@@ -811,11 +854,15 @@ export class DirectorSessions {
   async #turn(session: DirectorSession, item: PromptQueueItem): Promise<void> {
     // A prompt can arrive for a sleeping Director (nobody called `ensure`): it wakes first, and
     // stays here while the Director waits for an Executor (N141).
-    await this.#awake(session);
+    // [proposta] (N334) An opening that just failed (the one of `ensure`) is not tried again for the
+    // same prompt: the turn fails with that error, the prompt stays in the queue and the pump stops.
+    // The next `ensure` or prompt opens the session again.
+    this.#throwOpenFailure(session);
+    await this.#awakeForTurn(session);
     // A manual switch (P14) may have taken the session between the wake and here: wait for the new one.
     await this.#applyPendingSwitch(session);
     for (let again = 0; again < 3 && session.lease === undefined; again += 1) {
-      await this.#awake(session);
+      await this.#awakeForTurn(session);
     }
     session.idleTimer?.abort();
     session.idleTimer = undefined;
