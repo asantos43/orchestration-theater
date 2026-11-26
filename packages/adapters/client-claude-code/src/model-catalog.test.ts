@@ -79,7 +79,9 @@ describe('ClaudeModelCatalog.list', () => {
     const models = await catalog.list(profile);
     expect(models.find((model) => model.id === 'default')?.floating).toBe('account');
     expect(models.find((model) => model.id === 'sonnet')?.floating).toBe('family');
-    expect(models.find((model) => model.id === 'claude-fable-5-2[1m]')).not.toHaveProperty('floating');
+    expect(models.find((model) => model.id === 'claude-fable-5-2[1m]')).not.toHaveProperty(
+      'floating',
+    );
   });
 
   it('tells the kind of an alias by its id', () => {
