@@ -52,6 +52,7 @@ import {
   loginCommandOf,
   parseBudgetLine,
   parseExecutorLine,
+  reconciledDraft,
   reordered,
   stepNumber,
   submissionOf,
@@ -251,16 +252,29 @@ export function SetupScreen(props: SetupScreenProps): ReactNode {
     update({ message: { text, tone } });
   };
 
-  /** Shows the view the daemon gave: the draft is the one remembered for the step, or a fresh one. */
-  const show = (run: SetupRunView, message?: State['message']): void => {
-    const remembered = memory.current.get(draftKey(run));
+  /**
+   * Shows the view the daemon gave: the draft is the one remembered for the step, or a fresh one.
+   * `keep`: the draft on screen counts as remembered when it is of the same step (the list of
+   * accounts was read again, and the marks the person made stay). A remembered draft of the
+   * detection takes in the accounts the daemon lists now ({@link reconciledDraft}).
+   */
+  const show = (run: SetupRunView, message?: State['message'], keep = false): void => {
+    const current = ref.current;
+    const onScreen =
+      keep && current.run !== undefined && draftKey(current.run) === draftKey(run)
+        ? current.draft
+        : undefined;
+    const remembered = memory.current.get(draftKey(run)) ?? onScreen;
     // N324: the step of the Executors opens with what the lists of models after the logins chose.
     const fresh = initialDraft(run.prompt, seedOfChoices(run, ref.current.choices));
     update({
       load: 'ready',
       loadError: undefined,
       run,
-      draft: remembered?.kind === fresh.kind ? remembered : fresh,
+      draft:
+        remembered?.kind === fresh.kind
+          ? reconciledDraft(remembered, run.prompt, current.added)
+          : fresh,
       mode: IDLE,
       busy: false,
       message,
@@ -412,20 +426,54 @@ export function SetupScreen(props: SetupScreenProps): ReactNode {
     void command(run, () => api.back(run.id));
   };
 
-  /** Shows the run as the daemon holds it now (the accounts it lists changed), with a message. */
-  const refresh = async (message: NonNullable<State['message']>): Promise<void> => {
+  /**
+   * Shows the run as the daemon holds it now (the accounts it lists changed), with a message. A
+   * read that fails keeps what is on screen and says so, with the key that reads again (the owner
+   * on 2026-11-26): the account was added all the same. `false` when the run was not read.
+   */
+  const refresh = async (message?: State['message']): Promise<boolean> => {
+    let failure: string | undefined;
     try {
       const overview = await api.overview();
       const active = overview.flows.find((entry) => entry.flow === flow)?.active ?? null;
-      if (!alive.current) return;
+      if (!alive.current) return false;
       if (active !== null) {
-        show(active, message);
-        return;
+        show(active, message, true);
+        return true;
       }
-    } catch {
-      // The account was added all the same: say it; the list is read again with the reload key.
+    } catch (error) {
+      failure = errorText(error);
     }
-    update({ busy: false, message });
+    if (!alive.current) return false;
+    if (failure === undefined) {
+      update({ busy: false, message });
+      return false;
+    }
+    const warning = t('setup.accounts.rereadFailed', {
+      message: failure,
+      reload: keyLabel(keymap, 'setup.reload') ?? '',
+    });
+    update({
+      busy: false,
+      message: {
+        text: message === undefined ? warning : `${message.text} ${warning}`,
+        tone: message?.tone === 'error' ? 'error' : 'warn',
+      },
+    });
+    return false;
+  };
+
+  /**
+   * Leaves the step that adds an account for the steps of the run (Enter or S; the owner on
+   * 2026-11-26, "Reler e marcar"): the list of accounts is read again first, so the accounts added
+   * here are in the detection, checked. A read that fails goes on with what is on screen, and says so.
+   */
+  const toSteps = async (skipped: boolean): Promise<void> => {
+    update({ busy: true, message: undefined });
+    const read = await refresh();
+    if (!alive.current) return;
+    update({ stage: 'steps' });
+    if (read && skipped) say(t('setup.accounts.skipped'), 'warn');
   };
 
   /**
@@ -740,12 +788,11 @@ export function SetupScreen(props: SetupScreenProps): ReactNode {
     switch (name) {
       case 'advance':
         // N324/N326: with no account yet, Enter opens the form; S continues without one.
-        if (hasAccount(run)) update({ stage: 'steps' });
+        if (hasAccount(run)) void toSteps(false);
         else openForm(run, accountClients(run.prompt)[cursor]?.client);
         return;
       case 'skip':
-        update({ stage: 'steps' });
-        if (!hasAccount(run)) say(t('setup.accounts.skipped'), 'warn');
+        void toSteps(!hasAccount(run));
         return;
       case 'back':
         onClose('left');
