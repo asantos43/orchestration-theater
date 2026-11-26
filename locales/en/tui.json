@@ -1323,6 +1323,10 @@
     "models": {
       "title": "Models of {{profile}}: check the ones that become Executors",
       "inPreset": "in the preset",
+      "floating": {
+        "account": "alias: the client picks it by the plan of the account",
+        "family": "alias: the newest of the family"
+      },
       "registered": "already an Executor",
       "keys": "↑/↓ walk, Space checks, Enter takes the list, Esc keeps the preset",
       "loggedOut": "{{profile}} is not logged in yet, so its client does not list its models.",

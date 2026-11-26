@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { GROUPED_CONFIG_OPTIONS, SESSION_NEW_CONFIG_OPTIONS } from './fixtures/config-options.js';
 import {
   ClaudeModelCatalog,
+  floatingOf,
   readConfigOptions,
   RESERVE_SNAPSHOT,
   type ConfigOptionsReader,
@@ -71,6 +72,26 @@ describe('ClaudeModelCatalog.list', () => {
     });
     expect(models.find((model) => model.id === 'sonnet')?.contextWindow).toBeUndefined();
     expect(models.every((model) => model.efforts.includes('xhigh'))).toBe(true);
+  });
+
+  it('marks the aliases the client resolves, and leaves the full ids fixed (N324)', async () => {
+    const catalog = new ClaudeModelCatalog({ reader: counting(SESSION_NEW_CONFIG_OPTIONS).reader });
+    const models = await catalog.list(profile);
+    expect(models.find((model) => model.id === 'default')?.floating).toBe('account');
+    expect(models.find((model) => model.id === 'sonnet')?.floating).toBe('family');
+    expect(models.find((model) => model.id === 'claude-fable-5-2[1m]')).not.toHaveProperty(
+      'floating',
+    );
+  });
+
+  it('tells the kind of an alias by its id', () => {
+    expect(floatingOf('default')).toBe('account');
+    expect(['opus', 'sonnet', 'haiku', 'fable', 'sonnet[1m]'].map(floatingOf)).toEqual(
+      Array<string>(5).fill('family'),
+    );
+    expect(['claude-opus-5', 'opusplan', 'opus-x', 'Default'].map(floatingOf)).toEqual(
+      Array<undefined>(4).fill(undefined),
+    );
   });
 
   it('has automatic discovery', () => {

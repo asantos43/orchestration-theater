@@ -131,6 +131,7 @@ export function modelPickLines(
     const box = registered ? '[=]' : pick.checked.includes(model.id) ? '[x]' : '[ ]';
     const name = model.name !== null && model.name !== model.id ? ` (${model.name})` : '';
     const tags = [
+      ...(model.floating === null ? [] : [t(`setup.models.floating.${model.floating}`)]),
       ...(model.preset.length > 0 ? [t('setup.models.inPreset')] : []),
       ...(registered ? [t('setup.models.registered')] : []),
     ];
