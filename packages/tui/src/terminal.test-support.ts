@@ -131,11 +131,25 @@ const WINDOWS_SYSTEM = new Set([
   'os',
 ]);
 
+/** The variables that tell a program it runs in a CI. */
+const CI_MARKERS = ['CI', 'CONTINUOUS_INTEGRATION'] as const;
+
+/**
+ * Takes the CI markers out of the variables of this test process, as a terminal of a person has
+ * none. Blanking them is not enough: Ink 8 (`is-in-ci`) takes any value but `0` and `false` as a
+ * CI, and then writes only the last frame, at the exit; `supports-color` turns the colours off when
+ * `CI` exists at all. Either way the screen of the test stays empty or grey on the runners.
+ */
+function dropCiMarkers(): void {
+  for (const key of CI_MARKERS) Reflect.deleteProperty(process.env, key);
+}
+
 /**
  * The variables of the TUI. The tui-test adds `env` to the variables of this process, so each of
  * those is blanked first (an empty value), except `PATH` and, on Windows, what the system needs.
  */
 function tuiEnv(home: string, dataDir: string, entry: TuiEntry): Record<string, string> {
+  dropCiMarkers();
   const keep = (key: string): boolean =>
     key === 'PATH' || (process.platform === 'win32' && WINDOWS_SYSTEM.has(key.toLowerCase()));
   const blanked = Object.fromEntries(
