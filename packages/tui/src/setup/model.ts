@@ -32,18 +32,30 @@ export type Draft =
       /** The caps the person set, by account; an account that is not here takes the suggested one. */
       readonly budgets: Readonly<Record<string, SetupBudget>>;
       readonly cursor: number;
+      /**
+       * N324: the Executors of the preset the person unchecked in the list of models after a login
+       * (the `exclude` of the step); none when absent.
+       */
+      readonly exclude?: readonly string[];
     }
   | { readonly kind: 'review' };
 
 /** The preset the cursor starts on when the configuration names none. [proposta] The middle one. */
 export const DEFAULT_PRESET = 'balanced';
 
+/** What the list of models after a login (N324) gives the step of the Executors to start with. */
+export interface ExecutorsSeed {
+  readonly executors: readonly SetupExecutorRequest[];
+  readonly exclude: readonly string[];
+}
+
 /**
  * The draft a step opens with. [proposta] Detection starts with every usable account taken in, in
  * the order the daemon lists them (the same the daemon would use if the step sent no list); the
- * preset starts on the one in force, or on {@link DEFAULT_PRESET}; nothing is registered by default.
+ * preset starts on the one in force, or on {@link DEFAULT_PRESET}; nothing is registered by default,
+ * except what the list of models after a login chose (`seed`, N324).
  */
-export function initialDraft(prompt: SetupPrompt | null): Draft {
+export function initialDraft(prompt: SetupPrompt | null, seed?: ExecutorsSeed): Draft {
   if (prompt === null) return { kind: 'review' };
   switch (prompt.step) {
     case 'detect':
@@ -64,7 +76,13 @@ export function initialDraft(prompt: SetupPrompt | null): Draft {
       return { kind: 'preset', cursor: Math.max(0, at) };
     }
     case 'executors':
-      return { kind: 'executors', executors: [], budgets: {}, cursor: 0 };
+      return {
+        kind: 'executors',
+        executors: [...(seed?.executors ?? [])],
+        budgets: {},
+        cursor: 0,
+        ...(seed === undefined || seed.exclude.length === 0 ? {} : { exclude: [...seed.exclude] }),
+      };
     case 'review':
       return { kind: 'review' };
   }
@@ -178,7 +196,11 @@ export function submissionOf(
     case 'executors':
       return {
         step: 'executors',
-        input: { executors: [...draft.executors], budgets: Object.values(draft.budgets) },
+        input: {
+          executors: [...draft.executors],
+          budgets: Object.values(draft.budgets),
+          ...(draft.exclude === undefined ? {} : { exclude: [...draft.exclude] }),
+        },
       };
     case 'review':
       return undefined;

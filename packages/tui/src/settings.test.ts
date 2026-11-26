@@ -53,7 +53,7 @@ describe('parseUiSettings', () => {
       theme: 'otheater',
       clipboardCopy: 'osc52',
       tuiMouse: { wheelLines: 3, copyMaxBytes: 100_000 },
-      setup: { open: 'auto', readTimeoutMs: 5000, reviewNotes: 'grouped' },
+      setup: { open: 'auto', readTimeoutMs: 5000, reviewNotes: 'grouped', modelPick: 'preset' },
       newProject: { repo: 'cwd' },
       sidebar: { finishedPlays: 'collapsed', finishedLimit: 20 },
       login: { browser: 'auto' },
@@ -216,14 +216,20 @@ describe('parseUiSettings', () => {
       open: 'auto',
       readTimeoutMs: 5000,
       reviewNotes: 'grouped',
+      modelPick: 'preset',
     });
     expect(
-      parseUiSettings({ setup: { open: 'never', readTimeoutMs: 900, reviewNotes: 'all' } }).setup,
+      parseUiSettings({
+        setup: { open: 'never', readTimeoutMs: 900, reviewNotes: 'all', modelPick: 'none' },
+      }).setup,
     ).toEqual({
       open: 'never',
       readTimeoutMs: 900,
       reviewNotes: 'all',
+      modelPick: 'none',
     });
+    // N324: a mode of modelPick the TUI does not know falls back to preset.
+    expect(parseUiSettings({ setup: { modelPick: 'some' } }).setup.modelPick).toBe('preset');
     // N324: a mode the TUI does not know falls back to grouped.
     expect(parseUiSettings({ setup: { reviewNotes: 'some' } }).setup.reviewNotes).toBe('grouped');
     expect(parseUiSettings({ setup: { open: 'always', readTimeoutMs: 5 } }).setup).toEqual(

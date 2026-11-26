@@ -245,6 +245,15 @@
       "next": "Próximo campo",
       "change": "Trocar",
       "cancel": "Cancelar"
+    },
+    "modelPick": {
+      "confirm": "Ficar",
+      "toggle": "Marcar",
+      "cancel": "Manter o preset"
+    },
+    "loginCheck": {
+      "retry": "Login de novo",
+      "skip": "Seguir"
     }
   },
   "keymap": {
@@ -1202,7 +1211,9 @@
       "budgetRow": "{{profile}}  dia {{daily}}  mês {{monthly}}",
       "budgetSuggested": "{{profile}}  sugerido: dia {{daily}}, mês {{monthly}}",
       "noCap": "sem teto",
-      "usd": "USD {{value}}"
+      "usd": "USD {{value}}",
+      "excluded_one": "Fica fora do preset: {{list}}",
+      "excluded_other": "Ficam fora do preset ({{count}}): {{list}}"
     },
     "prompt": {
       "executor": "Executor como: <conta> <modelo> [esforço]",
@@ -1295,6 +1306,20 @@
     "redetect": {
       "added": "Encontrado agora: {{list}}.",
       "failed": "Não deu para procurar os clientes de novo: {{message}}"
+    },
+    "models": {
+      "title": "Modelos de {{profile}}: marque os que viram Executores",
+      "inPreset": "no preset",
+      "registered": "já é Executor",
+      "keys": "↑/↓ andam, Espaço marca, Enter fica com a lista, Esc mantém o preset",
+      "loggedOut": "{{profile}} ainda não está logada, então o cliente dela não lista os modelos.",
+      "loginCheckKeys": "L faz o login de novo · S segue sem o login",
+      "noLogin": "{{profile}} segue sem o login; faça depois com L em Configurações › Assinaturas.",
+      "chosen_one": "{{profile}}: {{count}} modelo marcado; o passo Executores começa com ele.",
+      "chosen_other": "{{profile}}: {{count}} modelos marcados; o passo Executores começa com eles.",
+      "skipped": "{{profile}}: a lista ficou de lado; o preset decide os Executores dela.",
+      "failed": "Não deu para ler os modelos de {{profile}}: {{message}}. O preset decide os Executores dela.",
+      "unavailable": "O cliente de {{profile}} não listou os modelos ({{reason}}). O preset decide os Executores dela."
     }
   },
   "plugins": {

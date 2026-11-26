@@ -253,6 +253,16 @@ function executorsLines(
   if (draft.executors.length === 0) {
     lines.push({ key: 'e.none', text: t('setup.executors.none'), dim: true });
   }
+  if (draft.exclude !== undefined && draft.exclude.length > 0) {
+    lines.push({
+      key: 'e.excluded',
+      text: t('setup.executors.excluded', {
+        count: draft.exclude.length,
+        list: draft.exclude.join(', '),
+      }),
+      dim: true,
+    });
+  }
   draft.executors.forEach((executor, index) => {
     lines.push({
       key: `e.${String(index)}`,

@@ -245,6 +245,15 @@
       "next": "Next field",
       "change": "Change",
       "cancel": "Cancel"
+    },
+    "modelPick": {
+      "confirm": "Take",
+      "toggle": "Check",
+      "cancel": "Keep the preset"
+    },
+    "loginCheck": {
+      "retry": "Log in again",
+      "skip": "Go on"
     }
   },
   "keymap": {
@@ -1202,7 +1211,9 @@
       "budgetRow": "{{profile}}  day {{daily}}  month {{monthly}}",
       "budgetSuggested": "{{profile}}  suggested: day {{daily}}, month {{monthly}}",
       "noCap": "no cap",
-      "usd": "USD {{value}}"
+      "usd": "USD {{value}}",
+      "excluded_one": "Left out of the preset: {{list}}",
+      "excluded_other": "Left out of the preset ({{count}}): {{list}}"
     },
     "prompt": {
       "executor": "Executor as: <account> <model> [effort]",
@@ -1295,6 +1306,20 @@
     "redetect": {
       "added": "Found now: {{list}}.",
       "failed": "Could not look for the clients again: {{message}}"
+    },
+    "models": {
+      "title": "Models of {{profile}}: check the ones that become Executors",
+      "inPreset": "in the preset",
+      "registered": "already an Executor",
+      "keys": "↑/↓ walk, Space checks, Enter takes the list, Esc keeps the preset",
+      "loggedOut": "{{profile}} is not logged in yet, so its client does not list its models.",
+      "loginCheckKeys": "L logs in again · S goes on without the login",
+      "noLogin": "{{profile}} goes on without the login; log in later with L in Settings › Subscriptions.",
+      "chosen_one": "{{profile}}: {{count}} model checked; the step of the Executors starts with it.",
+      "chosen_other": "{{profile}}: {{count}} models checked; the step of the Executors starts with them.",
+      "skipped": "{{profile}}: the list was left; the preset decides its Executors.",
+      "failed": "Could not read the models of {{profile}}: {{message}}. The preset decides its Executors.",
+      "unavailable": "The client of {{profile}} did not list its models ({{reason}}). The preset decides its Executors."
     }
   },
   "plugins": {
