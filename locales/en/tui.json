@@ -789,6 +789,18 @@
       "noLogin": "Only a subscription account signs in.",
       "noAssistant": "The assistant needs the daemon.",
       "noClient": "No client is ready on this machine, so there is no account to add yet. {{assistant}} opens the assistant, which says what is missing."
+    },
+    "models": {
+      "keys": "↑/↓ walk, Space checks, Enter writes the checked ones as Executors, Esc writes nothing",
+      "saving": "Writing the Executors of {{profile}}…",
+      "registered_one": "{{profile}}: {{count}} Executor written ({{ids}}).",
+      "registered_other": "{{profile}}: {{count}} Executors written ({{ids}}).",
+      "none": "{{profile}}: no model checked, so no Executor was written.",
+      "skipped": "{{profile}}: the list was left, so no Executor was written.",
+      "busy": "An account run is open in the assistant ({{assistant}}), so the Executors of {{profile}} were not written: finish or cancel that run there.",
+      "writeFailed": "The Executors of {{profile}} were not written: {{message}}",
+      "failed": "Could not read the models of {{profile}}: {{message}}. No Executor was written.",
+      "unavailable": "The client of {{profile}} did not list its models ({{reason}}). No Executor was written."
     }
   },
   "overview": {

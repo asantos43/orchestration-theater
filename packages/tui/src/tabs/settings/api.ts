@@ -12,9 +12,26 @@ import {
   type ConfigEditResult,
   type RemoveProfileResult,
   type SetupDetectedClient,
+  type SetupModels,
+  type SetupRunView,
+  type SetupStepSubmission,
   type StartProfileLoginResult,
 } from '@otheater/protocol';
 import { randomUUID } from 'node:crypto';
+
+/**
+ * The routes of the assistant behind the list of models after the login of an account added with
+ * A (N324, item 2, part B2; the owner on 2026-11-26). The list reads what the client says
+ * (`GET /v1/setup/models/:client/:name`), and the checked models are written by a run of the flow
+ * `add_account` (account, Executors, review, confirm), so no route of its own writes them.
+ */
+export interface SettingsSetup {
+  models(profileId: string): Promise<SetupModels>;
+  start(flow: 'add_account'): Promise<SetupRunView>;
+  submit(runId: string, body: SetupStepSubmission): Promise<SetupRunView>;
+  confirm(runId: string): Promise<SetupRunView>;
+  cancel(runId: string): Promise<SetupRunView>;
+}
 
 /**
  * What the tab Settings asks of the daemon (P16 of Phase 7). It is the thin, typed face of the
@@ -43,6 +60,8 @@ export interface SettingsApi {
   startLogin(profileId: string): Promise<StartProfileLoginResult>;
   submitLoginCode(profileId: string, code: string): Promise<void>;
   cancelLogin(profileId: string): Promise<void>;
+  /** N324, part B2: without it a new account is added as before, with no list of models. */
+  readonly setup?: SettingsSetup | undefined;
 }
 
 /** `claude-code/main` to the two parts the routes take. */
@@ -117,6 +136,16 @@ export function apiOf(client: ApiClient): SettingsApi {
         params: profileParams(profileId),
         headers: key(),
       });
+    },
+    setup: {
+      models: (profileId) =>
+        client.call(API_ROUTES.getSetupModels, { params: profileParams(profileId) }),
+      start: (flow) => client.call(API_ROUTES.startSetup, { params: { flow }, headers: key() }),
+      submit: (runId, body) =>
+        client.call(API_ROUTES.submitSetupStep, { params: { runId }, body, headers: key() }),
+      confirm: (runId) =>
+        client.call(API_ROUTES.confirmSetup, { params: { runId }, headers: key() }),
+      cancel: (runId) => client.call(API_ROUTES.cancelSetup, { params: { runId }, headers: key() }),
     },
   };
 }

@@ -12,6 +12,11 @@ import type {
   ConfigEditResult,
   RemoveProfileResult,
   SetupDetectedClient,
+  SetupExecutor,
+  SetupModel,
+  SetupModels,
+  SetupRunView,
+  SetupStepSubmission,
   StartProfileLoginResult,
 } from '@otheater/protocol';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -28,7 +33,7 @@ import type { TabContentMap } from '../../layout/tab-content.js';
 import { MOUSE_DISABLE_SEQUENCE, mouseEnableSequence } from '../../mouse/modes.js';
 import type { OpenCommand, OpenPorts } from '../../open-url.js';
 import type { UiSettings } from '../../settings.js';
-import type { SettingsApi } from './api.js';
+import type { SettingsApi, SettingsSetup } from './api.js';
 import { createSettingsTab, errorText } from './settings-tab.js';
 
 /**
@@ -141,6 +146,8 @@ class FakeSettingsApi implements SettingsApi {
   newLogin: 'logged_in' | 'logged_out' | 'unknown' = 'logged_out';
   loginsStarted: string[] = [];
   onCode: (code: string) => void = () => undefined;
+  /** N324, part B2: the routes of the assistant; absent, so the older tests add an account as before. */
+  setup: FakeSettingsSetup | undefined;
 
   /** The clients ready on the fake machine (N326: the form lists only these). */
   ready: SetupDetectedClient[] = [
@@ -241,6 +248,145 @@ class FakeSettingsApi implements SettingsApi {
   }
 }
 
+/** A model the fake catalog lists for `codex/alt`. */
+function model(
+  id: string,
+  preset: readonly string[] = [],
+  registered: readonly string[] = [],
+): SetupModel {
+  return {
+    id,
+    name: null,
+    family: null,
+    efforts: ['high'],
+    local: false,
+    contextWindow: null,
+    preset: preset.map((executorId) => ({ id: executorId, effort: 'high' })),
+    registered: [...registered],
+  };
+}
+
+const PRESET_ID = 'gpt-5-high@codex/alt';
+
+/** What the catalog of the preset found for `codex/alt`: the `discovered` of the `account` step. */
+const DISCOVERED: SetupExecutor = {
+  id: PRESET_ID,
+  profileId: 'codex/alt',
+  model: 'gpt-5',
+  alias: 'gpt-5',
+  effort: 'high',
+  provider: 'openai',
+  source: 'discovered',
+  presetExpand: true,
+  local: null,
+};
+
+/**
+ * The routes of the assistant the list of models uses (N324, part B2): the models of an account
+ * and a fake run of the flow `add_account`, which records what each step was sent.
+ */
+class FakeSettingsSetup implements SettingsSetup {
+  login: SetupModels['login'] = 'logged_in';
+  catalog: SetupModels['catalog'] = 'listed';
+  listed: SetupModel[] = [
+    model('gpt-5', [PRESET_ID]),
+    model('gpt-5-mini'),
+    model('gpt-4', [], ['gpt-4-high@codex/alt']),
+  ];
+  readonly read: string[] = [];
+  readonly calls: string[] = [];
+  readonly sent: SetupStepSubmission[] = [];
+  /** `start` answers as the daemon does when a run of the flow is open. */
+  busy = false;
+  failConfirm: Error | undefined;
+
+  models(profileId: string): Promise<SetupModels> {
+    this.read.push(profileId);
+    return Promise.resolve({
+      profileId,
+      kind: 'token_plan',
+      login: this.login,
+      preset: 'balanced',
+      catalog: this.catalog,
+      reason: this.catalog === 'unavailable' ? 'the catalog timed out' : null,
+      models: this.listed,
+      notes: [],
+    });
+  }
+
+  #view(step: string, extra: Partial<SetupRunView> = {}): SetupRunView {
+    return {
+      id: 'run-1',
+      flow: 'add_account',
+      state: 'active',
+      step,
+      steps: ['account', 'executors', 'review'],
+      done: [],
+      prompt: null,
+      result: null,
+      createdAt: NOW,
+      updatedAt: NOW,
+      finishedAt: null,
+      ...extra,
+    } as SetupRunView;
+  }
+
+  start(flow: 'add_account'): Promise<SetupRunView> {
+    this.calls.push(`start:${flow}`);
+    if (this.busy) {
+      return Promise.reject(
+        requestError('startSetup', 'conflict', 409, 'A run of add_account is already in progress.'),
+      );
+    }
+    return Promise.resolve(this.#view('account'));
+  }
+  submit(_runId: string, body: SetupStepSubmission): Promise<SetupRunView> {
+    this.calls.push(`submit:${body.step}`);
+    this.sent.push(body);
+    if (body.step === 'account') {
+      return Promise.resolve(
+        this.#view('executors', {
+          done: [
+            {
+              step: 'account',
+              input: body.input,
+              output: { profile: {}, discovered: [DISCOVERED], notes: [] },
+            },
+          ] as never,
+        }),
+      );
+    }
+    const input = body.step === 'executors' ? body.input : {};
+    const exclude = 'exclude' in input ? (input.exclude ?? []) : [];
+    const requests = 'executors' in input ? (input.executors ?? []) : [];
+    const executors = [
+      ...[DISCOVERED].filter((executor) => !exclude.includes(executor.id)).map((e) => e.id),
+      ...requests.map((request) => `${request.model}@${request.profileId}`),
+    ];
+    this.planned = executors;
+    return Promise.resolve(
+      this.#view('review', {
+        prompt: { step: 'review', plan: { executors: executors.map((id) => ({ id })) } } as never,
+      }),
+    );
+  }
+  planned: string[] = [];
+  confirm(): Promise<SetupRunView> {
+    this.calls.push('confirm');
+    if (this.failConfirm !== undefined) return Promise.reject(this.failConfirm);
+    return Promise.resolve(
+      this.#view('review', {
+        state: 'confirmed',
+        result: { preset: null, executors: this.planned, written: [] },
+      }),
+    );
+  }
+  cancel(): Promise<SetupRunView> {
+    this.calls.push('cancel');
+    return Promise.resolve(this.#view('account', { state: 'cancelled' }));
+  }
+}
+
 let eventId = 0;
 function emit(online: FakeOnline, type: string, payload: Record<string, unknown>): void {
   eventId += 1;
@@ -276,6 +422,7 @@ async function open(
     mouseWrites?: string[];
     mouseClipboard?: RenderAppOptions['mouseClipboard'];
     clipboardCopy?: UiSettings['clipboardCopy'];
+    modelPick?: UiSettings['setup']['modelPick'];
     /** The text that says the tab is drawn (an account, by default). */
     ready?: string;
   } = {},
@@ -299,6 +446,7 @@ async function open(
       ...TEST_UI_SETTINGS,
       login: { browser: options.browser ?? 'off' },
       clipboardCopy: options.clipboardCopy ?? TEST_UI_SETTINGS.clipboardCopy,
+      setup: { ...TEST_UI_SETTINGS.setup, modelPick: options.modelPick ?? 'preset' },
     },
     mouseWrites: options.mouseWrites,
     mouseClipboard: options.mouseClipboard,
@@ -946,6 +1094,243 @@ describe('the tab Settings', () => {
     emit(online, 'config.changed', { hot: ['limits.attempts_per_demand'], restart: [] });
     await app.waitForText('attempts_per_demand = 9');
   });
+});
+
+describe('the list of models after the login of A (N324, part B2)', () => {
+  const TITLE = 'Models of codex/alt';
+  const BROWSER_LOGIN: StartProfileLoginResult = {
+    status: 'started',
+    profileId: 'codex/alt',
+    mode: 'browser',
+    url: 'https://login.example.test/oauth?state=alt',
+    code: null,
+    takesCode: false,
+  };
+
+  /** A tab with the routes of the assistant, and A that logs in by the browser. */
+  async function openWithSetup(options: Parameters<typeof open>[1] = {}): Promise<{
+    app: RenderedApp;
+    online: FakeOnline;
+    api: FakeSettingsApi;
+    setup: FakeSettingsSetup;
+  }> {
+    const api = new FakeSettingsApi();
+    const setup = new FakeSettingsSetup();
+    api.setup = setup;
+    api.addLogin = 'auto';
+    api.loginAnswer = BROWSER_LOGIN;
+    const { app, online } = await open(api, { columns: 260, ...options });
+    return { app, online, api, setup };
+  }
+
+  /** Adds codex/alt and ends its login with the event of the daemon. */
+  async function addAndLogIn(app: RenderedApp, online: FakeOnline): Promise<void> {
+    await addAccount(app);
+    await app.waitForText('https://login.example.test/oauth?state=alt');
+    emit(online, 'profile.login.completed', {
+      profileId: 'codex/alt',
+      mode: 'browser',
+      durationMs: 5,
+    });
+    await app.waitForText(TITLE);
+  }
+
+  it('opens the list after the login, with the preset checked, and writes the checked ones through add_account', async () => {
+    const { app, online, setup } = await openWithSetup();
+    await addAndLogIn(app, online);
+    const frame = flat(app.frame());
+    expect(frame).toContain('[x] gpt-5  in the preset');
+    expect(frame).toContain('[ ] gpt-5-mini');
+    expect(frame).toContain('[=] gpt-4  already an Executor');
+    expect(frame).toContain('Enter writes the checked ones as Executors, Esc writes nothing');
+    expect(setup.read).toEqual(['codex/alt']);
+    await key(app, DOWN);
+    await key(app, SPACE);
+    await key(app, '\r');
+    await app.waitForText('Executors written');
+    expect(setup.calls).toEqual([
+      'start:add_account',
+      'submit:account',
+      'submit:executors',
+      'confirm',
+    ]);
+    expect(setup.sent[0]).toEqual({ step: 'account', input: { profileId: 'codex/alt' } });
+    expect(setup.sent[1]).toEqual({
+      step: 'executors',
+      input: {
+        executors: [{ profileId: 'codex/alt', model: 'gpt-5-mini' }],
+        exclude: [],
+        budgets: [],
+      },
+    });
+    expect(flat(app.frame())).toContain(
+      `codex/alt: 2 Executors written (${PRESET_ID}, gpt-5-mini@codex/alt).`,
+    );
+  });
+
+  it('an unchecked model of the preset goes in exclude', async () => {
+    const { app, online, setup } = await openWithSetup();
+    await addAndLogIn(app, online);
+    await key(app, SPACE);
+    await key(app, DOWN);
+    await key(app, SPACE);
+    await key(app, '\r');
+    await app.waitForText('Executor written');
+    expect(setup.sent[1]).toEqual({
+      step: 'executors',
+      input: {
+        executors: [{ profileId: 'codex/alt', model: 'gpt-5-mini' }],
+        exclude: [PRESET_ID],
+        budgets: [],
+      },
+    });
+    expect(flat(app.frame())).toContain('codex/alt: 1 Executor written (gpt-5-mini@codex/alt).');
+  });
+
+  it('with nothing checked (ui.setup.modelPick = none), Enter writes nothing and opens no run', async () => {
+    const { app, online, setup } = await openWithSetup({ modelPick: 'none' });
+    await addAndLogIn(app, online);
+    expect(flat(app.frame())).toContain('[ ] gpt-5  in the preset');
+    await key(app, '\r');
+    await app.waitForText('no model checked');
+    expect(setup.calls).toEqual([]);
+  });
+
+  it('Esc on the list writes nothing', async () => {
+    const { app, online, setup } = await openWithSetup();
+    await addAndLogIn(app, online);
+    await key(app, '\x1b');
+    await app.waitForText('the list was left');
+    expect(setup.calls).toEqual([]);
+    expect(app.frame()).not.toContain(TITLE);
+  });
+
+  it('a run of add_account open in the assistant: says so and sends nothing', async () => {
+    const { app, online, setup } = await openWithSetup();
+    setup.busy = true;
+    await addAndLogIn(app, online);
+    await key(app, '\r');
+    await app.waitForText('An account run is open in the assistant');
+    expect(setup.calls).toEqual(['start:add_account']);
+    expect(setup.sent).toEqual([]);
+  });
+
+  it('a confirmation that fails cancels the run and says why', async () => {
+    const { app, online, setup } = await openWithSetup();
+    setup.failConfirm = new Error('the disk is full');
+    await addAndLogIn(app, online);
+    await key(app, '\r');
+    await app.waitForText('were not written');
+    await waitUntil(() => setup.calls.includes('cancel'));
+    expect(setup.calls).toEqual([
+      'start:add_account',
+      'submit:account',
+      'submit:executors',
+      'confirm',
+      'cancel',
+    ]);
+    expect(flat(app.frame())).toContain('the disk is full');
+  });
+
+  it('an account still logged out asks the client: L logs in again', async () => {
+    const { app, online, api, setup } = await openWithSetup();
+    setup.login = 'logged_out';
+    await addAccount(app);
+    await app.waitForText('https://login.example.test/oauth?state=alt');
+    emit(online, 'profile.login.completed', {
+      profileId: 'codex/alt',
+      mode: 'browser',
+      durationMs: 5,
+    });
+    await app.waitForText('L logs in again');
+    expect(flat(app.frame())).toContain('codex/alt is not logged in yet');
+    expect(app.frame()).not.toContain(TITLE);
+    await key(app, 'l');
+    await waitUntil(() => api.loginsStarted.length === 2);
+    expect(api.loginsStarted).toEqual(['codex/alt', 'codex/alt']);
+  });
+
+  it('an account still logged out: S goes on without the login', async () => {
+    const { app, online, setup } = await openWithSetup();
+    setup.login = 'logged_out';
+    await addAccount(app);
+    await app.waitForText('https://login.example.test/oauth?state=alt');
+    emit(online, 'profile.login.completed', {
+      profileId: 'codex/alt',
+      mode: 'browser',
+      durationMs: 5,
+    });
+    await app.waitForText('L logs in again');
+    await key(app, 's');
+    await app.waitForText('goes on without the login');
+    expect(setup.calls).toEqual([]);
+  });
+
+  it('an account that already has a login opens the list with no login', async () => {
+    const { app, api, setup } = await openWithSetup();
+    api.newLogin = 'logged_in';
+    await addAccount(app);
+    await app.waitForText(TITLE);
+    expect(api.loginsStarted).toEqual([]);
+    expect(setup.read).toEqual(['codex/alt']);
+  });
+
+  it('a login at the terminal opens the list when it ends', async () => {
+    const ran: string[] = [];
+    const { app, api, setup } = await openWithSetup({
+      runLocal: (command) => {
+        ran.push(command);
+        return Promise.resolve(0);
+      },
+    });
+    api.loginAnswer = {
+      status: 'local',
+      profileId: 'codex/alt',
+      mode: 'terminal',
+      command: 'fake-cli login --profile alt',
+    };
+    await addAccount(app);
+    await app.waitForText(TITLE);
+    expect(ran).toEqual(['fake-cli login --profile alt']);
+    expect(setup.read).toEqual(['codex/alt']);
+  });
+
+  it('Esc on the panel of the login: the models are not read when the login ends later', async () => {
+    const { app, online, setup } = await openWithSetup();
+    await addAccount(app);
+    await app.waitForText('https://login.example.test/oauth?state=alt');
+    await key(app, '\x1b');
+    await app.settle();
+    emit(online, 'profile.login.completed', {
+      profileId: 'codex/alt',
+      mode: 'browser',
+      durationMs: 5,
+    });
+    await app.settle();
+    expect(setup.read).toEqual([]);
+    expect(app.frame()).not.toContain(TITLE);
+  });
+
+  it('L on an account that exists does not open the list', async () => {
+    const { app, online, setup } = await openWithSetup();
+    await key(app, 'l');
+    await app.waitForText('https://login.example.test/oauth?state=alt');
+    emit(online, 'profile.login.completed', {
+      profileId: 'claude-code/main',
+      mode: 'browser',
+      durationMs: 5,
+    });
+    await app.waitForText('Signed in: claude-code/main');
+    expect(setup.read).toEqual([]);
+  });
+
+  it('an API account opens no list', async () => {
+    const { app, api, setup } = await openWithSetup();
+    await addAccount(app, FORM_ZEN_API);
+    await waitUntil(() => api.added.length === 1);
+    await app.waitForText('opencode/zen');
+    expect(setup.read).toEqual([]);
+  }, 15_000);
 });
 
 describe('errorText', () => {
