@@ -1244,7 +1244,6 @@
       "noExecutors": "no Executor",
       "budget": "cap: day {{daily}} · month {{monthly}}",
       "writes": "Keys written to the configuration",
-      "none": "none",
       "detailsHintAll": "{{key}} folds the notes and the keys again",
       "accounts": "Accounts",
       "newExecutors_one": "{{count}} new Executor",

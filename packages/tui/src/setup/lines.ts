@@ -172,10 +172,6 @@ function usdText(value: number | null, t: TFunction): string {
   return value === null ? t('setup.executors.noCap') : t('setup.executors.usd', { value });
 }
 
-function list(items: readonly string[], t: TFunction): string {
-  return items.length === 0 ? t('setup.review.none') : items.join(', ');
-}
-
 function detectLines(
   prompt: Extract<SetupPrompt, { step: 'detect' }>,
   draft: Extract<Draft, { kind: 'detect' }>,
@@ -319,7 +315,9 @@ function executorsLines(
 /** The `<model>-<effort>` and the account of an Executor id (`<head>@<client>/<profile>`). */
 function splitId(id: string): { head: string; profileId: string | null } {
   const at = id.lastIndexOf('@');
-  return at <= 0 ? { head: id, profileId: null } : { head: id.slice(0, at), profileId: id.slice(at + 1) };
+  return at <= 0
+    ? { head: id, profileId: null }
+    : { head: id.slice(0, at), profileId: id.slice(at + 1) };
 }
 
 /** An account that the detection found and that does not take part, with why (2026-11-26). */
@@ -373,25 +371,25 @@ function planLines(
   view?: ReviewNotesView,
   run?: SetupRunView,
 ): SetupLine[] {
-  return [...summaryLines(plan, t, run), ...notesLines(plan.notes, t, view, nameOf(plan, run)), ...writesLines(plan.writes, t, view)];
+  return [
+    ...summaryLines(plan, t, run),
+    ...notesLines(plan.notes, t, view, nameOf(plan, run)),
+    ...writesLines(plan.writes, t, view),
+  ];
 }
 
 /** How the review names an Executor: without the account when only one account takes part. */
 function nameOf(plan: SetupPlan, run: SetupRunView | undefined): (id: string) => string {
-  const ids = [...plan.executors.map((executor) => executor.id), ...plan.roles.flatMap((role) => role.executors)];
-  const accounts = new Set([
-    ...ids.map((id) => splitId(id).profileId ?? id),
-    ...takingOf(run),
-  ]);
+  const ids = [
+    ...plan.executors.map((executor) => executor.id),
+    ...plan.roles.flatMap((role) => role.executors),
+  ];
+  const accounts = new Set([...ids.map((id) => splitId(id).profileId ?? id), ...takingOf(run)]);
   return accounts.size <= 1 ? (id) => splitId(id).head : (id) => id;
 }
 
 /** The preset, the accounts and the roles: what the review and the finished screen both show. */
-function summaryLines(
-  plan: SetupPlan,
-  t: TFunction,
-  run: SetupRunView | undefined,
-): SetupLine[] {
+function summaryLines(plan: SetupPlan, t: TFunction, run: SetupRunView | undefined): SetupLine[] {
   const lines: SetupLine[] = [
     {
       key: 'preset',
@@ -415,7 +413,12 @@ function summaryLines(
   ].filter((id, index, all) => all.indexOf(id) === index);
   // A flow with no account of its own (changing the preset) and nothing in the lists: no section.
   if (accounts.length > 0 || out.length > 0) {
-    lines.push({ key: 'h.accounts', text: t('setup.review.accounts'), color: TOKEN.accent, bold: true });
+    lines.push({
+      key: 'h.accounts',
+      text: t('setup.review.accounts'),
+      color: TOKEN.accent,
+      bold: true,
+    });
   }
   const pad = padded([...accounts, ...out.map((entry) => entry.profileId)]);
   for (const profileId of accounts) {
@@ -424,14 +427,18 @@ function summaryLines(
       key: `a.${profileId}`,
       indent: 2,
       text: `${pad(profileId)}  ${
-        fresh === 0 ? t('setup.review.noNewExecutors') : t('setup.review.newExecutors', { count: fresh })
+        fresh === 0
+          ? t('setup.review.noNewExecutors')
+          : t('setup.review.newExecutors', { count: fresh })
       }`,
       bold: true,
     });
     const own = ids.filter((id) => splitId(id).profileId === profileId);
     const padHead = padded(own.map((id) => splitId(id).head));
     for (const id of own) {
-      const roles = plan.roles.filter((role) => role.executors.includes(id)).map((role) => role.role);
+      const roles = plan.roles
+        .filter((role) => role.executors.includes(id))
+        .map((role) => role.role);
       lines.push({
         key: `x.${id}`,
         indent: 4,
@@ -443,10 +450,10 @@ function summaryLines(
       lines.push({
         key: `b.${profileId}`,
         indent: 4,
-        text: `${t('setup.review.budget', {
+        text: t('setup.review.budget', {
           daily: usdText(budget.dailyUsd, t),
           monthly: usdText(budget.monthlyUsd, t),
-        })}`,
+        }),
         dim: true,
       });
     }
@@ -460,7 +467,9 @@ function summaryLines(
     });
   }
   const shown = plan.roles.map((role) =>
-    role.executors.length === 0 ? t('setup.review.noExecutors') : role.executors.map(name).join(', '),
+    role.executors.length === 0
+      ? t('setup.review.noExecutors')
+      : role.executors.map(name).join(', '),
   );
   if (plan.roles.length === 0) return lines;
   const roleWidth = Math.max(0, ...plan.roles.map((role) => role.role.length));
@@ -487,7 +496,8 @@ function writesLines(
   t: TFunction,
   view: ReviewNotesView | undefined,
 ): SetupLine[] {
-  if (writes.length === 0) return [{ key: 'writes', text: t('setup.review.writesNone'), dim: true }];
+  if (writes.length === 0)
+    return [{ key: 'writes', text: t('setup.review.writesNone'), dim: true }];
   if (view?.all === true) {
     return [
       { key: 'h.writes', text: t('setup.review.writes'), color: TOKEN.accent, bold: true },
@@ -529,7 +539,9 @@ interface NoteGroup {
 }
 
 function unique(items: readonly (string | null | undefined)[]): string[] {
-  return items.filter((item, index, all): item is string => typeof item === 'string' && all.indexOf(item) === index);
+  return items.filter(
+    (item, index, all): item is string => typeof item === 'string' && all.indexOf(item) === index,
+  );
 }
 
 /**
@@ -539,18 +551,25 @@ function unique(items: readonly (string | null | undefined)[]): string[] {
  */
 function noteText(group: NoteGroup, t: TFunction, name: (id: string) => string): string | null {
   const { notes } = group;
-  const text = t([`setup.review.note.${group.code}_${group.severity}`, `setup.review.note.${group.code}`], {
-    defaultValue: '',
-    executors: unique(notes.map((note) => note.executorId)).map(name).join(', '),
-    roles: unique(notes.map((note) => note.role)).join(', '),
-    profiles: unique(notes.map((note) => note.profileId)).join(', '),
-    heads: unique(notes.map((note) => note.head)).join(', '),
-    family: unique(notes.map((note) => (note.head === undefined ? undefined : familyOf(note.head)))).join(', '),
-    count:
-      group.code === 'noAccountFamily'
-        ? unique(notes.map((note) => note.head)).length
-        : notes.length,
-  });
+  const text = t(
+    [`setup.review.note.${group.code}_${group.severity}`, `setup.review.note.${group.code}`],
+    {
+      defaultValue: '',
+      executors: unique(notes.map((note) => note.executorId))
+        .map(name)
+        .join(', '),
+      roles: unique(notes.map((note) => note.role)).join(', '),
+      profiles: unique(notes.map((note) => note.profileId)).join(', '),
+      heads: unique(notes.map((note) => note.head)).join(', '),
+      family: unique(
+        notes.map((note) => (note.head === undefined ? undefined : familyOf(note.head))),
+      ).join(', '),
+      count:
+        group.code === 'noAccountFamily'
+          ? unique(notes.map((note) => note.head)).length
+          : notes.length,
+    },
+  );
   return text === '' ? null : text;
 }
 
@@ -584,7 +603,11 @@ function notesLines(
       if (text !== null) lines.push({ key: `${key}.m`, indent: 2, text: note.message, dim: true });
     });
     if (notes.length > 0 && view.key !== '') {
-      lines.push({ key: 'n.hint', text: t('setup.review.detailsHintAll', { key: view.key }), dim: true });
+      lines.push({
+        key: 'n.hint',
+        text: t('setup.review.detailsHintAll', { key: view.key }),
+        dim: true,
+      });
     }
     return lines;
   }
@@ -608,7 +631,9 @@ function notesLines(
       name,
     );
     if (text === null) {
-      group.notes.forEach((note, index) => lines.push(markLine(note.severity, `n.${id}.${String(index)}`, note.message)));
+      group.notes.forEach((note, index) =>
+        lines.push(markLine(note.severity, `n.${id}.${String(index)}`, note.message)),
+      );
       continue;
     }
     // Only a line that folds several notes names the key that unfolds them.
@@ -627,7 +652,12 @@ function finishedLines(input: SetupLinesInput): SetupLine[] {
     lines.push({ key: 'close', text: t('setup.done.close', { key: closeKey }), dim: true });
     return lines;
   }
-  lines.push({ key: 'confirmed', text: `✓ ${t('setup.done.confirmed')}`, color: TOKEN.ok, bold: true });
+  lines.push({
+    key: 'confirmed',
+    text: `✓ ${t('setup.done.confirmed')}`,
+    color: TOKEN.ok,
+    bold: true,
+  });
   const result = run.result;
   const plan = input.confirmedPlan;
   if (plan !== undefined) {

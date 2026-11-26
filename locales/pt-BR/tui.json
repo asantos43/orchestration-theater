@@ -1244,7 +1244,6 @@
       "noExecutors": "nenhum Executor",
       "budget": "teto: dia {{daily}} · mês {{monthly}}",
       "writes": "Chaves gravadas na configuração",
-      "none": "nenhuma",
       "detailsHintAll": "{{key}} dobra as notas e as chaves de novo",
       "accounts": "Contas",
       "newExecutors_one": "{{count}} Executor novo",
