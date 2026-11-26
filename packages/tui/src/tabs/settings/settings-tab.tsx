@@ -29,6 +29,7 @@ import { useTabHost } from '../../layout/tab-host.js';
 import type { TabContentProps } from '../../layout/tab-types.js';
 import { useRenderControl } from '../../render-control.js';
 import { Section } from '../../layout/section.js';
+import { noReadingKey } from '../../layout/scenario-rows.js';
 import { breakLine, cellWidth, clip, fit, wrapText } from '../../layout/text.js';
 import { paint, TOKEN } from '../../layout/theme.js';
 import { Text } from '../../layout/themed-text.js';
@@ -1066,7 +1067,15 @@ function SettingsTab({ content, options }: TabProps): ReactNode {
             state.push(t(`settings.profile.${entry.profile.state}`));
           if (entry.profile.kind === 'api' && !entry.hasSecret)
             state.push(t('settings.profile.noSecret'));
-          state.push(t(`settings.quota.${line.state}`));
+          state.push(
+            line.state === 'unknown' && line.percent === undefined
+              ? t(
+                  noReadingKey(entry.profile.id) === 'firstSession'
+                    ? 'settings.quota.firstSession'
+                    : 'settings.quota.unknown',
+                )
+              : t(`settings.quota.${line.state}`),
+          );
           if (line.resetsIn !== undefined) {
             state.push(t('settings.profile.resets', { time: formatSpan(line.resetsIn) }));
           }

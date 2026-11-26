@@ -709,7 +709,8 @@
       "ok": "ok",
       "near_limit": "perto do limite",
       "exhausted": "esgotada",
-      "unknown": "sem leitura"
+      "unknown": "sem leitura",
+      "firstSession": "lida na 1ª sessão"
     },
     "profile": {
       "draining": "drenando",
