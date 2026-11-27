@@ -66,7 +66,7 @@ import {
   type InstalledClients,
 } from './detect.js';
 import { discoverForPreset, matchPreset, presetMatchOf } from './discover.js';
-import { buildPlan, type PlanApply, type PlanResult } from './plan.js';
+import { buildPlan, type PlanApply, type PlanResult, type ResolvedPlacement } from './plan.js';
 
 /**
  * The setup assistant of the daemon (architecture 5.7, "Primeira execução e assistente de
@@ -144,7 +144,7 @@ interface RunFacts {
   readonly registered: readonly SetupExecutor[];
   readonly givenBudgets: readonly SetupBudget[];
   /** N333: the roles given at the review to Executors of the run. */
-  readonly placements: readonly SetupRolePlacement[];
+  readonly placements: readonly ResolvedPlacement[];
   /** N334: what the `security` step got: `warn` (yes), `keep` (no) or `none` (not asked). */
   readonly security: 'warn' | 'keep' | 'none';
   readonly notes: readonly SetupNote[];
@@ -189,13 +189,36 @@ function doneOf(run: SetupRunRecord): SetupDoneStep[] {
   });
 }
 
+/**
+ * N335 [proposta]: the placements of an answer with each Executor named by id. A `request` is the
+ * index in `executors` of the same answer; `output.executors` is in that order, one per request.
+ * The done step keeps the answer as the client sent it (a replay of it is the same answer), and the
+ * plan reads the resolved form from here.
+ */
+function resolvePlacements(
+  placements: readonly SetupRolePlacement[],
+  registered: readonly SetupExecutor[],
+): ResolvedPlacement[] {
+  return placements.map((placement) => {
+    const executorId =
+      placement.executorId ??
+      (placement.request === undefined ? undefined : registered[placement.request]?.id);
+    if (executorId === undefined) {
+      throw new InvalidInput(
+        `The request ${String(placement.request)} is not one of the Executors this answer registers`,
+      );
+    }
+    return { executorId, mode: placement.mode, roles: placement.roles };
+  });
+}
+
 function factsOf(done: readonly SetupDoneStep[]): RunFacts {
   let accounts: string[] | null = null;
   let preset: RolePresetName | null = null;
   let discovered: SetupExecutor[] = [];
   let registered: SetupExecutor[] = [];
   let givenBudgets: SetupBudget[] = [];
-  let placements: SetupRolePlacement[] = [];
+  let placements: ResolvedPlacement[] = [];
   let security: RunFacts['security'] = 'none';
   const notes: SetupNote[] = [];
   for (const entry of done) {
@@ -221,7 +244,7 @@ function factsOf(done: readonly SetupDoneStep[]): RunFacts {
         discovered = discovered.filter((executor) => !excluded.has(executor.id));
         registered = [...entry.output.executors];
         givenBudgets = [...entry.input.budgets];
-        placements = [...entry.input.roles];
+        placements = resolvePlacements(entry.input.roles, entry.output.executors);
         notes.push(...entry.output.notes);
         break;
       }
@@ -879,7 +902,7 @@ export class SetupService {
     // N333: a role is given to an Executor of this run: the ones the catalogs found (not left out)
     // and the ones this answer registers.
     const placed = new Set<string>();
-    for (const placement of input.roles) {
+    for (const placement of resolvePlacements(input.roles, registered)) {
       if (!taken.has(placement.executorId)) {
         throw new InvalidInput(
           `The Executor ${placement.executorId} is not one of this run: only those can be given roles`,

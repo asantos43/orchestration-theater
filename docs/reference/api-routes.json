@@ -19748,26 +19748,50 @@
             "type": "object",
             "properties": {
               "executorId": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 512
+                "$ref": "#/$defs/__schema13"
+              },
+              "request": {
+                "$ref": "#/$defs/__schema14"
+              },
+              "mode": {
+                "$ref": "#/$defs/__schema15"
               },
               "roles": {
-                "minItems": 1,
-                "maxItems": 7,
-                "type": "array",
-                "items": {
-                  "$ref": "#/$defs/__schema13"
-                }
+                "$ref": "#/$defs/__schema16"
               }
             },
             "required": [
-              "executorId",
+              "mode",
               "roles"
             ],
             "additionalProperties": false
           },
           "__schema13": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "__schema14": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 31
+          },
+          "__schema15": {
+            "default": "add",
+            "type": "string",
+            "enum": [
+              "add",
+              "exact"
+            ]
+          },
+          "__schema16": {
+            "maxItems": 7,
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/__schema17"
+            }
+          },
+          "__schema17": {
             "type": "string",
             "enum": [
               "director",
@@ -20876,26 +20900,50 @@
             "type": "object",
             "properties": {
               "executorId": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 512
+                "$ref": "#/$defs/__schema12"
+              },
+              "request": {
+                "$ref": "#/$defs/__schema13"
+              },
+              "mode": {
+                "$ref": "#/$defs/__schema14"
               },
               "roles": {
-                "minItems": 1,
-                "maxItems": 7,
-                "type": "array",
-                "items": {
-                  "$ref": "#/$defs/__schema12"
-                }
+                "$ref": "#/$defs/__schema15"
               }
             },
             "required": [
-              "executorId",
+              "mode",
               "roles"
             ],
             "additionalProperties": false
           },
           "__schema12": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "__schema13": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 31
+          },
+          "__schema14": {
+            "default": "add",
+            "type": "string",
+            "enum": [
+              "add",
+              "exact"
+            ]
+          },
+          "__schema15": {
+            "maxItems": 7,
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/__schema16"
+            }
+          },
+          "__schema16": {
             "type": "string",
             "enum": [
               "director",
@@ -22039,26 +22087,50 @@
             "type": "object",
             "properties": {
               "executorId": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 512
+                "$ref": "#/$defs/__schema12"
+              },
+              "request": {
+                "$ref": "#/$defs/__schema13"
+              },
+              "mode": {
+                "$ref": "#/$defs/__schema14"
               },
               "roles": {
-                "minItems": 1,
-                "maxItems": 7,
-                "type": "array",
-                "items": {
-                  "$ref": "#/$defs/__schema12"
-                }
+                "$ref": "#/$defs/__schema15"
               }
             },
             "required": [
-              "executorId",
+              "mode",
               "roles"
             ],
             "additionalProperties": false
           },
           "__schema12": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "__schema13": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 31
+          },
+          "__schema14": {
+            "default": "add",
+            "type": "string",
+            "enum": [
+              "add",
+              "exact"
+            ]
+          },
+          "__schema15": {
+            "maxItems": 7,
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/__schema16"
+            }
+          },
+          "__schema16": {
             "type": "string",
             "enum": [
               "director",
@@ -23201,26 +23273,50 @@
             "type": "object",
             "properties": {
               "executorId": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 512
+                "$ref": "#/$defs/__schema12"
+              },
+              "request": {
+                "$ref": "#/$defs/__schema13"
+              },
+              "mode": {
+                "$ref": "#/$defs/__schema14"
               },
               "roles": {
-                "minItems": 1,
-                "maxItems": 7,
-                "type": "array",
-                "items": {
-                  "$ref": "#/$defs/__schema12"
-                }
+                "$ref": "#/$defs/__schema15"
               }
             },
             "required": [
-              "executorId",
+              "mode",
               "roles"
             ],
             "additionalProperties": false
           },
           "__schema12": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "__schema13": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 31
+          },
+          "__schema14": {
+            "default": "add",
+            "type": "string",
+            "enum": [
+              "add",
+              "exact"
+            ]
+          },
+          "__schema15": {
+            "maxItems": 7,
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/__schema16"
+            }
+          },
+          "__schema16": {
             "type": "string",
             "enum": [
               "director",
@@ -24363,26 +24459,50 @@
             "type": "object",
             "properties": {
               "executorId": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 512
+                "$ref": "#/$defs/__schema12"
+              },
+              "request": {
+                "$ref": "#/$defs/__schema13"
+              },
+              "mode": {
+                "$ref": "#/$defs/__schema14"
               },
               "roles": {
-                "minItems": 1,
-                "maxItems": 7,
-                "type": "array",
-                "items": {
-                  "$ref": "#/$defs/__schema12"
-                }
+                "$ref": "#/$defs/__schema15"
               }
             },
             "required": [
-              "executorId",
+              "mode",
               "roles"
             ],
             "additionalProperties": false
           },
           "__schema12": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "__schema13": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 31
+          },
+          "__schema14": {
+            "default": "add",
+            "type": "string",
+            "enum": [
+              "add",
+              "exact"
+            ]
+          },
+          "__schema15": {
+            "maxItems": 7,
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/__schema16"
+            }
+          },
+          "__schema16": {
             "type": "string",
             "enum": [
               "director",
@@ -25525,26 +25645,50 @@
             "type": "object",
             "properties": {
               "executorId": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 512
+                "$ref": "#/$defs/__schema12"
+              },
+              "request": {
+                "$ref": "#/$defs/__schema13"
+              },
+              "mode": {
+                "$ref": "#/$defs/__schema14"
               },
               "roles": {
-                "minItems": 1,
-                "maxItems": 7,
-                "type": "array",
-                "items": {
-                  "$ref": "#/$defs/__schema12"
-                }
+                "$ref": "#/$defs/__schema15"
               }
             },
             "required": [
-              "executorId",
+              "mode",
               "roles"
             ],
             "additionalProperties": false
           },
           "__schema12": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "__schema13": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 31
+          },
+          "__schema14": {
+            "default": "add",
+            "type": "string",
+            "enum": [
+              "add",
+              "exact"
+            ]
+          },
+          "__schema15": {
+            "maxItems": 7,
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/__schema16"
+            }
+          },
+          "__schema16": {
             "type": "string",
             "enum": [
               "director",
@@ -25864,26 +26008,49 @@
             "type": "object",
             "properties": {
               "executorId": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 512
+                "$ref": "#/$defs/__schema5"
+              },
+              "request": {
+                "$ref": "#/$defs/__schema6"
+              },
+              "mode": {
+                "$ref": "#/$defs/__schema7"
               },
               "roles": {
-                "minItems": 1,
-                "maxItems": 7,
-                "type": "array",
-                "items": {
-                  "$ref": "#/$defs/__schema5"
-                }
+                "$ref": "#/$defs/__schema8"
               }
             },
             "required": [
-              "executorId",
               "roles"
             ],
             "additionalProperties": false
           },
           "__schema5": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "__schema6": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 31
+          },
+          "__schema7": {
+            "default": "add",
+            "type": "string",
+            "enum": [
+              "add",
+              "exact"
+            ]
+          },
+          "__schema8": {
+            "maxItems": 7,
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/__schema9"
+            }
+          },
+          "__schema9": {
             "type": "string",
             "enum": [
               "director",

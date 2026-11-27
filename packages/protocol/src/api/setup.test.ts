@@ -24,7 +24,7 @@ describe('the roles given to an Executor at the executors step (N333)', () => {
       roles: [{ executorId: 'codex-sol-high@codex/main', roles: ['author', 'reviewer'] }],
     });
     expect(parsed.roles).toEqual([
-      { executorId: 'codex-sol-high@codex/main', roles: ['author', 'reviewer'] },
+      { executorId: 'codex-sol-high@codex/main', mode: 'add', roles: ['author', 'reviewer'] },
     ]);
   });
 
@@ -39,6 +39,47 @@ describe('the roles given to an Executor at the executors step (N333)', () => {
       SetupRolePlacementSchema.safeParse({ executorId: 'a@b/c', roles: ['actor'], extra: 1 })
         .success,
     ).toBe(false);
+  });
+
+  it('mode add is the default, and exact is the exact set of roles (N335, [proposta])', () => {
+    expect(SetupRolePlacementSchema.parse({ executorId: 'a@b/c', roles: ['actor'] }).mode).toBe(
+      'add',
+    );
+    expect(
+      SetupRolePlacementSchema.parse({ executorId: 'a@b/c', mode: 'exact', roles: ['actor'] }).mode,
+    ).toBe('exact');
+    expect(
+      SetupRolePlacementSchema.safeParse({ executorId: 'a@b/c', mode: 'merge', roles: ['actor'] })
+        .success,
+    ).toBe(false);
+  });
+
+  it('exact may take the Executor out of every role; add may not', () => {
+    expect(
+      SetupRolePlacementSchema.safeParse({ executorId: 'a@b/c', mode: 'exact', roles: [] }).success,
+    ).toBe(true);
+    expect(
+      SetupRolePlacementSchema.safeParse({ executorId: 'a@b/c', mode: 'add', roles: [] }).success,
+    ).toBe(false);
+  });
+
+  it('names the Executor by id or by the index of the request, never both or neither', () => {
+    const byRequest = SetupRolePlacementSchema.parse({ request: 1, roles: ['critic'] });
+    expect(byRequest).toEqual({ request: 1, mode: 'add', roles: ['critic'] });
+    expect(
+      SetupRolePlacementSchema.safeParse({ executorId: 'a@b/c', request: 0, roles: ['critic'] })
+        .success,
+    ).toBe(false);
+    expect(SetupRolePlacementSchema.safeParse({ roles: ['critic'] }).success).toBe(false);
+    expect(SetupRolePlacementSchema.safeParse({ request: -1, roles: ['critic'] }).success).toBe(
+      false,
+    );
+    expect(SetupRolePlacementSchema.safeParse({ request: 32, roles: ['critic'] }).success).toBe(
+      false,
+    );
+    expect(SetupRolePlacementSchema.safeParse({ request: 1.5, roles: ['critic'] }).success).toBe(
+      false,
+    );
   });
 });
 
