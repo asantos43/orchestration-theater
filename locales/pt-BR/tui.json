@@ -615,6 +615,38 @@
       "failed": "Não deu para abrir o cenário: {{message}}",
       "noRepo": "Digite o repositório do projeto.",
       "noConnection": "Não há conexão com o daemon.",
+      "init": {
+        "folder": "Pasta: {{repo}}",
+        "ask": {
+          "files": "Tem arquivos e não é um repositório git. Comece o projeto com:",
+          "empty": "Está vazia e não é um repositório git. Comece o projeto com:",
+          "missing": "Ainda não existe. Crie-a e comece o projeto com:"
+        },
+        "options": {
+          "commit_all": {
+            "label": "Commitar todos os arquivos",
+            "detail": "git init e um primeiro commit com tudo"
+          },
+          "empty_commit": {
+            "label": "Commit inicial vazio",
+            "detail": "git init; os arquivos ficam fora do commit"
+          },
+          "software": {
+            "label": "Modelo software",
+            "detail": "README, changelog, testes e CI"
+          },
+          "empty_repo": {
+            "label": "Repositório vazio",
+            "detail": "git init e um commit inicial vazio"
+          },
+          "cancel": {
+            "label": "Cancelar",
+            "detail": "volta; nada é criado"
+          }
+        },
+        "hint": "↑↓ escolhem · Enter confirma · Esc cancela",
+        "refused": "\"{{repo}}\" tem arquivos e não é um repositório git, e projects.init.mode é \"refuse\": o daemon não o inicializa."
+      },
       "nameLabel": "Nome do chat (opcional)",
       "taskOff": "Tarefa: chega com a Fase 9b",
       "typeOff": "{{type}}: o daemon ainda não abre este tipo",

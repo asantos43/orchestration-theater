@@ -357,6 +357,14 @@ function ShellBody(props: ShellProps): ReactNode {
         : async () => (await projectClient.call(API_ROUTES.listScenarioTypes)).items,
     [projectClient],
   );
+  // N332: what a folder is, before a project is opened on it; a daemon without the route fails, and the prompt opens as before.
+  const inspectFolder = useMemo(
+    () =>
+      projectClient === undefined
+        ? undefined
+        : async (path: string) => projectClient.inspectFolder(path),
+    [projectClient],
+  );
   const openNewScenario = useCallback(
     async (
       request: NewScenarioRequest,
@@ -366,7 +374,12 @@ function ShellBody(props: ShellProps): ReactNode {
       const opened = await projectClient.call(API_ROUTES.openScenario, {
         body:
           request.type === 'project'
-            ? { type: 'project', repo: request.repo }
+            ? {
+                type: 'project',
+                repo: request.repo,
+                ...(request.init === undefined ? {} : { init: request.init }),
+                ...(request.newProject === true ? { newProject: true } : {}),
+              }
             : { type: 'chat', ...(request.name === undefined ? {} : { name: request.name }) },
         headers: { 'idempotency-key': randomUUID() },
       });
@@ -1002,6 +1015,7 @@ function ShellBody(props: ShellProps): ReactNode {
             onFavorites={saveFavorites}
             cwd={cwd}
             {...(readScenarioTypes === undefined ? {} : { types: readScenarioTypes })}
+            {...(inspectFolder === undefined ? {} : { inspect: inspectFolder })}
             open={(request) => openNewScenario(request, newProject.onOpened)}
             capture={capture}
             onClose={() => {

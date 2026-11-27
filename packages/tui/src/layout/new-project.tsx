@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
-import { ApiRequestError } from '@otheater/client';
+import { ApiRequestError, needsInitOf } from '@otheater/client';
+import type { FolderInitChoice, InspectFolderResult } from '@otheater/protocol';
 import { Box } from 'ink';
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
@@ -16,6 +17,13 @@ import { nodeFolderFs } from './folder-fs.js';
 import type { FolderFs } from './folder-picker.js';
 import { FolderPicker, PICKER_FIXED_LINES, useFolderPicker } from './folder-picker-view.js';
 import { overlayRect, type OverlayFrame } from './overlays.js';
+import {
+  InitQuestion,
+  initExtra,
+  initOptions,
+  initVerdict,
+  type InitQuestionKind,
+} from './project-init.js';
 import { clipStart } from './text.js';
 import { TOKEN } from './theme.js';
 
@@ -42,9 +50,18 @@ export const FALLBACK_SCENARIO_TYPES: readonly ScenarioTypeChoice[] = [
   { id: 'chat', creatable: true },
 ];
 
-/** What the prompt opens: a project on a repository or a chat, with an optional name. */
+/**
+ * What the prompt opens: a project on a repository or a chat, with an optional name. The project
+ * may carry what the Producer chose for a folder that is not a repository yet (N332): `init` for
+ * the daemon to turn it into one, or `newProject` to start from the software model.
+ */
 export type NewScenarioRequest =
-  | { readonly type: 'project'; readonly repo: string }
+  | {
+      readonly type: 'project';
+      readonly repo: string;
+      readonly init?: FolderInitChoice;
+      readonly newProject?: true;
+    }
   | { readonly type: 'chat'; readonly name?: string };
 
 /** Whether the TUI knows how to ask for a type: the daemon may list a type the TUI has no field for. */
@@ -145,6 +162,8 @@ const BROWSER_WIDTH = 84;
 const BROWSER_HEIGHT = 26;
 /** The rows of the overlay that are not the list: border, title, types, folder, root, filter, status and hint. */
 const BROWSER_CHROME = 2 + 3 + PICKER_FIXED_LINES + 2 + 2;
+/** [proposta] The overlay of the question: the folder, the text, three options and the hint. */
+const QUESTION_HEIGHT = 12;
 /** [proposta] The fewest rows of the list: below it the browser has no room to be useful. */
 const LIST_MIN = 3;
 
@@ -160,6 +179,11 @@ export interface NewProjectPromptProps {
   readonly types?: () => Promise<readonly ScenarioTypeChoice[]>;
   /** Opens the scenario; throws what went wrong. */
   readonly open: (request: NewScenarioRequest) => Promise<void>;
+  /**
+   * Tells what the folder of a project is before it is opened (`POST /v1/folders/inspect`, N332).
+   * Without it, or when it fails (a daemon without the route), the project is opened as it always was.
+   */
+  readonly inspect?: (path: string) => Promise<InspectFolderResult>;
   readonly onClose: () => void;
   /** The shell's flag that a field has the keyboard: set while the prompt is on screen. */
   readonly capture: RefObject<boolean>;
@@ -180,6 +204,23 @@ export interface NewProjectPromptProps {
 }
 
 const NO_FOLDERS: readonly string[] = [];
+
+/** The question of what to do with a folder that is not a repository (N332): what it is about and where the cursor is. */
+interface InitQuestionState {
+  readonly kind: InitQuestionKind;
+  readonly repo: string;
+  readonly cursor: number;
+}
+
+/** The state the keys read, kept in step with every key. */
+interface Latest {
+  readonly type: NewProjectTypeMode;
+  readonly texts: Record<NewProjectTypeMode, string>;
+  readonly types: readonly ScenarioTypeChoice[];
+  readonly moved: boolean;
+  readonly mode: 'browser' | 'field';
+  readonly question: InitQuestionState | undefined;
+}
 
 /**
  * The prompt of a new scenario: the row of the types (Tab and Shift+Tab move, a type the daemon
@@ -206,7 +247,9 @@ export function NewProjectPrompt(props: NewProjectPromptProps): ReactNode {
   const [mode, setMode] = useState<'browser' | 'field'>(
     browser && props.startInField !== true ? 'browser' : 'field',
   );
-  const latest = useRef({ type, texts, types, moved: false, mode });
+  // N332: the question of what to do with a folder that is not a repository (`undefined`: none).
+  const [question, setQuestion] = useState<InitQuestionState | undefined>(undefined);
+  const latest = useRef<Latest>({ type, texts, types, moved: false, mode, question: undefined });
   const [error, setError] = useState<string | undefined>(undefined);
   const [busy, setBusy] = useState(false);
   const mounted = useRef(true);
@@ -260,6 +303,32 @@ export function NewProjectPrompt(props: NewProjectPromptProps): ReactNode {
     }
     setBusy(true);
     setError(undefined);
+    const { inspect } = props;
+    if (request.type === 'project' && inspect !== undefined) {
+      const project = request;
+      inspect(project.repo).then(
+        (found) => {
+          if (mounted.current) proceed(project, found);
+        },
+        // A daemon without the route, or an inspection that failed: the open says what is wrong, as before.
+        () => {
+          if (mounted.current) launch(project);
+        },
+      );
+      return;
+    }
+    launch(request);
+  };
+
+  const ask = (next: InitQuestionState | undefined): void => {
+    latest.current = { ...latest.current, question: next };
+    setQuestion(next);
+  };
+
+  /** Opens the request; a folder that needs the Producer's choice (it changed since the inspection) asks it. */
+  const launch = (request: NewScenarioRequest): void => {
+    setBusy(true);
+    setError(undefined);
     props.open(request).then(
       () => {
         if (mounted.current) props.onClose();
@@ -267,11 +336,63 @@ export function NewProjectPrompt(props: NewProjectPromptProps): ReactNode {
       (failure: unknown) => {
         if (!mounted.current) return;
         setBusy(false);
+        if (
+          request.type === 'project' &&
+          request.init === undefined &&
+          needsInitOf(failure) !== undefined
+        ) {
+          ask({ kind: 'files', repo: request.repo, cursor: 0 });
+          return;
+        }
         setError(
           openFailure(failure, request.type === 'project' ? request.repo : undefined, t as never),
         );
       },
     );
+  };
+
+  /** What the inspection of the folder says to do (N332): open it, refuse, or ask the Producer. */
+  const proceed = (
+    request: NewScenarioRequest & { readonly type: 'project' },
+    found: InspectFolderResult,
+  ): void => {
+    const verdict = initVerdict(found);
+    if (verdict.action === 'open') {
+      launch(request);
+      return;
+    }
+    setBusy(false);
+    if (verdict.action === 'refuse') {
+      setError(
+        (t as unknown as Translate)('layout.newProject.init.refused', { repo: request.repo }),
+      );
+    } else {
+      ask({ kind: verdict.kind, repo: request.repo, cursor: 0 });
+    }
+  };
+
+  // The keys of the question (N332): the arrows and Enter pick, Esc goes back; nothing else acts.
+  const questionKey = (event: KeyEvent, asked: InitQuestionState): void => {
+    const options = initOptions(asked.kind);
+    switch (event.combo) {
+      case 'Up':
+      case 'Down': {
+        const step = event.combo === 'Up' ? -1 : 1;
+        ask({ ...asked, cursor: (asked.cursor + step + options.length) % options.length });
+        break;
+      }
+      case 'Enter': {
+        const option = options[asked.cursor];
+        ask(undefined);
+        if (option !== undefined && option !== 'cancel') {
+          launch({ type: 'project', repo: asked.repo, ...initExtra(option) });
+        }
+        break;
+      }
+      case 'Esc':
+        ask(undefined);
+        break;
+    }
   };
 
   const goTo = (next: 'browser' | 'field'): void => {
@@ -315,6 +436,10 @@ export function NewProjectPrompt(props: NewProjectPromptProps): ReactNode {
   useRawKeys((event: KeyEvent) => {
     if (busy) return;
     const now = latest.current;
+    if (now.question !== undefined) {
+      questionKey(event, now.question);
+      return;
+    }
     if (event.combo === 'Tab' || event.combo === 'Shift+Tab') {
       const next = stepType(now.types, now.type, event.combo === 'Tab' ? 1 : -1);
       latest.current = { ...now, type: next, moved: true };
@@ -350,10 +475,12 @@ export function NewProjectPrompt(props: NewProjectPromptProps): ReactNode {
   });
 
   const palette = useTheme();
-  const browsing = browser && type === 'project' && mode === 'browser';
+  const browsing = browser && type === 'project' && mode === 'browser' && question === undefined;
   const rect = overlayRect(
     props.screen,
-    browsing ? { width: BROWSER_WIDTH, height: BROWSER_HEIGHT } : { width: 72, height: 11 },
+    browsing
+      ? { width: BROWSER_WIDTH, height: BROWSER_HEIGHT }
+      : { width: 72, height: question === undefined ? 11 : QUESTION_HEIGHT },
   );
   const inner = Math.max(1, rect.width - 4);
   const value = texts[type];
@@ -390,65 +517,78 @@ export function NewProjectPrompt(props: NewProjectPromptProps): ReactNode {
         {t('layout.newProject.title')}
       </Text>
       <MouseModalScope>
-        <Text wrap="truncate">
-          {types.map((choice, index) => (
-            <Text key={choice.id}>
-              {index > 0 ? '  ' : ''}
-              {choice.id === type ? (
-                <Text
-                  bold
-                  inverse
-                  color={TOKEN.accent}
-                >{` ${typeLabel(choice.id, t as never)} `}</Text>
-              ) : (
-                <Text
-                  dimColor={off.includes(choice)}
-                >{` ${typeLabel(choice.id, t as never)} `}</Text>
-              )}
-            </Text>
-          ))}
-        </Text>
-        <Text dimColor wrap="truncate">
-          {off.length === 0 ? ' ' : off.map((choice) => typeOff(choice.id, t as never)).join(' · ')}
-        </Text>
-        {browsing ? (
-          <>
-            <FolderPicker
-              state={picker.state}
-              rows={picker.rows}
-              width={inner}
-              height={listHeight(props.screen.rows)}
-            />
-            <Box flexDirection="column" height={2}>
-              {status}
-            </Box>
-            <Box flexGrow={1} />
-            <Text dimColor wrap="truncate">
-              {t('layout.newProject.picker.hintMove')}
-            </Text>
-            <Text dimColor wrap="truncate">
-              {t('layout.newProject.picker.hintMore')}
-            </Text>
-          </>
+        {question !== undefined ? (
+          <InitQuestion
+            kind={question.kind}
+            repo={question.repo}
+            cursor={question.cursor}
+            width={inner}
+          />
         ) : (
           <>
-            <Text dimColor wrap="truncate">
-              {t(type === 'chat' ? 'layout.newProject.nameLabel' : 'layout.newProject.label')}
-            </Text>
             <Text wrap="truncate">
-              <Text color={TOKEN.accent}>{'> '}</Text>
-              {clipStart(value, Math.max(1, inner - 3))}
-              {busy ? '' : <Text caret> </Text>}
+              {types.map((choice, index) => (
+                <Text key={choice.id}>
+                  {index > 0 ? '  ' : ''}
+                  {choice.id === type ? (
+                    <Text
+                      bold
+                      inverse
+                      color={TOKEN.accent}
+                    >{` ${typeLabel(choice.id, t as never)} `}</Text>
+                  ) : (
+                    <Text
+                      dimColor={off.includes(choice)}
+                    >{` ${typeLabel(choice.id, t as never)} `}</Text>
+                  )}
+                </Text>
+              ))}
             </Text>
-            {status}
-            <Box flexGrow={1} />
             <Text dimColor wrap="truncate">
-              {t(
-                browser && type === 'project'
-                  ? 'layout.newProject.hintField'
-                  : 'layout.newProject.hint',
-              )}
+              {off.length === 0
+                ? ' '
+                : off.map((choice) => typeOff(choice.id, t as never)).join(' · ')}
             </Text>
+            {browsing ? (
+              <>
+                <FolderPicker
+                  state={picker.state}
+                  rows={picker.rows}
+                  width={inner}
+                  height={listHeight(props.screen.rows)}
+                />
+                <Box flexDirection="column" height={2}>
+                  {status}
+                </Box>
+                <Box flexGrow={1} />
+                <Text dimColor wrap="truncate">
+                  {t('layout.newProject.picker.hintMove')}
+                </Text>
+                <Text dimColor wrap="truncate">
+                  {t('layout.newProject.picker.hintMore')}
+                </Text>
+              </>
+            ) : (
+              <>
+                <Text dimColor wrap="truncate">
+                  {t(type === 'chat' ? 'layout.newProject.nameLabel' : 'layout.newProject.label')}
+                </Text>
+                <Text wrap="truncate">
+                  <Text color={TOKEN.accent}>{'> '}</Text>
+                  {clipStart(value, Math.max(1, inner - 3))}
+                  {busy ? '' : <Text caret> </Text>}
+                </Text>
+                {status}
+                <Box flexGrow={1} />
+                <Text dimColor wrap="truncate">
+                  {t(
+                    browser && type === 'project'
+                      ? 'layout.newProject.hintField'
+                      : 'layout.newProject.hint',
+                  )}
+                </Text>
+              </>
+            )}
           </>
         )}
       </MouseModalScope>

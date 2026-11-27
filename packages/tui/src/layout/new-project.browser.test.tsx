@@ -1,4 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
+import { ApiRequestError } from '@otheater/client';
+import type { FolderInitMode, FolderState, InspectFolderResult } from '@otheater/protocol';
 import { Box } from 'ink';
 import { render, cleanup } from 'ink-testing-library';
 import type { i18n as I18nInstance } from 'i18next';
@@ -87,6 +89,7 @@ interface Mounted {
   readonly frame: () => string;
   readonly press: (keys: string) => Promise<void>;
   readonly opened: NewScenarioRequest[];
+  readonly inspected: string[];
   readonly closed: () => number;
   readonly saved: (readonly string[])[];
   readonly T: (key: string, vars?: Record<string, unknown>) => string;
@@ -100,13 +103,16 @@ interface Options {
   readonly showHidden?: boolean;
   readonly startInField?: boolean;
   readonly rows?: number;
-  readonly fail?: Error;
+  readonly fail?: Error | ((request: NewScenarioRequest) => Error | undefined);
+  /** The inspection of the folder (N332); without it the prompt opens as before. */
+  readonly inspect?: (path: string) => Promise<InspectFolderResult>;
   readonly pt?: boolean;
   readonly disk?: Disk;
 }
 
 async function mount(options: Options = {}): Promise<Mounted> {
   const opened: NewScenarioRequest[] = [];
+  const inspected: string[] = [];
   const saved: (readonly string[])[] = [];
   let closed = 0;
   const i18n = options.pt === true ? i18nPt : i18nEn;
@@ -123,8 +129,18 @@ async function mount(options: Options = {}): Promise<Mounted> {
             cwd="/home/ana/work"
             open={(request) => {
               opened.push(request);
-              return options.fail === undefined ? Promise.resolve() : Promise.reject(options.fail);
+              const failure =
+                typeof options.fail === 'function' ? options.fail(request) : options.fail;
+              return failure === undefined ? Promise.resolve() : Promise.reject(failure);
             }}
+            {...(options.inspect === undefined
+              ? {}
+              : {
+                  inspect: (path: string) => {
+                    inspected.push(path);
+                    return options.inspect?.(path) ?? Promise.reject(new Error('no inspect'));
+                  },
+                })}
             onClose={() => {
               closed += 1;
             }}
@@ -151,6 +167,7 @@ async function mount(options: Options = {}): Promise<Mounted> {
       await pause();
     },
     opened,
+    inspected,
     closed: () => closed,
     saved,
     T,
@@ -372,3 +389,225 @@ function app_hidden(app: Mounted, shown: boolean): string {
     shown ? 'layout.newProject.picker.hiddenShown' : 'layout.newProject.picker.hiddenHidden',
   );
 }
+
+// N332 (step B2): what the prompt asks when the folder is not a repository yet.
+
+function found(state: FolderState, initMode: FolderInitMode = 'ask') {
+  return (path: string): Promise<InspectFolderResult> =>
+    Promise.resolve({
+      path,
+      state,
+      git: state === 'repo' || state === 'inside_repo' ? { root: path, branch: 'main' } : null,
+      initMode,
+    });
+}
+
+const needsInit = (): ApiRequestError =>
+  new ApiRequestError({
+    status: 400,
+    body: {
+      code: 'invalid_input',
+      message: 'needs init',
+      details: { reason: 'needs_init', choices: ['commit_all', 'empty_commit'] },
+    },
+  });
+
+const FOLDER = '/home/ana/work/api';
+
+/** The browser on `FOLDER`, ready to choose it with Space. */
+const choose = async (app: Mounted): Promise<void> => {
+  await app.press(KEY.down);
+  await app.press(KEY.space);
+};
+
+describe.skipIf(!posix)('the question of a folder that is not a repository (N332)', () => {
+  it('opens a repository, or a folder inside one, with no question', async () => {
+    for (const state of ['repo', 'inside_repo'] as const) {
+      const app = await mount({ inspect: found(state) });
+      await choose(app);
+      expect(app.inspected).toEqual([FOLDER]);
+      expect(app.opened).toEqual([{ type: 'project', repo: FOLDER }]);
+      expect(app.closed()).toBe(1);
+      cleanup();
+    }
+  });
+
+  it('opens as before without the inspection, and when it fails (a daemon without the route)', async () => {
+    const plain = await mount();
+    await choose(plain);
+    expect(plain.opened).toEqual([{ type: 'project', repo: FOLDER }]);
+    cleanup();
+    const old = await mount({ inspect: () => Promise.reject(new Error('404')) });
+    await choose(old);
+    expect(old.inspected).toEqual([FOLDER]);
+    expect(old.opened).toEqual([{ type: 'project', repo: FOLDER }]);
+    expect(old.closed()).toBe(1);
+  });
+
+  it('with files and mode ask, asks, with the first option highlighted, and opens nothing yet', async () => {
+    const app = await mount({ inspect: found('files') });
+    await choose(app);
+    const frame = app.frame();
+    expect(frame).toContain(app.T('layout.newProject.init.folder', { repo: FOLDER }));
+    expect(frame).toContain(app.T('layout.newProject.init.ask.files'));
+    for (const option of ['commit_all', 'empty_commit', 'cancel']) {
+      expect(frame).toContain(app.T(`layout.newProject.init.options.${option}.label`));
+    }
+    expect(frame).toContain(app.T('layout.newProject.init.hint'));
+    // The browser and its list are gone while the question is on.
+    expect(frame).not.toContain(app.T('layout.newProject.picker.sections.folders'));
+    expect(app.opened).toEqual([]);
+    // Enter takes the highlighted one, the first.
+    await app.press(KEY.enter);
+    expect(app.opened).toEqual([{ type: 'project', repo: FOLDER, init: 'commit_all' }]);
+    expect(app.closed()).toBe(1);
+  });
+
+  it('the arrows move the highlight (going around), and the second option is the empty commit', async () => {
+    const app = await mount({ inspect: found('files') });
+    await choose(app);
+    await app.press(KEY.down);
+    await app.press(KEY.enter);
+    expect(app.opened).toEqual([{ type: 'project', repo: FOLDER, init: 'empty_commit' }]);
+    cleanup();
+    // Up from the first goes around to the last, which cancels.
+    const again = await mount({ inspect: found('files') });
+    await choose(again);
+    await again.press(KEY.up);
+    await again.press(KEY.enter);
+    expect(again.opened).toEqual([]);
+    expect(again.closed()).toBe(0);
+  });
+
+  it('cancel and Esc go back to the browser, opening nothing, and the browser can choose again', async () => {
+    const app = await mount({ inspect: found('files') });
+    await choose(app);
+    await app.press(KEY.esc);
+    expect(app.opened).toEqual([]);
+    expect(app.closed()).toBe(0);
+    expect(app.frame()).toContain(app.T('layout.newProject.picker.sections.folders'));
+    // The same folder asks again.
+    await app.press(KEY.space);
+    expect(app.frame()).toContain(app.T('layout.newProject.init.ask.files'));
+    await app.press(KEY.down);
+    await app.press(KEY.down);
+    await app.press(KEY.enter);
+    expect(app.opened).toEqual([]);
+    expect(app.frame()).toContain(app.T('layout.newProject.picker.sections.folders'));
+    expect(app.closed()).toBe(0);
+  });
+
+  it('no other key acts while the question is on (the type does not change)', async () => {
+    const app = await mount({ inspect: found('files') });
+    await choose(app);
+    await app.press(KEY.tab);
+    await app.press('x');
+    await app.press(KEY.space);
+    expect(app.frame()).toContain(app.T('layout.newProject.init.ask.files'));
+    expect(app.opened).toEqual([]);
+  });
+
+  it('with files and mode commit_all or empty_commit, opens at once (the daemon applies it)', async () => {
+    for (const mode of ['commit_all', 'empty_commit'] as const) {
+      const app = await mount({ inspect: found('files', mode) });
+      await choose(app);
+      expect(app.opened).toEqual([{ type: 'project', repo: FOLDER }]);
+      expect(app.closed()).toBe(1);
+      cleanup();
+    }
+  });
+
+  it('with files and mode refuse, says so and opens nothing', async () => {
+    const app = await mount({ inspect: found('files', 'refuse') });
+    await choose(app);
+    expect(app.opened).toEqual([]);
+    expect(app.closed()).toBe(0);
+    // The message wraps in the box: its first words are on one line.
+    const refused = app.T('layout.newProject.init.refused', { repo: FOLDER });
+    const head = refused.slice(0, refused.indexOf('git repository'));
+    expect(app.frame()).toContain(head);
+    // Still in the browser, and the next key clears the message.
+    expect(app.frame()).toContain(app.T('layout.newProject.picker.sections.folders'));
+    await app.press(KEY.down);
+    expect(app.frame()).not.toContain(head);
+  });
+
+  it.each(['empty', 'missing'] as const)(
+    'an %s folder asks between the software model and an empty repository, whatever the mode',
+    async (state) => {
+      for (const mode of ['ask', 'refuse', 'commit_all'] as const) {
+        const software = await mount({ inspect: found(state, mode) });
+        await choose(software);
+        expect(software.frame()).toContain(software.T(`layout.newProject.init.ask.${state}`));
+        expect(software.frame()).toContain(
+          software.T('layout.newProject.init.options.software.label'),
+        );
+        await software.press(KEY.enter);
+        expect(software.opened).toEqual([{ type: 'project', repo: FOLDER, newProject: true }]);
+        cleanup();
+      }
+      const repo = await mount({ inspect: found(state) });
+      await choose(repo);
+      await repo.press(KEY.down);
+      await repo.press(KEY.enter);
+      expect(repo.opened).toEqual([{ type: 'project', repo: FOLDER, init: 'empty_repo' }]);
+      expect(repo.closed()).toBe(1);
+      cleanup();
+      const cancel = await mount({ inspect: found(state) });
+      await choose(cancel);
+      await cancel.press(KEY.esc);
+      expect(cancel.opened).toEqual([]);
+    },
+  );
+
+  it('asks from the field of the path too, and cancel goes back to the field', async () => {
+    const app = await mount({ inspect: found('files'), picker: 'path', initial: FOLDER });
+    await app.press(KEY.enter);
+    expect(app.frame()).toContain(app.T('layout.newProject.init.ask.files'));
+    await app.press(KEY.esc);
+    expect(app.frame()).toContain('> /home/ana/work/api');
+    expect(app.opened).toEqual([]);
+    await app.press(KEY.enter);
+    await app.press(KEY.down);
+    await app.press(KEY.enter);
+    expect(app.opened).toEqual([{ type: 'project', repo: FOLDER, init: 'empty_commit' }]);
+  });
+
+  it('a folder that changed after the inspection (needs_init on the open) asks the same question', async () => {
+    const app = await mount({
+      inspect: found('repo'),
+      fail: (request) =>
+        request.type === 'project' && request.init === undefined ? needsInit() : undefined,
+    });
+    await choose(app);
+    expect(app.opened).toEqual([{ type: 'project', repo: FOLDER }]);
+    expect(app.frame()).toContain(app.T('layout.newProject.init.ask.files'));
+    expect(app.frame()).not.toContain(app.T('layout.newProject.badRepo', { repo: FOLDER }));
+    await app.press(KEY.enter);
+    expect(app.opened).toEqual([
+      { type: 'project', repo: FOLDER },
+      { type: 'project', repo: FOLDER, init: 'commit_all' },
+    ]);
+    expect(app.closed()).toBe(1);
+  });
+
+  it('needs_init without the inspection asks too, and other refusals keep their message', async () => {
+    const racing = await mount({ fail: () => needsInit() });
+    await choose(racing);
+    expect(racing.frame()).toContain(racing.T('layout.newProject.init.ask.files'));
+    cleanup();
+    const other = await mount({ inspect: found('repo'), fail: new Error('boom') });
+    await choose(other);
+    expect(other.frame()).toContain(other.T('layout.newProject.failed', { message: 'boom' }));
+    expect(other.frame()).not.toContain(other.T('layout.newProject.init.ask.files'));
+  });
+
+  it('speaks Brazilian Portuguese', async () => {
+    const app = await mount({ inspect: found('empty'), pt: true });
+    await choose(app);
+    expect(app.frame()).toContain(app.T('layout.newProject.init.ask.empty'));
+    expect(app.frame()).toContain('Modelo software');
+    expect(app.frame()).toContain('Repositório vazio');
+    expect(app.frame()).toContain('Cancelar');
+  });
+});
