@@ -852,7 +852,7 @@ export function SetupScreen(props: SetupScreenProps): ReactNode {
     const previous = answered.input;
     const placements = [
       ...previous.roles.filter((place) => place.executorId !== executorId),
-      { executorId, roles: [...roles] },
+      { executorId, mode: 'add' as const, roles: [...roles] },
     ];
     update({ busy: true, mode: IDLE, message: undefined });
     let at: SetupRunView = run;

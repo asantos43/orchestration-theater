@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-import type { ProfileFact } from '@otheater/core';
+import { ROLE_IDS, type ProfileFact } from '@otheater/core';
 import type { SetupExecutor } from '@otheater/protocol';
 import { describe, expect, it } from 'vitest';
 import { parseConfig } from '../config.js';
@@ -268,6 +268,203 @@ describe('the plan of the assistant', () => {
       expect(author.filter((id) => id === OPUS.id)).toHaveLength(1);
       for (const role of plan.roles)
         expect(role.executors).not.toContain('ghost-high@claude-code/main');
+    });
+  });
+
+  describe('the roles given exactly at the review (N335)', () => {
+    const rolesOf = (plan: ReturnType<typeof buildPlan>['plan'], id: string) =>
+      plan.roles.filter((entry) => entry.executors.includes(id)).map((entry) => entry.role);
+
+    it('add, spelled out, is the same as no mode', () => {
+      const EXTRA = executor('mystery-medium@opencode/key', 'opencode/key', 'mystery', 'medium');
+      const plain = buildPlan(
+        input({
+          registered: [API, EXTRA],
+          placements: [{ executorId: EXTRA.id, roles: ['critic'] }],
+        }),
+      );
+      const spelled = buildPlan(
+        input({
+          registered: [API, EXTRA],
+          placements: [{ executorId: EXTRA.id, mode: 'add', roles: ['critic'] }],
+        }),
+      );
+      expect(spelled).toEqual(plain);
+    });
+
+    it('takes the Executor out of the roles the preset gave and puts it at the end of the ones named (explicit lists)', () => {
+      const baseline = buildPlan(input());
+      const given = rolesOf(baseline.plan, OPUS.id);
+      expect(given.length).toBeGreaterThan(0);
+      // A role the preset does not give the Executor.
+      const target = ROLE_IDS.find((role) => !given.includes(role));
+      if (target === undefined) throw new Error('expected a role without the Executor');
+      const { plan, apply } = buildPlan(
+        input({ placements: [{ executorId: OPUS.id, mode: 'exact', roles: [target] }] }),
+      );
+      expect(rolesOf(plan, OPUS.id)).toEqual([target]);
+      expect(plan.roles.find((entry) => entry.role === target)?.executors.at(-1)).toBe(OPUS.id);
+      // The other roles keep the order they had, minus the Executor.
+      for (const entry of plan.roles.filter((item) => item.role !== target)) {
+        expect(entry.executors).toEqual(
+          baseline.plan.roles
+            .find((item) => item.role === entry.role)
+            ?.executors.filter((id) => id !== OPUS.id),
+        );
+      }
+      for (const list of apply.lists) {
+        expect(list.executors.includes(OPUS.id)).toBe(list.role === target);
+      }
+    });
+
+    it('keeps the place the Executor has in a role that is named', () => {
+      const baseline = buildPlan(input());
+      const author = baseline.plan.roles.find((entry) => entry.role === 'author')?.executors ?? [];
+      expect(author).toContain(OPUS.id);
+      const { plan } = buildPlan(
+        input({
+          placements: [{ executorId: OPUS.id, mode: 'exact', roles: ['author', 'critic'] }],
+        }),
+      );
+      expect(plan.roles.find((entry) => entry.role === 'author')?.executors).toEqual(author);
+      expect(rolesOf(plan, OPUS.id)).toEqual(
+        ROLE_IDS.filter((role) => role === 'author' || role === 'critic'),
+      );
+    });
+
+    it('with role_lists: preset, writes whole only the roles the Executor left or entered', () => {
+      const settings = { ...SETTINGS, roleLists: 'preset' } as const;
+      const given = rolesOf(buildPlan(input({ settings })).plan, OPUS.id);
+      const target = ROLE_IDS.find((role) => !given.includes(role));
+      if (target === undefined) throw new Error('expected a role without the Executor');
+      const { apply } = buildPlan(
+        input({
+          settings,
+          placements: [{ executorId: OPUS.id, mode: 'exact', roles: [target] }],
+        }),
+      );
+      expect(apply.insertions).toEqual([]);
+      expect(apply.lists.map((list) => list.role).sort()).toEqual([...given, target].sort());
+    });
+
+    it('keeping the lists of the file: a list that loses the Executor is written whole, with no insertion', () => {
+      const entry = `executors:\n  ${OPUS.id}:\n    client: claude-code\n    profile: main\n    model: claude-opus\n    effort: high\n    provider: anthropic\n`;
+      const shared = {
+        flow: 'add_account',
+        preset: null,
+        discovered: [OPUS],
+        registered: [API],
+        yaml: [
+          entry + 'roles:',
+          '  preset: quality',
+          '  actor:',
+          `    executors: [${OPUS.id}, claude-sonnet-medium@claude-code/main]`,
+          '',
+        ].join('\n'),
+      } as const;
+      const given = rolesOf(buildPlan(input(shared)).plan, OPUS.id);
+      // A role with no list in the file that the Executor does not have yet.
+      const target = ROLE_IDS.find((role) => role !== 'actor' && !given.includes(role));
+      if (target === undefined) throw new Error('expected a role without the Executor');
+      const { plan, apply } = buildPlan(
+        input({ ...shared, placements: [{ executorId: OPUS.id, mode: 'exact', roles: [target] }] }),
+      );
+      // The Actor loses Opus; the Executor the preset inserts at the end (API) is in the whole list.
+      const actor = apply.lists.find((list) => list.role === 'actor');
+      expect(actor?.executors).toEqual(['claude-sonnet-medium@claude-code/main', API.id]);
+      expect(apply.insertions.filter((insertion) => insertion.role === 'actor')).toEqual([]);
+      expect(plan.roles.find((item) => item.role === 'actor')?.executors).toEqual(actor?.executors);
+      // A role with no list in the file is written whole too, with the Executor last.
+      expect(apply.lists.find((list) => list.role === target)?.executors.at(-1)).toBe(OPUS.id);
+      expect(plan.writes).toContain('roles.actor.executors');
+      expect(plan.writes).toContain(`roles.${target}.executors`);
+    });
+
+    it('drops the insertion on_register made when exact takes the Executor out of that list again', () => {
+      const yaml =
+        'roles:\n  preset: quality\n  author:\n    executors: [codex-sol-high@codex/main]\n';
+      const shared = {
+        flow: 'add_account',
+        preset: null,
+        discovered: [OPUS],
+        registered: [],
+        yaml,
+      } as const;
+      // The preset names Opus for the Author: the file's list takes it by an insertion.
+      const baseline = buildPlan(input(shared));
+      expect(baseline.apply.insertions.some((item) => item.role === 'author')).toBe(true);
+      const { apply, plan } = buildPlan(
+        input({ ...shared, placements: [{ executorId: OPUS.id, mode: 'exact', roles: [] }] }),
+      );
+      expect(apply.insertions).toEqual([]);
+      expect(plan.roles.find((entry) => entry.role === 'author')?.executors).toEqual([
+        'codex-sol-high@codex/main',
+      ]);
+      // The list is as the file has it: nothing to write.
+      expect(apply.lists.some((list) => list.role === 'author')).toBe(false);
+      expect(plan.writes).not.toContain('roles.author.executors');
+    });
+
+    it('a list of the file left with no Executor is taken out, with a warning', () => {
+      const yaml = [
+        'roles:',
+        '  preset: quality',
+        '  author:',
+        `    executors: [${OPUS.id}]`,
+        '',
+      ].join('\n');
+      const { plan, apply } = buildPlan(
+        input({
+          flow: 'add_account',
+          preset: null,
+          profiles: PROFILES.slice(0, 1),
+          discovered: [OPUS],
+          registered: [],
+          yaml,
+          placements: [{ executorId: OPUS.id, mode: 'exact', roles: [] }],
+        }),
+      );
+      expect(apply.lists.find((list) => list.role === 'author')).toEqual({
+        role: 'author',
+        executors: [],
+      });
+      expect(apply.insertions).toEqual([]);
+      expect(plan.writes).toContain('roles.author.executors');
+      const note = plan.notes.find(
+        (item) => item.code === 'role_emptied' && item.role === 'author',
+      );
+      expect(note?.severity).toBe('warning');
+    });
+
+    it('with explicit lists, a role left empty is not written, shows the list of the preset, and says so', () => {
+      const alone = {
+        profiles: PROFILES.slice(0, 1),
+        discovered: [OPUS],
+        registered: [],
+      };
+      const baseline = buildPlan(input(alone));
+      const given = rolesOf(baseline.plan, OPUS.id);
+      expect(given.length).toBeGreaterThan(0);
+      const { plan, apply } = buildPlan(
+        input({ ...alone, placements: [{ executorId: OPUS.id, mode: 'exact', roles: [] }] }),
+      );
+      const emptied = plan.notes.filter((item) => item.code === 'role_emptied');
+      expect(emptied.map((note) => note.role).sort()).toEqual([...given].sort());
+      for (const note of emptied) {
+        expect(apply.lists.some((list) => list.role === note.role)).toBe(false);
+      }
+      // What the role has at run time is the list of the preset: the plan shows that.
+      expect(plan.roles).toEqual(baseline.plan.roles);
+    });
+
+    it('ignores an Executor the plan does not have', () => {
+      const baseline = buildPlan(input());
+      const { plan } = buildPlan(
+        input({
+          placements: [{ executorId: 'ghost-high@claude-code/main', mode: 'exact', roles: [] }],
+        }),
+      );
+      expect(plan.roles).toEqual(baseline.plan.roles);
     });
   });
 

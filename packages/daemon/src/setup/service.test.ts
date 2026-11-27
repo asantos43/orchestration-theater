@@ -8,7 +8,7 @@ import {
   type Store,
 } from '@otheater/core';
 import { FakeClock, InMemoryStore } from '@otheater/core/testing';
-import type { SetupRunView } from '@otheater/protocol';
+import type { SetupPlan, SetupRunView } from '@otheater/protocol';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   CLAUDE,
@@ -951,5 +951,173 @@ describe('the security step: the question of security.unenforced (N334, [propost
     expect(await service.get(asked.id)).toMatchObject({ step: 'security' });
     expect((await service.start('add_account')).steps).toEqual(['account', 'executors', 'review']);
     expect((await service.start('change_preset')).steps).toEqual(['preset', 'review']);
+  });
+});
+
+describe('SetupService: roles given exactly, and an Executor named by request (N335, [proposta])', () => {
+  async function firstRun() {
+    const rig = await rigOf();
+    const service = rig.service();
+    const run = await service.start('first_run');
+    await service.submit(run.id, { step: 'detect', input: {} });
+    await service.submit(run.id, { step: 'preset', input: { preset: 'quality' } });
+    return { rig, service, run };
+  }
+
+  async function atExecutors() {
+    const rig = await rigOf({ configYaml: 'roles:\n  preset: quality\n' });
+    const service = rig.service();
+    const run = await service.start('add_account');
+    const after = await service.submit(run.id, { step: 'account', input: { profileId: CODEX } });
+    const discovered = after.done[0]?.step === 'account' ? after.done[0].output.discovered : [];
+    const ids = discovered.map((executor) => executor.id);
+    if (ids.length < 2) throw new Error('expected two Executors');
+    return { rig, service, run, ids };
+  }
+
+  it('exact swaps the roles of two Executors in one answer, in the review and in the file', async () => {
+    const { rig, service, run, ids } = await atExecutors();
+    const [first, second] = ids;
+    if (first === undefined || second === undefined) throw new Error('expected two Executors');
+    const plain = await service.submit(run.id, { step: 'executors', input: {} });
+    if (plain.prompt?.step !== 'review') throw new Error('expected the review prompt');
+    // The preset gives each role to one of the two: the swap takes every role to the other one.
+    const ownedBy = (id: string, plan: SetupPlan) =>
+      plan.roles.filter((list) => list.executors.includes(id)).map((list) => list.role);
+    const firstRoles = ownedBy(first, plain.prompt.plan);
+    const secondRoles = ownedBy(second, plain.prompt.plan);
+    if (firstRoles.length === 0 || secondRoles.length === 0) throw new Error('expected a split');
+    await service.back(run.id);
+    const review = await service.submit(run.id, {
+      step: 'executors',
+      input: {
+        roles: [
+          { executorId: first, mode: 'exact', roles: secondRoles },
+          { executorId: second, mode: 'exact', roles: firstRoles },
+        ],
+      },
+    });
+    if (review.prompt?.step !== 'review') throw new Error('expected the review prompt');
+    expect(ownedBy(first, review.prompt.plan)).toEqual(secondRoles);
+    expect(ownedBy(second, review.prompt.plan)).toEqual(firstRoles);
+    // Nothing was left empty: no role fell back to the preset.
+    expect(review.prompt.plan.notes.filter((note) => note.code === 'role_emptied')).toEqual([]);
+    await service.confirm(run.id);
+    const config = await rig.config();
+    for (const role of firstRoles) expect(config.roles[role]?.executors).toEqual([second]);
+    for (const role of secondRoles) expect(config.roles[role]?.executors).toEqual([first]);
+  });
+
+  it('exact with no roles takes the Executor out of every role, with a note for each role left empty', async () => {
+    const { service, run, ids } = await atExecutors();
+    const [dropped, kept] = ids;
+    if (dropped === undefined || kept === undefined) throw new Error('expected two Executors');
+    const review = await service.submit(run.id, {
+      step: 'executors',
+      input: { exclude: [dropped], roles: [{ executorId: kept, mode: 'exact', roles: [] }] },
+    });
+    if (review.prompt?.step !== 'review') throw new Error('expected the review prompt');
+    const emptied = review.prompt.plan.notes.filter((note) => note.code === 'role_emptied');
+    expect(emptied.every((note) => note.severity === 'warning')).toBe(true);
+    expect(emptied.length).toBeGreaterThan(0);
+  });
+
+  it('a request names the Executor the same answer registers, and the confirmation rebuilds it from the done step', async () => {
+    const { rig, service, run } = await firstRun();
+    const review = await service.submit(run.id, {
+      step: 'executors',
+      input: { ...API_EXECUTORS, roles: [{ request: 0, mode: 'exact', roles: ['critic'] }] },
+    });
+    if (review.prompt?.step !== 'review') throw new Error('expected the review prompt');
+    const holders = review.prompt.plan.roles
+      .filter((list) => list.executors.includes(MINIMAX_EXECUTOR))
+      .map((list) => list.role);
+    expect(holders).toEqual(['critic']);
+    // A new service over the same store rebuilds the facts from the done steps (ids, not requests).
+    const again = rig.service();
+    await again.confirm(run.id);
+    const config = await rig.config();
+    expect(config.roles.critic?.executors?.at(-1)).toBe(MINIMAX_EXECUTOR);
+    expect(config.roles.author?.executors?.includes(MINIMAX_EXECUTOR) ?? false).toBe(false);
+  });
+
+  it('refuses a request outside the Executors of the answer', async () => {
+    const { service, run } = await firstRun();
+    await expect(
+      service.submit(run.id, {
+        step: 'executors',
+        input: { ...API_EXECUTORS, roles: [{ request: 1, roles: ['critic'] }] },
+      }),
+    ).rejects.toBeInstanceOf(InvalidInput);
+  });
+
+  it('refuses a request together with an executorId, or neither', async () => {
+    const { service, run } = await firstRun();
+    await expect(
+      service.submit(run.id, {
+        step: 'executors',
+        input: {
+          ...API_EXECUTORS,
+          roles: [{ executorId: MINIMAX_EXECUTOR, request: 0, roles: ['critic'] }],
+        },
+      }),
+    ).rejects.toThrow(/exactly one of executorId and request/);
+    await expect(
+      service.submit(run.id, {
+        step: 'executors',
+        input: { ...API_EXECUTORS, roles: [{ roles: ['critic'] }] },
+      }),
+    ).rejects.toThrow(/exactly one of executorId and request/);
+  });
+
+  it('the rules for a repeated Executor apply to the request resolved', async () => {
+    const { service, run } = await firstRun();
+    await expect(
+      service.submit(run.id, {
+        step: 'executors',
+        input: {
+          ...API_EXECUTORS,
+          roles: [
+            { executorId: MINIMAX_EXECUTOR, roles: ['author'] },
+            { request: 0, roles: ['critic'] },
+          ],
+        },
+      }),
+    ).rejects.toBeInstanceOf(InvalidInput);
+  });
+
+  it('mode add (the default) is the same as before: it only adds', async () => {
+    const { service, run, ids } = await atExecutors();
+    const [dropped, kept] = ids;
+    if (dropped === undefined || kept === undefined) throw new Error('expected two Executors');
+    const plain = await service.submit(run.id, {
+      step: 'executors',
+      input: { exclude: [dropped] },
+    });
+    if (plain.prompt?.step !== 'review') throw new Error('expected the review prompt');
+    const target = plain.prompt.plan.roles.find((list) => !list.executors.includes(kept));
+    if (target === undefined) throw new Error('expected a role that lacks the Executor');
+    const answer = (placement: Record<string, unknown>) => ({
+      step: 'executors' as const,
+      input: {
+        exclude: [dropped],
+        roles: [{ executorId: kept, ...placement, roles: [target.role] }],
+      },
+    });
+    await service.back(run.id);
+    const base = await service.submit(run.id, answer({}));
+    await service.back(run.id);
+    const explicit = await service.submit(run.id, answer({ mode: 'add' }));
+    if (base.prompt?.step !== 'review' || explicit.prompt?.step !== 'review') {
+      throw new Error('expected the review prompt');
+    }
+    expect(explicit.prompt.plan.roles).toEqual(base.prompt.plan.roles);
+    // Every list of the plain review is still there, with the Executor added to the target.
+    for (const list of plain.prompt.plan.roles) {
+      const now = base.prompt.plan.roles.find((entry) => entry.role === list.role);
+      expect(now?.executors).toEqual(
+        list.role === target.role ? [...list.executors, kept] : list.executors,
+      );
+    }
   });
 });

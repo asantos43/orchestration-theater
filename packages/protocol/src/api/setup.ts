@@ -248,14 +248,42 @@ export const SetupExecutorRequestSchema = z.strictObject({
 export type SetupExecutorRequest = z.infer<typeof SetupExecutorRequestSchema>;
 
 /**
- * N333 [proposta]: the roles the Producer gives to one Executor of the run, in the review. The
- * Executor enters at the END of the list of each role named (a role whose list already holds it is
- * left as it is).
+ * N333 [proposta]: the roles the Producer gives to one Executor of the run, in the review.
+ *
+ * - `mode: add` (default, what N333 did): the Executor enters at the END of the list of each role
+ *   named (a role whose list already holds it is left as it is); `roles` has at least one role.
+ * - `mode: exact` (N335, 2026-11-27, [proposta]): after the plan the Executor is in exactly the
+ *   roles named. It leaves the lists of the roles not named (the preset may have given it some),
+ *   enters at the END of the lists of the named roles that do not hold it yet, and keeps its place
+ *   where it already is. `roles` may be empty: the Executor leaves every role.
+ *
+ * The Executor is named by `executorId` (one the catalogs found) or, when it is registered by the
+ * same answer and has no id yet, by `request`: its index in `executors` of the answer (N335,
+ * [proposta]). Exactly one of the two; the daemon resolves `request` to the id `executors.add` gave.
  */
-export const SetupRolePlacementSchema = z.strictObject({
-  executorId: z.string().min(1).max(512),
-  roles: z.array(z.enum(ROLE_IDS)).min(1).max(ROLE_IDS.length),
-});
+export const SetupRolePlacementSchema = z
+  .strictObject({
+    executorId: z.string().min(1).max(512).optional(),
+    request: z.number().int().min(0).max(31).optional(),
+    mode: z.enum(['add', 'exact']).default('add'),
+    roles: z.array(z.enum(ROLE_IDS)).max(ROLE_IDS.length),
+  })
+  .superRefine((placement, ctx) => {
+    if ((placement.executorId === undefined) === (placement.request === undefined)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['executorId'],
+        message: 'name the Executor by exactly one of executorId and request',
+      });
+    }
+    if (placement.mode === 'add' && placement.roles.length === 0) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['roles'],
+        message: 'mode add takes at least one role; use mode exact to take the Executor out of all',
+      });
+    }
+  });
 export type SetupRolePlacement = z.infer<typeof SetupRolePlacementSchema>;
 
 /**

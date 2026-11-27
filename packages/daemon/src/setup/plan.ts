@@ -12,13 +12,7 @@ import {
   type RolesLayer,
   type SetupFlow,
 } from '@otheater/core';
-import type {
-  SetupBudget,
-  SetupExecutor,
-  SetupNote,
-  SetupPlan,
-  SetupRolePlacement,
-} from '@otheater/protocol';
+import type { SetupBudget, SetupExecutor, SetupNote, SetupPlan } from '@otheater/protocol';
 import type { DaemonConfig, SetupRoleListMode } from '../config.js';
 import { legacyExecutorsOf } from '../orchestration/role-executors.js';
 
@@ -29,6 +23,16 @@ import { legacyExecutorsOf } from '../orchestration/role-executors.js';
  * preview, `review` shows it, and `confirm` applies the very same result, so what the Producer
  * saw is what is written. Nothing here reads a file, the store or a client.
  */
+
+/**
+ * A placement of N333/N335 with the Executor already named by id (the daemon resolves `request` to
+ * the id of the Executor the same answer registered). `mode` absent is `add`.
+ */
+export interface ResolvedPlacement {
+  readonly executorId: string;
+  readonly mode?: 'add' | 'exact' | undefined;
+  readonly roles: readonly RoleId[];
+}
 
 /** What the plan is computed from. */
 export interface PlanInput {
@@ -46,10 +50,11 @@ export interface PlanInput {
   /** The caps the Producer gave. */
   readonly givenBudgets: readonly SetupBudget[];
   /**
-   * N333 [proposta]: the roles the Producer gave to Executors of the run at the review; each one
-   * enters at the END of the list of each role named. Default none.
+   * N333 [proposta]: the roles the Producer gave to Executors of the run at the review. `add`: the
+   * Executor enters at the END of the list of each role named. `exact` (N335): it is in exactly the
+   * roles named (leaves the other lists, enters the named ones at the end). Default none.
    */
-  readonly placements?: readonly SetupRolePlacement[] | undefined;
+  readonly placements?: readonly ResolvedPlacement[] | undefined;
   /** What the notes of the earlier steps said (discovery, checks of the cadastro). */
   readonly carriedNotes: readonly SetupNote[];
   /**
@@ -227,26 +232,100 @@ export function buildPlan(input: PlanInput): PlanResult {
     }
   }
 
-  // N333: the roles the Producer gave at the review take the Executor at the END of their lists. A
-  // list the file keeps gets an insertion; a role with no list in the file gets the list it has now
-  // (the preset's, resolved) plus the Executor, written whole, since there is nothing to insert in.
+  // N333/N335: the roles the Producer gave at the review. `add`: the Executor enters at the END of
+  // the list of each role named. `exact` (N335, [proposta]): it also leaves the lists of the roles
+  // not named. A list the file keeps takes an insertion to add; to take an Executor out there is no
+  // insertion, so [proposta] that list is written whole (like a role with no list in the file, which
+  // gets the list it has now, resolved, written whole too), and its insertions are dropped.
   const known = new Set(catalog.map((entry) => entry.id));
-  const frozen = new Map<RoleId, string[]>();
+  const writtenWhole = new Set<RoleId>();
+  const exactEmptied = new Set<RoleId>();
+  const addTo = (role: RoleId, id: string): void => {
+    const shown = lists.get(role) ?? [];
+    if (shown.includes(id)) return;
+    shown.push(id);
+    lists.set(role, shown);
+    if (rewriteLists) return;
+    const own = explicit[role];
+    if (own === undefined) {
+      writtenWhole.add(role);
+      return;
+    }
+    own.push(id);
+    if (!writtenWhole.has(role)) insertions.push({ role, position: own.length - 1, id });
+  };
+  const removeFrom = (role: RoleId, id: string): void => {
+    const shown = (lists.get(role) ?? []).filter((item) => item !== id);
+    if (shown.length === (lists.get(role) ?? []).length) return;
+    lists.set(role, shown);
+    if (shown.length === 0) exactEmptied.add(role);
+    if (rewriteLists) return;
+    writtenWhole.add(role);
+    const own = explicit[role];
+    if (own !== undefined) explicit[role] = own.filter((item) => item !== id);
+  };
   for (const placement of input.placements ?? []) {
     if (!known.has(placement.executorId)) continue;
-    for (const role of ROLE_IDS.filter((id) => placement.roles.includes(id))) {
-      const shown = lists.get(role) ?? [];
-      if (shown.includes(placement.executorId)) continue;
-      shown.push(placement.executorId);
-      lists.set(role, shown);
-      if (rewriteLists) continue;
-      const own = explicit[role];
-      if (own === undefined) {
-        frozen.set(role, [...shown]);
-        continue;
+    if (placement.mode === 'exact') {
+      for (const role of ROLE_IDS.filter((id) => !placement.roles.includes(id))) {
+        removeFrom(role, placement.executorId);
       }
-      own.push(placement.executorId);
-      insertions.push({ role, position: own.length - 1, id: placement.executorId });
+    }
+    for (const role of ROLE_IDS.filter((id) => placement.roles.includes(id))) {
+      addTo(role, placement.executorId);
+    }
+  }
+  if (writtenWhole.size > 0) {
+    insertions.splice(
+      0,
+      insertions.length,
+      ...insertions.filter((insertion) => !writtenWhole.has(insertion.role)),
+    );
+  }
+  // A list the file keeps that ends as it was (an Executor `on_register` would insert, taken out
+  // again) is not written.
+  for (const role of [...writtenWhole]) {
+    const own = explicit[role];
+    if (own?.join('\n') === (base[role]?.executors ?? []).join('\n')) {
+      writtenWhole.delete(role);
+    }
+  }
+  const frozen = new Map<RoleId, string[]>();
+  for (const role of writtenWhole) frozen.set(role, [...(explicit[role] ?? lists.get(role) ?? [])]);
+
+  // A list the file cannot hold empty: `exact` took the last Executor of a role out. [proposta]
+  // The key is left out (or not written), so the role falls back to the list of the preset; the
+  // plan shows that list, and says so.
+  const emptied = ROLE_IDS.filter(
+    (role) => exactEmptied.has(role) && (lists.get(role) ?? []).length === 0,
+  );
+  if (emptied.length > 0) {
+    const fallback = resolveRoleExecutors({
+      layers: [
+        {
+          ...layer,
+          ...Object.fromEntries(
+            emptied.map((role) => [role, { ...layer[role], executors: undefined }]),
+          ),
+        },
+      ],
+      ...(rewriteLists ? {} : { legacy }),
+      catalog,
+      profiles: input.profiles,
+      crossClient: config.executors.cross_client,
+    });
+    for (const role of emptied) {
+      const ids = fallback.roles[role].executors.map((item) => item.id);
+      lists.set(role, ids);
+      notes.push({
+        severity: 'warning',
+        code: 'role_emptied',
+        role,
+        message:
+          ids.length === 0
+            ? `roles.${role}.executors: no Executor is left in the list; the file cannot hold an empty list, so the key is left out, and the role has none until one is added (when_exhausted: ${resolved.roles[role].whenExhausted})`
+            : `roles.${role}.executors: no Executor is left in the list; the file cannot hold an empty list, so the key is left out and the role takes the list of the preset`,
+      });
     }
   }
 
@@ -332,18 +411,22 @@ export function buildPlan(input: PlanInput): PlanResult {
   const writes: string[] = [];
   if (choosesPreset) writes.push('roles.preset');
   if (unenforced !== null) writes.push('security.unenforced');
-  // An empty list is never written: a role that has none in the file falls back to the preset, and
-  // a list the file had for a role that now has none is taken out.
+  // An empty list is never written (the file cannot hold one): a role that has none in the file falls
+  // back to the preset, and a list the file had for a role that now has none is taken out.
   const listsToWrite = rewriteLists
     ? ROLE_IDS.flatMap((role) => {
-        const ids = lists.get(role) ?? [];
+        // A role `exact` emptied shows the list of the preset but writes none (the key goes out).
+        const ids = emptied.includes(role) ? [] : (lists.get(role) ?? []);
         return ids.length === 0 && base[role]?.executors === undefined
           ? []
           : [{ role, executors: ids }];
       })
     : ROLE_IDS.flatMap((role) => {
         const ids = frozen.get(role);
-        return ids === undefined ? [] : [{ role, executors: ids }];
+        // A list emptied by `exact` is taken out of the file (nothing to take out when it has none).
+        return ids === undefined || (ids.length === 0 && base[role]?.executors === undefined)
+          ? []
+          : [{ role, executors: ids }];
       });
   for (const list of listsToWrite) writes.push(`roles.${list.role}.executors`);
   for (const role of new Set(insertions.map((insertion) => insertion.role))) {
