@@ -162,7 +162,7 @@ describe('schemas', () => {
   });
 
   it('gives the schemas of this daemon, as the manifest says them', () => {
-    expect(composeOwnSchemas()).toEqual({ store: 10, telemetry: 3 });
+    expect(composeOwnSchemas()).toEqual({ store: 11, telemetry: 3 });
   });
 });
 
