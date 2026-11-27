@@ -362,7 +362,8 @@ describe('the table of the models (N335)', () => {
     const second = lines.find((line) => line.key === 'r.1');
     expect(second?.dim).toBe(true);
     expect(second?.text).toMatch(/\[=\] +gpt-old/);
-    expect(lines.find((line) => line.key === 'e.next')?.text).toBe('Enter goes on to the review');
+    // Enter goes on from any row (Space edits the cell): the table has no item of its own for it.
+    expect(lines.some((line) => line.key === 'e.next')).toBe(false);
   });
 
   it('puts the focus on the cell of the column, and on no cell of a registered row', () => {
@@ -375,7 +376,7 @@ describe('the table of the models (N335)', () => {
     expect(registered?.focus).toBeUndefined();
   });
 
-  it('drops Status, then Position, on a narrow terminal [proposta], and keeps every line inside it', () => {
+  it('drops Status, then Position, on a narrow terminal (the owner, 2026-11-27), and keeps every line inside it', () => {
     const wide = table(120).find((line) => line.key === 'h.table')?.text ?? '';
     expect(wide).toContain('Status');
     expect(wide).toContain('Position');

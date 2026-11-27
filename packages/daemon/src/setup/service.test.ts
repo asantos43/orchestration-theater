@@ -954,7 +954,7 @@ describe('the security step: the question of security.unenforced (N334, [propost
   });
 });
 
-describe('SetupService: roles given exactly, and an Executor named by request (N335, [proposta])', () => {
+describe('SetupService: roles given exactly, and an Executor named by request (N335)', () => {
   async function firstRun() {
     const rig = await rigOf();
     const service = rig.service();

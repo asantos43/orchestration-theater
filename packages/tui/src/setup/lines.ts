@@ -362,7 +362,8 @@ function tableCells(
     model: row.model,
     effort: row.registered ? '' : (row.effort ?? '-'),
     roles: part ? (roles.length === 0 ? '-' : roles.join(', ')) : '',
-    // [proposta] `author#1 reviewer#3`; a role the person added has no place yet and goes to the end (`#+`).
+    // `author#1 reviewer#3`; a role the person added has no place yet and goes to the end (`#+`);
+    // `-` for an empty cell (decided by the owner on 2026-11-27).
     position: part
       ? rowPositions(run, row)
           .map((entry) => `${entry.role}#${entry.position === null ? '+' : String(entry.position)}`)
@@ -378,8 +379,8 @@ interface TableLayout {
 }
 
 /**
- * The table of the models (N335): the head and one line per row, each cut to `width`. [proposta]
- * On a narrow terminal the columns go in this order: Situação, then Posição; after that the model
+ * The table of the models (N335): the head and one line per row, each cut to `width`.
+ * On a narrow terminal (decided by the owner on 2026-11-27) the columns go in this order: Situação, then Posição; after that the model
  * and the roles are clipped (never under {@link TABLE_MIN} cells), and the marks and the effort stay.
  */
 function tableLayout(
@@ -452,7 +453,6 @@ function executorsLines(
   t: TFunction,
   run?: SetupRunView,
   width = 80,
-  nextKey = '',
 ): SetupLine[] {
   const rows = draft.rows ?? [];
   const table = isTable(draft) ? tableLayout(rows, run, t, width) : undefined;
@@ -541,16 +541,6 @@ function executorsLines(
       selected: rows.length + draft.executors.length + index === draft.cursor,
     });
   });
-  if (table !== undefined) {
-    // N335 [proposta]: Enter edits the cell under the cursor, so going on is the last item of the table.
-    lines.push({ key: 'gap.next', text: '' });
-    lines.push({
-      key: 'e.next',
-      text: t('setup.executors.next', { key: nextKey }),
-      bold: true,
-      selected: rows.length + draft.executors.length + prompt.apiProfiles.length === draft.cursor,
-    });
-  }
   return lines;
 }
 
@@ -1001,7 +991,7 @@ export function setupLines(input: SetupLinesInput): SetupLine[] {
       break;
     case 'executors':
       if (draft.kind === 'executors') {
-        lines.push(...executorsLines(prompt, draft, t, run, input.width, input.closeKey));
+        lines.push(...executorsLines(prompt, draft, t, run, input.width));
       }
       break;
     case 'review':

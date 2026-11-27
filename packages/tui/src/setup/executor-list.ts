@@ -62,7 +62,7 @@ export interface ExecutorRow {
   /** The model already runs as an Executor of the account: it is shown, and does not take part. */
   readonly registered: boolean;
   /**
-   * N335 [proposta]: the roles the person chose for this row, when they differ from the ones the
+   * N335: the roles the person chose for this row, when they differ from the ones the
    * preset gives it; absent while the row keeps the preset's. The answer sends them as `exact`.
    */
   readonly roles?: readonly RowRole[];
@@ -295,7 +295,7 @@ export function rowEffortSet(
 
 /**
  * The row with its effort moved by `delta` among the ones the model accepts, skipping an effort
- * another row of the same model and account already holds (two rows would be one Executor). [proposta]
+ * another row of the same model and account already holds (two rows would be one Executor; decided by the owner on 2026-11-27).
  * The cycle stops at the ends.
  */
 export function rowEffortMoved(

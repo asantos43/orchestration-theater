@@ -41,7 +41,7 @@ describe('the roles given to an Executor at the executors step (N333)', () => {
     ).toBe(false);
   });
 
-  it('mode add is the default, and exact is the exact set of roles (N335, [proposta])', () => {
+  it('mode add is the default, and exact is the exact set of roles (N335)', () => {
     expect(SetupRolePlacementSchema.parse({ executorId: 'a@b/c', roles: ['actor'] }).mode).toBe(
       'add',
     );

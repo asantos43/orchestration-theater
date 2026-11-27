@@ -1326,7 +1326,7 @@
       "executors": "Cadastre Executores por API ou modelo local e defina o teto de gasto de cada conta de API.",
       "review": "Isto é o que será gravado. Nada é gravado antes de você confirmar.",
       "accounts": "Adicione uma conta de um cliente (uma assinatura) e entre nela agora, ou continue sem nenhuma: dá para adicionar contas depois na aba Configurações.",
-      "executorsTable": "Uma linha por modelo: ↑/↓ trocam de linha, ←/→ de coluna (Marca, Esforço, Papéis) e Espaço ou Enter editam a célula. A tecla / digita um Executor por API ou modelo local; o teto de gasto de cada conta de API fica abaixo da tabela.",
+      "executorsTable": "Uma linha por modelo: ↑/↓ trocam de linha, ←/→ de coluna (Marca, Esforço, Papéis) e Espaço edita a célula; Enter segue para a revisão. A tecla / digita um Executor por API ou modelo local; o teto de gasto de cada conta de API fica abaixo da tabela.",
       "executorsList": "Marque os modelos que viram Executores (Espaço), mude o esforço com ←/→ e defina o teto de gasto de cada conta de API. A tecla / digita um Executor por API ou modelo local.",
       "security": "Escolha se o assistente grava security.unenforced: warn. Sem gravar, nada muda."
     },
@@ -1356,7 +1356,6 @@
         "position": "Posição",
         "status": "Situação"
       },
-      "next": "{{key}} segue para a revisão",
       "needsMark": "Marque o modelo antes de escolher os papéis dele.",
       "registeredRow": "Este modelo já é um Executor da conta: não há o que editar aqui.",
       "noEffort": "Este modelo não tem esforço para escolher.",

@@ -252,14 +252,15 @@ export type SetupExecutorRequest = z.infer<typeof SetupExecutorRequestSchema>;
  *
  * - `mode: add` (default, what N333 did): the Executor enters at the END of the list of each role
  *   named (a role whose list already holds it is left as it is); `roles` has at least one role.
- * - `mode: exact` (N335, 2026-11-27, [proposta]): after the plan the Executor is in exactly the
+ * - `mode: exact` (N335, 2026-11-27, decided by the owner): after the plan the Executor is in exactly the
  *   roles named. It leaves the lists of the roles not named (the preset may have given it some),
  *   enters at the END of the lists of the named roles that do not hold it yet, and keeps its place
  *   where it already is. `roles` may be empty: the Executor leaves every role.
  *
  * The Executor is named by `executorId` (one the catalogs found) or, when it is registered by the
  * same answer and has no id yet, by `request`: its index in `executors` of the answer (N335,
- * [proposta]). Exactly one of the two; the daemon resolves `request` to the id `executors.add` gave.
+ * decided by the owner on 2026-11-27: from 0 to 31). Exactly one of the two; the daemon resolves
+ * `request` to the id `executors.add` gave.
  */
 export const SetupRolePlacementSchema = z
   .strictObject({
