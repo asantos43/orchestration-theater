@@ -471,12 +471,13 @@ export class FakeSetupApi implements SetupApi {
       ...list,
       executors: [
         ...list.executors.filter((id) => executors.some((executor) => executor.id === id)),
-        ...(answered?.roles ?? [])
-          .filter(
-            (place) =>
-              place.roles.includes(list.role) && !list.executors.includes(place.executorId),
-          )
-          .map((place) => place.executorId),
+        ...(answered?.roles ?? []).flatMap((place) =>
+          place.executorId !== undefined &&
+          place.roles.includes(list.role) &&
+          !list.executors.includes(place.executorId)
+            ? [place.executorId]
+            : [],
+        ),
       ],
     }));
     const writes = [
@@ -569,7 +570,7 @@ export class FakeSetupApi implements SetupApi {
             executors: answered.executors ?? [],
             budgets: answered.budgets ?? [],
             exclude: answered.exclude ?? [],
-            roles: answered.roles ?? [],
+            roles: (answered.roles ?? []).map((place) => ({ ...place, mode: place.mode ?? 'add' })),
           },
           output: { executors: [], budgets: [], notes: [] },
         });

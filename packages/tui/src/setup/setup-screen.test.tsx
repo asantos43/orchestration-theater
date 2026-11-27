@@ -1564,6 +1564,7 @@ describe('the setup screen: the list of Executors and the roles of the review (N
         roles: [
           {
             executorId: 'claude-haiku-4-5@claude-code/main',
+            mode: 'add',
             roles: ['author', 'reviewer'],
           },
         ],
