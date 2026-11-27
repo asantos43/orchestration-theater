@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-import type { SetupModel, SetupModels, SetupRoleList } from '@otheater/protocol';
+import type { SetupExecutor, SetupModel, SetupModels, SetupRoleList } from '@otheater/protocol';
 import { describe, expect, it } from 'vitest';
 import {
   listOf,
@@ -74,6 +74,44 @@ describe('the rows of the list of models (N333)', () => {
     expect(rows[0]?.effort).toBe('minimal');
     expect(rows[1]).toMatchObject({ registered: true, on: false });
     expect(rowsSubmission(rowToggled(rows, 1))).toEqual({ executors: [], exclude: [] });
+  });
+
+  it('starts the rows as the Executors of the run, not of the preset the route read', () => {
+    // The route read the preset in force (`quality`: sonnet at medium); the run chose `balanced`,
+    // which has sonnet at high and at medium. A row seeded by the route alone, moved to high, would
+    // ask for an Executor the run already has (refused as "given twice").
+    const found = (id: string, effort: string): SetupExecutor => ({
+      id,
+      profileId: 'codex/work',
+      model: 'sonnet',
+      alias: 'claude-sonnet',
+      effort,
+      provider: 'anthropic',
+      source: 'discovered',
+      presetExpand: true,
+      local: null,
+    });
+    const sonnet = model('sonnet', {
+      efforts: ['low', 'medium', 'high'],
+      preset: [{ id: 'claude-sonnet-medium@codex/work', effort: 'medium' }],
+    });
+    const { rows } = listOf(
+      [{ profileId: 'codex/work', found: catalog([sonnet]) }],
+      [
+        found('claude-sonnet-high@codex/work', 'high'),
+        found('claude-sonnet-medium@codex/work', 'medium'),
+      ],
+    );
+    expect(rows.map((row) => [row.on, row.effort, row.seed?.id])).toEqual([
+      [true, 'high', 'claude-sonnet-high@codex/work'],
+      [true, 'medium', 'claude-sonnet-medium@codex/work'],
+    ]);
+    expect(rowsSubmission(rows)).toEqual({ executors: [], exclude: [] });
+    // The effort of one row skips the one the other holds.
+    expect(rowEffortMoved(rows, 1, 1)[1]?.effort).toBe('medium');
+    // A model the run did not discover starts off, whatever the route said.
+    const none = listOf([{ profileId: 'codex/work', found: catalog([sonnet]) }], []).rows;
+    expect(none.map((row) => [row.on, row.seed])).toEqual([[false, null]]);
   });
 
   it('gives a group per account, and no rows to a catalog that is not listed or failed', () => {
