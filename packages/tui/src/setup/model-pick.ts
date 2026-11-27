@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 import type {
   SetupDoneStep,
-  SetupExecutor,
   SetupExecutorRequest,
   SetupModel,
   SetupModels,
@@ -9,6 +8,7 @@ import type {
 } from '@otheater/protocol';
 import type { TFunction } from 'i18next';
 import type { SetupModelPickMode } from '../settings.js';
+import { discoveredOfRun } from './executor-list.js';
 import type { ExecutorsSeed } from './model.js';
 
 /**
@@ -156,15 +156,6 @@ function accountsOf(done: readonly SetupDoneStep[]): ReadonlySet<string> {
   return accounts;
 }
 
-/** What the catalogs found for the preset in this run (the `discovered` of a done step). */
-function discoveredOf(done: readonly SetupDoneStep[]): readonly SetupExecutor[] {
-  const found: SetupExecutor[] = [];
-  for (const step of done) {
-    if (step.step === 'preset' || step.step === 'account') found.push(...step.output.discovered);
-  }
-  return found;
-}
-
 /**
  * What the choices give the step of the Executors (N324). [proposta] The marks are matched by the
  * model id against what the run discovered, and not by the ids of the list: the preset chosen in
@@ -176,7 +167,7 @@ export function seedOfChoices(
   choices: Readonly<Record<string, ModelChoice>>,
 ): ExecutorsSeed {
   const accounts = accountsOf(run.done);
-  const discovered = discoveredOf(run.done);
+  const discovered = discoveredOfRun(run.done);
   const executors: SetupExecutorRequest[] = [];
   const exclude: string[] = [];
   for (const choice of Object.values(choices)) {

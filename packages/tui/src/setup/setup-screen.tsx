@@ -34,7 +34,13 @@ import {
   unknownClientText,
   type AccountForm,
 } from './account-form.js';
-import { accountsOfRun, listOf, seededRows, type ModelsRead } from './executor-list.js';
+import {
+  accountsOfRun,
+  discoveredOfRun,
+  listOf,
+  seededRows,
+  type ModelsRead,
+} from './executor-list.js';
 import { clientStateText, clientTodoText, setupLines, type SetupLine } from './lines.js';
 import {
   choiceOf,
@@ -362,7 +368,7 @@ export function SetupScreen(props: SetupScreenProps): ReactNode {
     // The person went elsewhere meanwhile: the read belongs to a step that is not on screen.
     if (now.run === undefined || draftKey(now.run) !== draftKey(run)) return;
     if (now.draft.kind !== 'executors') return;
-    const { rows, groups } = listOf(reads);
+    const { rows, groups } = listOf(reads, discoveredOfRun(run.done));
     const seeded = seededRows(rows, now.draft.executors, now.draft.exclude ?? []);
     update({
       draft: withList(now.draft, {

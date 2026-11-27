@@ -1363,6 +1363,8 @@ describe('the setup screen: the list of Executors and the roles of the review (N
       executorOf(SOL_HIGH, WORK, 'gpt-sol', 'high'),
       executorOf(SONNET, MAIN, 'claude-sonnet-4-5', null),
     ];
+    // What the catalogs found for the preset of the run: the rows start as these.
+    api.discovered = [...api.planExecutors];
     const roles = (
       [
         ['director', [SONNET]],
