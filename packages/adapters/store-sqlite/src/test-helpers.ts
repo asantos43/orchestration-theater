@@ -22,14 +22,21 @@ export async function openTempStore(
   extra: Partial<SqliteStoreConfigInput> = {},
 ): Promise<{
   store: SqliteStore;
-  clock: Pick<Clock, 'now'>;
+  clock: Pick<Clock, 'now'> & { advance: (ms: number) => void };
   dir: string;
   dbPath: string;
   dispose: () => Promise<void>;
 }> {
   const { dir, dispose: removeDir } = await makeTempDir();
-  // A fixed clock: this file may not import the fakes of core/testing (only *.test.ts may).
-  const clock = { now: () => Date.UTC(2026, 0, 1) };
+  // A clock that only moves when a test says so (`advance`): this file may not import the fakes
+  // of core/testing (only *.test.ts may).
+  let instant = Date.UTC(2026, 0, 1);
+  const clock = {
+    now: () => instant,
+    advance: (ms: number): void => {
+      instant += ms;
+    },
+  };
   const dbPath = join(dir, 'otheater.db');
   try {
     const store = await SqliteStore.open({ path: dbPath, driver, ...extra }, clock);

@@ -16,6 +16,7 @@ import type { SideEffectRegistry } from './side-effects.js';
 import type { UsageRegistry } from './usage.js';
 import type { SetupRunRegistry } from './setup-runs.js';
 import type { WakeupRegistry } from './wakeups.js';
+import type { WorkflowBindingRegistry, WorkflowDefinitionRegistry } from './workflows.js';
 
 /**
  * Semver of the `Store` port contract.
@@ -31,8 +32,10 @@ import type { WakeupRegistry } from './wakeups.js';
  * - 0.7.0 added the runs of the setup assistant (`setupRuns`, Phase 7, 5.7).
  * - 0.8.0 put a typed error in the contract: a write the disk has no room for fails with `DiskFull`
  *   (`DISK_FULL`), with nothing of it kept (Phase 11, P5, N279).
+ * - 0.9.0 added the workflow library and the bindings of the scenarios (`workflowDefinitions`,
+ *   `workflowBindings`, Phase 11b, P5, N296).
  */
-export const STORE_PORT_VERSION = '0.8.0';
+export const STORE_PORT_VERSION = '0.9.0';
 
 /**
  * The aggregates of the store (architecture section 7), one registry per table. [proposta] Each
@@ -61,6 +64,8 @@ export interface StoreAggregates {
   readonly usage: UsageRegistry;
   readonly wakeups: WakeupRegistry;
   readonly setupRuns: SetupRunRegistry;
+  readonly workflowDefinitions: WorkflowDefinitionRegistry;
+  readonly workflowBindings: WorkflowBindingRegistry;
 }
 
 /**

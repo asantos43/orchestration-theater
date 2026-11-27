@@ -176,6 +176,8 @@ describe('daemon event registry', () => {
       'plugin.secret_missing',
       'plugin.panel_truncated',
       'daemon.update',
+      'workflow.binding.changed',
+      'workflow.budget_exhausted',
     ]);
     for (const [type, entry] of Object.entries(DAEMON_EVENT_TYPES)) {
       expect(entry.schemaVersion).toBe(type === 'executor.selected' ? 2 : 1);

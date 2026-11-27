@@ -466,7 +466,7 @@ describe.each(DRIVERS)(
               name: string;
             }[]
           ).map((row) => row.name);
-          expect(applied.at(-1)).toBe('0010_setup_runs');
+          expect(applied.at(-1)).toBe('0011_workflows');
           expect(applied).toEqual(Object.keys(MIGRATIONS));
         } finally {
           check.close();
@@ -565,6 +565,110 @@ describe.each(DRIVERS)('Phase 7 migration 0010_setup_runs on %s', (driver: Sqlit
         expect(() => insert.run(['SR2', 2, 'first_run', 'active', 'detect', '[]', 1, 1])).toThrow();
         insert.run(['SR3', 3, 'first_run', 'cancelled', 'detect', '[]', 1, 1]);
         insert.run(['SR4', 4, 'add_account', 'active', 'detect', '[]', 1, 1]);
+      } finally {
+        raw.close();
+      }
+    } finally {
+      await dispose();
+    }
+  });
+});
+
+describe.each(DRIVERS)('Phase 11b migration 0011_workflows on %s', (driver: SqliteDriverName) => {
+  it('climbs from a 0010 database, creates both tables and they work', async () => {
+    const { dir, dispose } = await makeTempDir();
+    try {
+      const path = join(dir, 'phase11.db');
+      const raw = await openRawDatabase(driver, path, { readonly: false, busyTimeoutMs: 1000 });
+      raw.exec('PRAGMA journal_mode = WAL');
+      const old = new Kysely<StoreDatabase>({
+        dialect: new ImmediateSqliteDialect({ database: raw }),
+      });
+      const before = Object.fromEntries(
+        Object.entries(MIGRATIONS).filter(([name]) => name < '0011'),
+      );
+      const migrator = new Migrator({
+        db: old,
+        provider: { getMigrations: () => Promise.resolve(before) },
+      });
+      expect((await migrator.migrateToLatest()).error).toBeUndefined();
+      expect(Object.keys(before).at(-1)).toBe('0010_setup_runs');
+      await old.destroy();
+
+      const store = await SqliteStore.open({ path, driver }, clock);
+      try {
+        await store.workflowDefinitions.put({
+          workflowId: 'play',
+          version: '1.0.0',
+          hash: `sha256:${'a'.repeat(64)}`,
+          definition: { id: 'play', version: '1.0.0' },
+          source: 'builtin',
+        });
+        await store.workflowDefinitions.activate('play', '1.0.0');
+        await store.workflowBindings.create({
+          scenarioId: 'S1',
+          workflowId: 'play',
+          budgetUsd: 2.5,
+          until: Date.UTC(2026, 0, 2),
+          params: { goal: 'ship' },
+          triggers: [{ type: 'manual' }],
+        });
+      } finally {
+        await store.close();
+      }
+      const again = await SqliteStore.open({ path, driver }, clock);
+      try {
+        expect(await again.workflowDefinitions.active('play')).toMatchObject({
+          version: '1.0.0',
+          state: 'active',
+          definition: { id: 'play', version: '1.0.0' },
+        });
+        expect(await again.workflowBindings.get('WB1')).toMatchObject({
+          state: 'active',
+          budgetUsd: 2.5,
+          spentUsd: 0,
+          params: { goal: 'ship' },
+          triggers: [{ type: 'manual' }],
+        });
+      } finally {
+        await again.close();
+      }
+    } finally {
+      await dispose();
+    }
+  });
+
+  it('the database itself refuses a second active version and a second live binding', async () => {
+    const { dir, dispose } = await makeTempDir();
+    try {
+      const path = join(dir, 'workflows.db');
+      const store = await SqliteStore.open({ path, driver }, clock);
+      await store.close();
+      const raw = await openRawDatabase(driver, path, { readonly: false, busyTimeoutMs: 1000 });
+      try {
+        const definition = raw.prepare(
+          `INSERT INTO workflow_definitions
+               (workflow_id, version, seq, hash, definition, source, state, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        );
+        definition.run(['play', '1.0.0', 1, 'h', '{}', 'builtin', 'active', 1, 1]);
+        expect(() =>
+          definition.run(['play', '1.1.0', 2, 'h', '{}', 'builtin', 'active', 1, 1]),
+        ).toThrow();
+        definition.run(['play', '1.1.0', 2, 'h', '{}', 'builtin', 'inactive', 1, 1]);
+        definition.run(['other', '1.0.0', 3, 'h', '{}', 'builtin', 'active', 1, 1]);
+
+        const binding = raw.prepare(
+          `INSERT INTO workflow_bindings
+               (id, seq, scenario_id, workflow_id, version_range, params, triggers, state,
+                budget_period, spent_usd, period_started_at, concurrency, on_busy, created_at,
+                updated_at, state_changed_at)
+             VALUES (?, ?, ?, ?, '*', '{}', '[]', ?, 'day', 0, 1, 1, 'queue', 1, 1, 1)`,
+        );
+        binding.run(['WB1', 1, 'S1', 'play', 'active']);
+        expect(() => binding.run(['WB2', 2, 'S1', 'play', 'paused'])).toThrow();
+        binding.run(['WB3', 3, 'S1', 'play', 'stopped']);
+        binding.run(['WB4', 4, 'S2', 'play', 'active']);
       } finally {
         raw.close();
       }

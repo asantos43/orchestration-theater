@@ -155,6 +155,14 @@ class MaintainedStore implements Store, StoreMaintenance {
     return this.inner.setupRuns;
   }
 
+  get workflowDefinitions(): Store['workflowDefinitions'] {
+    return this.inner.workflowDefinitions;
+  }
+
+  get workflowBindings(): Store['workflowBindings'] {
+    return this.inner.workflowBindings;
+  }
+
   transaction<T>(fn: (tx: StoreTransaction) => Promise<T>): Promise<T> {
     return this.inner.transaction(fn);
   }

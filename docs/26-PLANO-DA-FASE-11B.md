@@ -288,7 +288,23 @@ Todos **[proposta]** quanto ao nome. Cada um entra no catálogo do protocolo e n
 - O vínculo liga um cenário a um workflow. Os estados são `active`, `paused`, `stopped` e `expired`; há prazo (`until`), orçamento por período, `concurrency` e `on_busy`.
 - **Aceite próprio:** suíte de conformidade do agregado novo no store SQLite e no de memória; transições de estado do vínculo com o relógio falso.
 
-**Como ficou:** a preencher.
+**Como ficou** (2026-11-27, [V] com os testes locais de core, sdk, adaptador SQLite, protocol e daemon; ainda sem PR):
+
+- **Store (porta 0.9.0):** `store.workflowDefinitions` (biblioteca: `put`, `get`, `active`, `list`, `activate`, `remove`) e `store.workflowBindings` (`create`, `get`, `list`, `update`, `transition`, `recordSpend`, `rollPeriod`), sobre as tabelas `workflow_definitions` e `workflow_bindings` (migração `0011_workflows`). O core não importa `@otheater/workflows`; por isso o store guarda a definição como JSON opaco e só confere que `id` e `version` do documento batem com as colunas. Quem valida e calcula o hash é a biblioteca do daemon.
+- **Biblioteca (`library.ts`):** `install` valida com `validateWorkflow`, calcula `workflowHash` e salva a versão; uma versão nunca muda (mesmo hash é idempotente, outro hash é `Conflict`). `resolve` entende `*` (a versão ativa), a versão exata e `1.x`/`1.2.x` (a maior que casa). `remove` recusa a versão ativa e a versão com execução viva nela. Banco: no máximo uma versão ativa por workflow (índice único parcial).
+- **Vínculos (`bindings.ts`):** `create` aplica os padrões das chaves e confere `workflows.allowed` e a existência de versão na biblioteca; `until` aceita data, duração (`7d`) ou `none`; `pause`, `resume` e `stop` são do Produtor; `tick()` expira o vínculo cujo prazo passou e retoma o pausado por orçamento quando o período novo liberou; `recordSpend` pausa (ou encerra, por `workflows.budget.on_exhausted`) ao atingir o orçamento. Banco: um vínculo vivo (`active` ou `paused`) por cenário e workflow.
+- **Eventos novos:** `workflow.binding.changed` (criação e toda mudança de estado) e `workflow.budget_exhausted`. O aviso no chat sai pelo callback `onBudgetExhausted`; quem liga o canal é o P10.
+- **Chaves novas:** `workflows.default`, `workflows.allowed`, `workflows.budget.on_exhausted`, `workflows.budget.period`, `workflows.binding.concurrency`, `workflows.binding.on_busy`.
+- **Aceite próprio:** a suíte `describeWorkflowAggregatesConformance` (sdk) roda no store de memória e no SQLite (os dois drivers); a migração tem teste de subida e prova dos índices únicos parciais; as transições do vínculo (pausa, retomada, parada, prazo, orçamento, virada de período) são testadas com o relógio falso, no store e no daemon.
+- **[proposta] (para o dono):**
+  - o estado do vínculo guarda o motivo (`producer`, `budget`, `deadline`);
+  - o período do orçamento é uma janela fixa de 24 h, 7 d ou 30 d, contada do início do vínculo (e não o calendário), com a chave `workflows.budget.period`;
+  - o gasto é gravado em qualquer estado, e o que fazer ao esgotar é do daemon, não do store;
+  - o pause por orçamento volta sozinho no período seguinte (no `tick()`), e o Produtor pode retomar à mão só depois que o período virou;
+  - as versões antigas ficam enquanto houver um play aberto do mesmo `flowId` (sonda conservadora, trocável por `liveRuns`), porque o play guarda `flowVersion` inteiro e a definição tem versão semântica;
+  - o formato `*`, `1.x`, `1.2.x` ou exata para `versionRange`;
+  - a primeira versão salva de um workflow vira a ativa, e as outras só ficam salvas, a menos que se peça `activate`;
+  - as colunas e os nomes dos campos dos dois eventos.
 
 ### P6. Gatilhos e o laço de sondagem (D3, D6)
 
