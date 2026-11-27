@@ -61,7 +61,7 @@ describe('parseUiSettings', () => {
         modelPick: 'preset',
         executorsInput: 'list',
       },
-      newProject: { repo: 'cwd', type: 'chat' },
+      newProject: { repo: 'cwd', type: 'chat', picker: 'browser', hidden: 'hide', favorites: [] },
       sidebar: { finishedPlays: 'collapsed', finishedLimit: 20 },
       login: { browser: 'auto' },
       settingsTab: { limits: 'folded', roles: 'line', modelsAfterLogin: 'empty' },
@@ -266,13 +266,30 @@ describe('parseUiSettings', () => {
   });
 
   it('reads ui.newProject of P22 and falls back key by key', () => {
-    expect(parseUiSettings({}).newProject).toEqual({ repo: 'cwd', type: 'chat' });
+    expect(parseUiSettings({}).newProject).toEqual({
+      repo: 'cwd',
+      type: 'chat',
+      picker: 'browser',
+      hidden: 'hide',
+      favorites: [],
+    });
     expect(parseUiSettings({ newProject: { repo: 'git_root' } }).newProject.repo).toBe('git_root');
     expect(parseUiSettings({ newProject: { repo: 'empty' } }).newProject.repo).toBe('empty');
     expect(parseUiSettings({ newProject: { repo: 'home' } }).newProject).toEqual(
       DEFAULT_UI_SETTINGS.newProject,
     );
     expect(parseUiSettings({ newProject: 3 }).newProject).toEqual(DEFAULT_UI_SETTINGS.newProject);
+  });
+
+  it('reads ui.newProject of N332 (picker, hidden, favorites) and falls back key by key', () => {
+    expect(parseUiSettings({ newProject: { picker: 'path' } }).newProject.picker).toBe('path');
+    expect(parseUiSettings({ newProject: { picker: 'tree' } }).newProject.picker).toBe('browser');
+    expect(parseUiSettings({ newProject: { hidden: 'show' } }).newProject.hidden).toBe('show');
+    expect(parseUiSettings({ newProject: { hidden: 'all' } }).newProject.hidden).toBe('hide');
+    expect(
+      parseUiSettings({ newProject: { favorites: ['/a', 3, '', '/b'] } }).newProject.favorites,
+    ).toEqual(['/a', '/b']);
+    expect(parseUiSettings({ newProject: { favorites: '/a' } }).newProject.favorites).toEqual([]);
   });
 
   it('reads ui.sidebar of P11 and falls back key by key', () => {

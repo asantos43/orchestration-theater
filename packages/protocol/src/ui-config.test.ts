@@ -166,7 +166,13 @@ describe('ui.* schemas of the terminal', () => {
   });
 
   it('has the default of the newProject block (P22), takes its other modes and refuses the rest', () => {
-    expect(UiNewProjectConfigSchema.parse({})).toEqual({ repo: 'cwd', type: 'chat' });
+    expect(UiNewProjectConfigSchema.parse({})).toEqual({
+      repo: 'cwd',
+      type: 'chat',
+      picker: 'browser',
+      hidden: 'hide',
+      favorites: [],
+    });
     // N329: the prompt Novo cenário opens on the chat, or on the project.
     expect(UiNewProjectConfigSchema.parse({ type: 'project' }).type).toBe('project');
     expect(UiNewProjectConfigSchema.safeParse({ type: 'task' }).success).toBe(false);
@@ -174,6 +180,17 @@ describe('ui.* schemas of the terminal', () => {
     expect(UiNewProjectConfigSchema.parse({ repo: 'empty' }).repo).toBe('empty');
     expect(UiNewProjectConfigSchema.safeParse({ repo: 'home' }).success).toBe(false);
     expect(UiNewProjectConfigSchema.safeParse({ path: '.' }).success).toBe(false);
+    // N332: the folder browser.
+    expect(UiNewProjectConfigSchema.parse({ picker: 'path' }).picker).toBe('path');
+    expect(UiNewProjectConfigSchema.safeParse({ picker: 'tree' }).success).toBe(false);
+    expect(UiNewProjectConfigSchema.parse({ hidden: 'show' }).hidden).toBe('show');
+    expect(UiNewProjectConfigSchema.safeParse({ hidden: 'all' }).success).toBe(false);
+    expect(UiNewProjectConfigSchema.parse({ favorites: ['/a', '/b'] }).favorites).toEqual([
+      '/a',
+      '/b',
+    ]);
+    expect(UiNewProjectConfigSchema.safeParse({ favorites: [''] }).success).toBe(false);
+    expect(UiNewProjectConfigSchema.safeParse({ favorites: '/a' }).success).toBe(false);
   });
 
   it('has the mode of the chat with no scenario (N329), takes the other and refuses the rest', () => {

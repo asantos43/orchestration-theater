@@ -608,6 +608,7 @@
       "title": "New scenario",
       "label": "Repository (a folder of a git repository)",
       "hint": "Tab changes the type · Enter opens · Esc cancels",
+      "hintField": "Tab type · Enter opens · Ctrl+O browses folders · Esc cancels",
       "opening": "Opening the scenario…",
       "opened": "Scenario {{name}} open.",
       "badRepo": "Could not open a project on \"{{repo}}\": it is not a git repository the project can start from.",
@@ -621,6 +622,32 @@
         "project": "Project",
         "task": "Task",
         "chat": "Chat"
+      },
+      "picker": {
+        "dir": "Folder: {{dir}}",
+        "sections": {
+          "shortcuts": "Shortcuts",
+          "folders": "Folders",
+          "drives": "Drives"
+        },
+        "here": "(this folder)",
+        "empty": "No folders here.",
+        "noMatch": "No folder matches the filter.",
+        "filter": "Filter: {{text}}",
+        "filterEmpty": "Type to filter the folders",
+        "hiddenShown": "hidden folders: shown",
+        "hiddenHidden": "hidden folders: hidden",
+        "root": "Ctrl+R goes up to the root of the repository: {{root}}",
+        "unreadable": "This folder cannot be read ({{code}}). Left goes back.",
+        "git": "git {{ref}}",
+        "gitBare": "git",
+        "gitDetached": "git detached {{ref}}",
+        "worktree": "{{label}}, worktree",
+        "project": "open project",
+        "favorite": "favorite",
+        "hintMove": "↑↓ walk · Enter goes in · ← up · Space chooses · / types the path · Esc cancels",
+        "hintMore": "Tab type · . hidden · ~ home · Ctrl+F favorite · Ctrl+R root · Ctrl+U clears",
+        "favoritesFailed": "Could not save the favorites: {{message}}"
       }
     },
     "link": {

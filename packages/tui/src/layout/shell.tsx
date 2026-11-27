@@ -59,6 +59,7 @@ import {
 } from './data.js';
 import { computeGeometry, steppedChatWidth, steppedSidebarWidth } from './geometry.js';
 import { Header } from './header.js';
+import { openProjectFolders } from './folder-picker.js';
 import { initialRepo, NewProjectPrompt, type NewScenarioRequest } from './new-project.js';
 import { HelpOverlay, PaletteOverlay, TabPickerOverlay } from './overlays.js';
 import { DensityProvider, frameInner, useDensity } from './density-context.js';
@@ -177,6 +178,8 @@ function ShellBody(props: ShellProps): ReactNode {
     | {
         readonly initial: string;
         readonly type: string;
+        /** The path was given (`/new project <path>`): the prompt opens in the field, not in the browser. */
+        readonly startInField: boolean;
         readonly onOpened?: ((scenarioId: string) => void) | undefined;
       }
     | undefined
@@ -311,6 +314,7 @@ function ShellBody(props: ShellProps): ReactNode {
       setNewProject({
         initial: options.repo ?? initialRepo(projectRepo, cwd),
         type: options.type ?? projectType,
+        startInField: options.repo !== undefined,
         onOpened: options.onOpened,
       });
     },
@@ -321,6 +325,30 @@ function ShellBody(props: ShellProps): ReactNode {
     [cwd, promptNewScenario, selectScenario],
   );
   const projectClient = props.client ?? props.chat.client;
+  // N332: the folders of the projects open, and the favorites (saved in `ui.newProject.favorites`;
+  // the settings are read once, so the shell keeps the list it saved).
+  const scenariosById = useStoreValue(stores.scenarios, (s) => s.byId);
+  const projectFolders = useMemo(() => openProjectFolders(scenariosById), [scenariosById]);
+  const [favorites, setFavorites] = useState<readonly string[]>(settings.newProject.favorites);
+  const saveFavorites = useCallback(
+    (next: readonly string[]): void => {
+      setFavorites(next);
+      if (projectClient === undefined) return;
+      projectClient
+        .call(API_ROUTES.putConfig, {
+          body: { set: [{ path: ['ui', 'newProject', 'favorites'], value: [...next] }] },
+          headers: { 'idempotency-key': randomUUID() },
+        })
+        .catch((failure: unknown) => {
+          setNotice(
+            t('layout.newProject.picker.favoritesFailed', {
+              message: failure instanceof Error ? failure.message : String(failure),
+            }),
+          );
+        });
+    },
+    [projectClient, t],
+  );
   // N329: the types the daemon says it opens; a daemon without the route leaves the fallback.
   const readScenarioTypes = useMemo(
     () =>
@@ -966,6 +994,12 @@ function ShellBody(props: ShellProps): ReactNode {
             screen={screen}
             initial={newProject.initial}
             initialType={newProject.type}
+            picker={settings.newProject.picker}
+            showHidden={settings.newProject.hidden === 'show'}
+            startInField={newProject.startInField}
+            projects={projectFolders}
+            favorites={favorites}
+            onFavorites={saveFavorites}
             cwd={cwd}
             {...(readScenarioTypes === undefined ? {} : { types: readScenarioTypes })}
             open={(request) => openNewScenario(request, newProject.onOpened)}
