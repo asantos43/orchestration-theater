@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-import type { SetupPrompt, SetupRunView } from '@otheater/protocol';
+import type { SetupPlan, SetupPrompt, SetupRunView } from '@otheater/protocol';
 import { describe, expect, it } from 'vitest';
 import { profileOf } from './fake-api.test-support.js';
 import {
@@ -7,25 +7,34 @@ import {
   accountsCursorMoved,
   accountsCursorStart,
   atFirstStep,
+  columnMoved,
+  columnOf,
   draftKey,
   executorsItem,
   initialDraft,
   isFinished,
+  isTable,
   itemCount,
   loginCommandOf,
   parseBudgetLine,
   parseExecutorLine,
   reconciledDraft,
   reordered,
+  reviewExecutors,
+  reviewStart,
   stepNumber,
   submissionOf,
+  tableRowUnderCursor,
   toggled,
   withBudget,
   withCursor,
   withExecutor,
   withoutExecutor,
+  withRowEffort,
+  withRowRoles,
   type Draft,
 } from './model.js';
+import type { ExecutorRow } from './executor-list.js';
 
 const DETECT: SetupPrompt = {
   step: 'detect',
@@ -382,5 +391,165 @@ describe('the step that adds an account (N274)', () => {
 
   it('names the command that logs in to an account in a terminal', () => {
     expect(loginCommandOf('claude-code/work')).toBe('ot profile exec claude-code/work login');
+  });
+});
+
+/** N335: the table of the models. */
+describe('the table of the Executors (N335)', () => {
+  function row(model: string, extra: Partial<ExecutorRow> = {}): ExecutorRow {
+    return {
+      profileId: 'codex/work',
+      model,
+      name: null,
+      floating: null,
+      efforts: ['low', 'high'],
+      effort: 'low',
+      on: false,
+      seed: null,
+      registered: false,
+      ...extra,
+    };
+  }
+
+  function table(
+    extra: Partial<Extract<Draft, { kind: 'executors' }>> = {},
+  ): Extract<Draft, { kind: 'executors' }> {
+    return {
+      kind: 'executors',
+      executors: [],
+      budgets: {},
+      cursor: 0,
+      layout: 'table',
+      list: 'ready',
+      rows: [row('a'), row('b', { registered: true })],
+      ...extra,
+    };
+  }
+
+  it('is a table only with the layout and with rows', () => {
+    expect(isTable(table())).toBe(true);
+    expect(isTable(table({ layout: 'list' }))).toBe(false);
+    expect(isTable(table({ rows: [] }))).toBe(false);
+    expect(isTable({ kind: 'review' })).toBe(false);
+  });
+
+  it('adds the item that goes on to the walk of the cursor, after the rows and the caps', () => {
+    const prompt: SetupPrompt = { ...EXECUTORS, step: 'executors' };
+    const draft = table();
+    // 2 rows, 2 API accounts, 1 item "go on".
+    expect(itemCount(draft, prompt)).toBe(5);
+    expect(itemCount(table({ layout: 'list' }), prompt)).toBe(4);
+    expect(executorsItem({ ...draft, cursor: 1 }, prompt)).toEqual({ kind: 'row', index: 1 });
+    expect(executorsItem({ ...draft, cursor: 2 }, prompt)).toEqual({
+      kind: 'budget',
+      profileId: 'x/one',
+    });
+    expect(executorsItem({ ...draft, cursor: 4 }, prompt)).toEqual({ kind: 'next' });
+    expect(executorsItem({ ...draft, cursor: 5 }, prompt)).toBeUndefined();
+    expect(executorsItem(table({ layout: 'list', cursor: 4 }), prompt)).toBeUndefined();
+  });
+
+  it('moves the cell among Mark, Effort and Roles, and stops at the ends', () => {
+    let draft: Draft = table();
+    expect(columnOf(draft)).toBe('mark');
+    expect(columnOf(columnMoved(draft, -1))).toBe('mark');
+    draft = columnMoved(draft, 1);
+    expect(columnOf(draft)).toBe('effort');
+    draft = columnMoved(draft, 1);
+    expect(columnOf(draft)).toBe('roles');
+    expect(columnOf(columnMoved(draft, 1))).toBe('roles');
+    expect(columnOf(columnMoved(draft, -1))).toBe('effort');
+    // Off the table nothing moves.
+    const list = table({ layout: 'list' });
+    expect(columnMoved(list, 1)).toBe(list);
+  });
+
+  it('names the row under the cursor only when a person can change it', () => {
+    expect(tableRowUnderCursor(table({ cursor: 0 }))).toBe(0);
+    // The registered row is shown, not edited; the cursor past the rows is not on a row.
+    expect(tableRowUnderCursor(table({ cursor: 1 }))).toBeUndefined();
+    expect(tableRowUnderCursor(table({ cursor: 2 }))).toBeUndefined();
+    expect(tableRowUnderCursor(table({ layout: 'list' }))).toBeUndefined();
+  });
+
+  it('sets the effort and the roles of a row, and an edit gives up the roles given at the review', () => {
+    const placed = table({
+      placements: [{ executorId: 'x@codex/work', mode: 'add', roles: ['actor'] }],
+    });
+    const efforted = withRowEffort(placed, 0, 'high');
+    expect(efforted.kind === 'executors' && efforted.rows?.[0]?.effort).toBe('high');
+    expect(efforted.kind === 'executors' && efforted.placements).toBeUndefined();
+    const roled = withRowRoles(placed, 0, ['author'], ['reviewer']);
+    expect(roled.kind === 'executors' && roled.rows?.[0]?.roles).toEqual(['author']);
+    expect(roled.kind === 'executors' && roled.placements).toBeUndefined();
+    // Back to the roles the preset gives: the row keeps no roles of its own.
+    const back = withRowRoles(roled, 0, ['reviewer'], ['reviewer']);
+    expect(back.kind === 'executors' && back.rows?.[0]?.roles).toBeUndefined();
+  });
+
+  it('sends the roles of the rows as exact, then the ones given at the review to another Executor', () => {
+    const listing = {
+      kind: 'executors' as const,
+      executors: [],
+      budgets: {},
+      cursor: 0,
+      layout: 'table' as const,
+      list: 'ready' as const,
+      rows: [row('a', { on: true, roles: ['author'] }), row('c', { on: true })],
+      placements: [{ executorId: 'z@codex/work', mode: 'add' as const, roles: ['actor' as const] }],
+    };
+    const sent = submissionOf(listing, EXECUTORS);
+    expect(sent).toMatchObject({
+      step: 'executors',
+      input: {
+        executors: [
+          { profileId: 'codex/work', model: 'a', effort: 'low' },
+          { profileId: 'codex/work', model: 'c', effort: 'low' },
+        ],
+        roles: [
+          { request: 0, mode: 'exact', roles: ['author'] },
+          { executorId: 'z@codex/work', mode: 'add', roles: ['actor'] },
+        ],
+      },
+    });
+  });
+});
+
+describe('the Executors of the review (N335)', () => {
+  const plan = (roles: SetupPlan['roles']): SetupPlan => ({
+    flow: 'first_run',
+    preset: 'balanced',
+    roles,
+    executors: ['a@p/x', 'b@p/x', 'c@p/x'].map((id) => ({
+      id,
+      profileId: 'p/x',
+      model: id,
+      alias: id,
+      effort: null,
+      provider: 'anthropic',
+      source: 'discovered' as const,
+      presetExpand: true,
+      local: null,
+    })),
+    budgets: [],
+    writes: [],
+    notes: [],
+  });
+
+  it('walks every Executor of the plan and starts on the first one with no role', () => {
+    const shown = plan([
+      { role: 'author', executors: ['a@p/x'], whenExhausted: 'next' },
+      { role: 'critic', executors: ['a@p/x', 'c@p/x'], whenExhausted: 'next' },
+    ]);
+    expect(reviewExecutors(shown)).toEqual(['a@p/x', 'b@p/x', 'c@p/x']);
+    expect(reviewStart(shown)).toBe(1);
+    // Every Executor has a role: the cursor starts on the first.
+    expect(
+      reviewStart(
+        plan([{ role: 'author', executors: ['a@p/x', 'b@p/x', 'c@p/x'], whenExhausted: 'next' }]),
+      ),
+    ).toBe(0);
+    expect(reviewExecutors(undefined)).toEqual([]);
+    expect(reviewStart(undefined)).toBe(0);
   });
 });

@@ -229,9 +229,10 @@ describe('parseConfig', () => {
       reviewNotes: 'grouped',
       modelPick: 'preset',
       executorsInput: 'list',
+      executorsLayout: 'table',
     });
     const { ui } = parseConfig(
-      'ui:\n  setup:\n    open: never\n    readTimeoutMs: 800\n    reviewNotes: all\n    modelPick: none\n    executorsInput: prompt\n',
+      'ui:\n  setup:\n    open: never\n    readTimeoutMs: 800\n    reviewNotes: all\n    modelPick: none\n    executorsInput: prompt\n    executorsLayout: list\n',
     );
     expect(ui.setup).toEqual({
       open: 'never',
@@ -239,9 +240,11 @@ describe('parseConfig', () => {
       reviewNotes: 'all',
       modelPick: 'none',
       executorsInput: 'prompt',
+      executorsLayout: 'list',
     });
     expect(() => parseConfig('ui:\n  setup:\n    modelPick: some\n')).toThrow(/ui\.setup/);
     expect(() => parseConfig('ui:\n  setup:\n    executorsInput: some\n')).toThrow(/ui\.setup/);
+    expect(() => parseConfig('ui:\n  setup:\n    executorsLayout: grid\n')).toThrow(/ui\.setup/);
     expect(() => parseConfig('ui:\n  setup:\n    reviewNotes: some\n')).toThrow(/ui\.setup/);
     expect(() => parseConfig('ui:\n  setup:\n    open: always\n')).toThrow(/ui\.setup\.open/);
     expect(() => parseConfig('ui:\n  setup:\n    wait: 1\n')).toThrow(/ui\.setup/);

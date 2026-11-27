@@ -5,6 +5,7 @@ import type {
   SetupAdapterClient,
   SetupModels,
   SetupPlan,
+  SetupRolePlacement,
   SetupRunView,
 } from '@otheater/protocol';
 import { Box, useWindowSize } from 'ink';
@@ -15,7 +16,7 @@ import { keyLabel } from '../keys/labels.js';
 import { useRawKeys, type KeyEvent, type TuiKeymap } from '../keys/use-keymap.js';
 import { Frame } from '../layout/frame.js';
 import { ShortcutBar } from '../layout/shortcut-bar.js';
-import { fit, wrapText } from '../layout/text.js';
+import { fit, sliceCells, wrapText } from '../layout/text.js';
 import { TOKEN, paint } from '../layout/theme.js';
 import { useSuspendTerminal } from '../mouse/index.js';
 import { useRenderControl } from '../render-control.js';
@@ -23,6 +24,7 @@ import { fieldStep } from '../tabs/settings/field.js';
 import { errorText, runInTerminal } from '../tabs/settings/index.js';
 import type {
   SetupExecutorsInputMode,
+  SetupExecutorsLayoutMode,
   SetupModelPickMode,
   SetupReviewNotesMode,
 } from '../settings.js';
@@ -35,9 +37,19 @@ import {
   type AccountForm,
 } from './account-form.js';
 import {
+  effortOfPick,
+  effortPickKey,
+  effortPickLines,
+  effortPickStart,
+  type EffortPick,
+} from './effort-pick.js';
+import {
   accountsOfRun,
   discoveredOfRun,
   listOf,
+  presetRowRoles,
+  rowOfExecutor,
+  rowRoles,
   seededRows,
   type ModelsRead,
 } from './executor-list.js';
@@ -58,25 +70,33 @@ import {
   accountsCursorStart,
   adapterToInstall,
   atFirstStep,
+  columnMoved,
+  columnOf,
   draftKey,
   effortMoved,
   executorsItem,
   initialDraft,
   isFinished,
+  isTable,
   loginCommandOf,
-  noRoleExecutors,
   parseBudgetLine,
   parseExecutorLine,
+  planRolesOf,
   reconciledDraft,
   reordered,
+  reviewExecutors,
+  reviewStart,
   stepNumber,
   submissionOf,
+  tableRowUnderCursor,
   toggled,
   withBudget,
   withCursor,
   withExecutor,
   withList,
   withoutExecutor,
+  withRowEffort,
+  withRowRoles,
   type Draft,
 } from './model.js';
 
@@ -109,6 +129,11 @@ export interface SetupScreenProps {
    * catalog lists, to check; `prompt` keeps the typed line `<account> <model> [effort]` only.
    */
   readonly executorsInput?: SetupExecutorsInputMode | undefined;
+  /**
+   * `ui.setup.executorsLayout` (N335) [proposta]: `table` draws the models as a table with the
+   * effort and the roles of each one to edit; `list` keeps the one-line rows of N333. `table` by default.
+   */
+  readonly executorsLayout?: SetupExecutorsLayoutMode | undefined;
 }
 
 type Tone = 'ok' | 'warn' | 'error';
@@ -127,8 +152,10 @@ type Mode =
   | { readonly kind: 'confirmCancel' }
   /** The list of models after a login (N324, item 2). */
   | { readonly kind: 'models'; readonly pick: ModelPick }
-  /** The roles of an Executor the preset left without one, in the review (N333, item 4). */
+  /** The roles of an Executor: of a row of the table, or of an Executor of the plan in the review (N333, N335). */
   | { readonly kind: 'roles'; readonly pick: RolePick }
+  /** The efforts a model of the table accepts (N335). */
+  | { readonly kind: 'effort'; readonly pick: EffortPick }
   /** The client says the account is not logged in after the login (N324): L again, S goes on. */
   | { readonly kind: 'loginCheck'; readonly profileId: string }
   /** A second subscription of one provider: the daemon wants the notice accepted (N127). */
@@ -164,7 +191,7 @@ interface State {
    * repeats its summary. The daemon's result keeps only the keys and the Executors written.
    */
   readonly confirmedPlan: SetupPlan | undefined;
-  /** The Executor with no role the cursor of the review is on (N333), among the ones the plan lists. */
+  /** The Executor of the plan the cursor of the review is on (N333; N335: any of them). */
   readonly reviewCursor: number;
 }
 
@@ -220,6 +247,12 @@ const ROLES_BAR: readonly UiBarItem[] = [
   { id: 'rolePick.cancel', label: 'Esc', text: { key: 'bar.rolePick.cancel' } },
 ];
 
+/** The bar while the effort of a model of the table is chosen (N335): its own keys. */
+const EFFORT_BAR: readonly UiBarItem[] = [
+  { id: 'effortPick.confirm', label: 'Enter', text: { key: 'bar.effortPick.confirm' } },
+  { id: 'effortPick.cancel', label: 'Esc', text: { key: 'bar.effortPick.cancel' } },
+];
+
 /** The bar while the account is not logged in after the login (N324). */
 const LOGIN_CHECK_BAR: readonly UiBarItem[] = [
   { id: 'loginCheck.retry', label: 'L', text: { key: 'bar.loginCheck.retry' } },
@@ -235,8 +268,10 @@ interface BarContext {
   readonly hasAccount: boolean;
   /** The list of models (N333) has rows on screen. */
   readonly list: boolean;
-  /** The review has an Executor with no role (N333). */
-  readonly noRole: boolean;
+  /** The review has Executors to give roles to (N333; N335: any Executor of the plan). */
+  readonly reviewable: boolean;
+  /** The table of the Executors (N335) is on screen, and the cursor is on one of its rows. */
+  readonly onRow: boolean;
 }
 
 function relevantBar(item: UiBarItem, ctx: BarContext): boolean {
@@ -262,7 +297,8 @@ function relevantBar(item: UiBarItem, ctx: BarContext): boolean {
     case 'setup.skip':
       return false;
     case 'setup.toggle':
-      return step === 'detect' || (step === 'executors' && ctx.list);
+      // N335: on a row of the table Space edits the cell, like Enter (one hint says it).
+      return step === 'detect' || (step === 'executors' && ctx.list && !ctx.onRow);
     case 'setup.details':
       return step === 'review';
     case 'setup.add':
@@ -274,10 +310,22 @@ function relevantBar(item: UiBarItem, ctx: BarContext): boolean {
     case 'setup.type':
       return step === 'executors' && ctx.list;
     case 'setup.role':
-      return step === 'review' && ctx.noRole;
+      return step === 'review' && ctx.reviewable;
     default:
       return true;
   }
+}
+
+/** The words of a hint of the bar for the screen it is on (N326: the form; N335: the table). */
+function barText(item: UiBarItem, ctx: BarContext, openForm: boolean): UiBarItem {
+  // N326: with no account yet, Enter at the step opens the form instead of going on.
+  if (openForm && item.id === 'setup.advance')
+    return { ...item, text: { key: 'bar.setup.openForm' } };
+  if (ctx.onRow && item.id === 'setup.advance') return { ...item, text: { key: 'bar.setup.cell' } };
+  if (ctx.onRow && item.id === 'setup.effortNext') {
+    return { ...item, text: { key: 'bar.setup.column' } };
+  }
+  return item;
 }
 
 export function SetupScreen(props: SetupScreenProps): ReactNode {
@@ -337,7 +385,7 @@ export function SetupScreen(props: SetupScreenProps): ReactNode {
       mode: IDLE,
       busy: false,
       message,
-      reviewCursor: 0,
+      reviewCursor: run.prompt?.step === 'review' ? reviewStart(run.prompt.plan) : 0,
     });
     // N333: the step of the Executors lists the models of each account, once per draft.
     if (draft.kind === 'executors' && draft.list === undefined && listing) void loadList(run);
@@ -376,6 +424,7 @@ export function SetupScreen(props: SetupScreenProps): ReactNode {
         groups,
         executors: seeded.executors,
         exclude: seeded.exclude,
+        layout: props.executorsLayout ?? 'table',
       }),
     });
   };
@@ -837,10 +886,11 @@ export function SetupScreen(props: SetupScreenProps): ReactNode {
   };
 
   /**
-   * Gives roles to an Executor of the plan (N333, item 4) [proposta]: the review goes back to the
-   * step of the Executors and answers it again with the same input plus the roles, which the daemon
-   * puts at the end of the list of each role. A refusal leaves the run at the step of the Executors,
-   * and says why.
+   * Sets the roles of an Executor of the plan (N333, item 4; N335) [proposta]: the review goes back
+   * to the step of the Executors and answers it again with the same input and an `exact` placement
+   * for the Executor, which then is in exactly those roles (it leaves the others, enters the new
+   * ones at the end). An earlier placement of the same Executor (by id, or by `request`) is
+   * replaced. A refusal leaves the run at the step of the Executors, and says why.
    */
   const assignRoles = async (
     run: SetupRunView,
@@ -850,9 +900,13 @@ export function SetupScreen(props: SetupScreenProps): ReactNode {
     const answered = run.done.find((entry) => entry.step === 'executors');
     if (answered === undefined) return;
     const previous = answered.input;
-    const placements = [
-      ...previous.roles.filter((place) => place.executorId !== executorId),
-      { executorId, mode: 'add' as const, roles: [...roles] },
+    const planned = answered.output.executors.map((executor) => executor.id);
+    const placed = (place: SetupRolePlacement): string | undefined =>
+      place.executorId ?? (place.request === undefined ? undefined : planned[place.request]);
+    const others = previous.roles.filter((place) => placed(place) !== executorId);
+    const placements: SetupRolePlacement[] = [
+      ...others,
+      { executorId, mode: 'exact', roles: [...roles] },
     ];
     update({ busy: true, mode: IDLE, message: undefined });
     let at: SetupRunView = run;
@@ -868,11 +922,12 @@ export function SetupScreen(props: SetupScreenProps): ReactNode {
         },
       });
       if (!alive.current) return;
-      const key = `${run.id}/executors`;
-      const kept = memory.current.get(key);
-      if (kept?.kind === 'executors') memory.current.set(key, { ...kept, placements });
+      remember(`${run.id}/executors`, run, executorId, roles, planned);
       show(next, {
-        text: t('setup.review.rolesGiven', { executor: executorId, roles: roles.join(', ') }),
+        text: t('setup.review.rolesGiven', {
+          executor: executorId,
+          roles: roles.length === 0 ? t('setup.review.noRole') : roles.join(', '),
+        }),
         tone: 'ok',
       });
     } catch (error) {
@@ -890,7 +945,38 @@ export function SetupScreen(props: SetupScreenProps): ReactNode {
     }
   };
 
-  /** The keys of the list of roles of an Executor (N333): Enter gives them, Esc leaves it. */
+  /**
+   * Keeps the roles given at the review in the draft remembered for the step of the Executors, so
+   * going back to it shows them: in the row of the model that gives the Executor (N335), or, for an
+   * Executor that is not a row, as a placement the step repeats when it is answered again.
+   */
+  const remember = (
+    key: string,
+    run: SetupRunView,
+    executorId: string,
+    roles: RolePick['checked'],
+    planned: readonly string[],
+  ): void => {
+    const kept = memory.current.get(key);
+    if (kept?.kind !== 'executors') return;
+    const others = (kept.placements ?? []).filter((place) => place.executorId !== executorId);
+    const at = kept.rows === undefined ? undefined : rowOfExecutor(kept.rows, planned, executorId);
+    const row = at === undefined ? undefined : kept.rows?.[at];
+    if (at !== undefined && row !== undefined) {
+      const next = withRowRoles(kept, at, roles, presetRowRoles(run, row));
+      memory.current.set(
+        key,
+        next.kind === 'executors' && others.length > 0 ? { ...next, placements: others } : next,
+      );
+      return;
+    }
+    memory.current.set(key, {
+      ...kept,
+      placements: [...others, { executorId, mode: 'exact', roles: [...roles] }],
+    });
+  };
+
+  /** The keys of the list of roles (N333; N335): of a row of the table, or of an Executor of the review. */
   const onRolesKey = (run: SetupRunView, pick: RolePick, combo: string | undefined): void => {
     const step = rolePickKey(pick, combo);
     if (step.done === undefined) {
@@ -901,7 +987,71 @@ export function SetupScreen(props: SetupScreenProps): ReactNode {
       update({ mode: IDLE });
       return;
     }
-    void assignRoles(run, step.pick.executorId, step.pick.checked);
+    const { target } = step.pick;
+    if (target.kind === 'review') {
+      void assignRoles(run, target.executorId, step.pick.checked);
+      return;
+    }
+    const draft = ref.current.draft;
+    const row = draft.kind === 'executors' ? draft.rows?.[target.index] : undefined;
+    if (row === undefined) {
+      update({ mode: IDLE });
+      return;
+    }
+    update({
+      mode: IDLE,
+      draft: withRowRoles(draft, target.index, step.pick.checked, presetRowRoles(run, row)),
+    });
+  };
+
+  /** The keys of the list of efforts of a row of the table (N335): Enter chooses, Esc leaves it. */
+  const onEffortKey = (pick: EffortPick, combo: string | undefined): void => {
+    const step = effortPickKey(pick, combo);
+    if (step.done === undefined) {
+      update({ mode: { kind: 'effort', pick: step.pick } });
+      return;
+    }
+    if (step.done === 'cancel') {
+      update({ mode: IDLE });
+      return;
+    }
+    update({
+      mode: IDLE,
+      draft: withRowEffort(ref.current.draft, step.pick.row, effortOfPick(step.pick)),
+    });
+  };
+
+  /**
+   * Edits the cell of the table under the cursor (Space or Enter; N335): the mark flips, the effort
+   * and the roles open their lists. A row that is already an Executor of the account has nothing to
+   * edit, and the roles of a row that is not checked have no Executor to belong to yet.
+   */
+  const editCell = (run: SetupRunView, draft: Draft): void => {
+    if (draft.kind !== 'executors') return;
+    const index = tableRowUnderCursor(draft);
+    const row = index === undefined ? undefined : draft.rows?.[index];
+    if (index === undefined || row === undefined) {
+      say(t('setup.executors.registeredRow'), 'warn');
+      return;
+    }
+    switch (columnOf(draft)) {
+      case 'mark':
+        update({ draft: toggled(draft) });
+        return;
+      case 'effort': {
+        const pick = effortPickStart(draft.rows ?? [], index);
+        if (pick === undefined) say(t('setup.executors.noEffort'), 'warn');
+        else update({ mode: { kind: 'effort', pick } });
+        return;
+      }
+      case 'roles':
+        if (!row.on) say(t('setup.executors.needsMark'), 'warn');
+        else {
+          const pick = rolePickStart({ kind: 'row', index }, row.model, rowRoles(run, row));
+          update({ mode: { kind: 'roles', pick } });
+        }
+        return;
+    }
   };
 
   const submitPrompt = (current: Extract<Mode, { kind: 'prompt' }>, draft: Draft): void => {
@@ -1062,6 +1212,10 @@ export function SetupScreen(props: SetupScreenProps): ReactNode {
       onRolesKey(run, mode.pick, event.combo);
       return;
     }
+    if (mode.kind === 'effort') {
+      onEffortKey(mode.pick, event.combo);
+      return;
+    }
     if (mode.kind === 'form') {
       const step = accountFormKey(mode.form, event.combo, event.data);
       if (step.done === 'cancel') update({ mode: IDLE });
@@ -1087,6 +1241,15 @@ export function SetupScreen(props: SetupScreenProps): ReactNode {
     }
     switch (action.slice('setup.'.length)) {
       case 'advance':
+        // N335: on a row of the table Enter edits the cell; the last item ("Continuar") goes on.
+        if (
+          !isFinished(run) &&
+          executorsItem(draft, run.prompt)?.kind === 'row' &&
+          isTable(draft)
+        ) {
+          editCell(run, draft);
+          return;
+        }
         advance(run, draft);
         return;
       case 'back':
@@ -1096,8 +1259,8 @@ export function SetupScreen(props: SetupScreenProps): ReactNode {
       case 'itemNext': {
         const delta = action === 'setup.itemPrev' ? -1 : 1;
         if (run.step === 'review' && run.prompt?.step === 'review') {
-          // N333: the cursor of the review walks the Executors with no role.
-          const last = Math.max(0, noRoleExecutors(run.prompt.plan).length - 1);
+          // N333, N335: the cursor of the review walks the Executors of the plan.
+          const last = Math.max(0, reviewExecutors(run.prompt.plan).length - 1);
           update({ reviewCursor: Math.min(last, Math.max(0, current.reviewCursor + delta)) });
           return;
         }
@@ -1105,14 +1268,19 @@ export function SetupScreen(props: SetupScreenProps): ReactNode {
         return;
       }
       case 'toggle':
+        if (isTable(draft) && executorsItem(draft, run.prompt)?.kind === 'row') {
+          editCell(run, draft);
+          return;
+        }
         update({ draft: toggled(draft) });
         return;
       case 'effortPrev':
-        update({ draft: effortMoved(draft, -1) });
+      case 'effortNext': {
+        const delta = action === 'setup.effortPrev' ? -1 : 1;
+        // N335: in the table ←/→ walk the cells that can be edited; in the list they move the effort.
+        update({ draft: isTable(draft) ? columnMoved(draft, delta) : effortMoved(draft, delta) });
         return;
-      case 'effortNext':
-        update({ draft: effortMoved(draft, 1) });
-        return;
+      }
       case 'type':
         if (draft.kind === 'executors') {
           update({ mode: { kind: 'prompt', purpose: 'executor', profileId: '', value: '' } });
@@ -1120,9 +1288,13 @@ export function SetupScreen(props: SetupScreenProps): ReactNode {
         return;
       case 'role': {
         if (run.step !== 'review' || run.prompt?.step !== 'review' || isFinished(run)) return;
-        const id = noRoleExecutors(run.prompt.plan)[current.reviewCursor];
+        const plan = run.prompt.plan;
+        const id = reviewExecutors(plan)[current.reviewCursor];
         if (id === undefined) say(t('setup.review.noRoleNone'), 'warn');
-        else update({ mode: { kind: 'roles', pick: rolePickStart(id) } });
+        else {
+          const pick = rolePickStart({ kind: 'review', executorId: id }, id, planRolesOf(plan, id));
+          update({ mode: { kind: 'roles', pick } });
+        }
         return;
       }
       case 'moveUp':
@@ -1215,7 +1387,7 @@ export function SetupScreen(props: SetupScreenProps): ReactNode {
     }
     head.push({ key: 'mp.gap', text: '' });
   } else if (mode.kind === 'roles') {
-    for (const line of rolePickLines(mode.pick, mode.pick.executorId, t)) {
+    for (const line of rolePickLines(mode.pick, t)) {
       head.push({
         key: line.key,
         text: line.text,
@@ -1225,6 +1397,17 @@ export function SetupScreen(props: SetupScreenProps): ReactNode {
       });
     }
     head.push({ key: 'rp.gap', text: '' });
+  } else if (mode.kind === 'effort') {
+    for (const line of effortPickLines(mode.pick, t)) {
+      head.push({
+        key: line.key,
+        text: line.text,
+        ...(line.tone === 'accent' ? { color: TOKEN.accent } : {}),
+        ...(line.dim === true ? { dim: true } : {}),
+        ...(line.selected === true ? { selected: true } : {}),
+      });
+    }
+    head.push({ key: 'ep.gap', text: '' });
   } else if (mode.kind === 'loginCheck') {
     head.push({ key: 'lc.hint', text: t('setup.models.loginCheckKeys'), dim: true });
   } else if (mode.kind === 'confirmNotice') {
@@ -1272,6 +1455,7 @@ export function SetupScreen(props: SetupScreenProps): ReactNode {
           draft,
           t,
           closeKey,
+          width: innerWidth - 1,
           reviewNotes: { all: state.details, key: keyLabel(keymap, 'setup.details') ?? '' },
           confirmedPlan: state.confirmedPlan,
           reviewRoles:
@@ -1314,10 +1498,17 @@ export function SetupScreen(props: SetupScreenProps): ReactNode {
   for (const line of [...head, ...body]) {
     if (line.selected === true) cursorLine = wrapped.length;
     const indent = ' '.repeat(line.indent ?? 0);
-    const pieces = wrapText(line.text, Math.max(1, innerWidth - 1 - indent.length)).map(
-      (piece) => indent + piece,
-    );
+    // N335: a row of the table is already cut to the width; wrapping would collapse its spaces.
+    const pieces =
+      line.raw === true
+        ? [indent + line.text]
+        : wrapText(line.text, Math.max(1, innerWidth - 1 - indent.length)).map(
+            (piece) => indent + piece,
+          );
     pieces.forEach((piece, index) => {
+      const full = fit(`${line.selected === true && index === 0 ? '›' : ' '}${piece}`, innerWidth);
+      // The cell the keys act on is drawn as the caret (N335); the one column of the `›` comes first.
+      const focus = index === 0 ? line.focus : undefined;
       wrapped.push(
         <Text
           key={`${line.key}.${String(index)}`}
@@ -1326,7 +1517,15 @@ export function SetupScreen(props: SetupScreenProps): ReactNode {
           bold={line.bold === true}
           {...paint(line.color, line.selected === true ? TOKEN.selected : undefined)}
         >
-          {fit(`${line.selected === true && index === 0 ? '›' : ' '}${piece}`, innerWidth)}
+          {focus === undefined ? (
+            full
+          ) : (
+            <>
+              {sliceCells(full, 0, focus[0] + 1)}
+              <Text caret>{sliceCells(full, focus[0] + 1, focus[1] + 1)}</Text>
+              {sliceCells(full, focus[1] + 1, innerWidth)}
+            </>
+          )}
         </Text>,
       );
     });
@@ -1340,7 +1539,8 @@ export function SetupScreen(props: SetupScreenProps): ReactNode {
     accounts: onAccounts,
     hasAccount: hasAccountNow,
     list: draft.kind === 'executors' && (draft.rows?.length ?? 0) > 0,
-    noRole: run?.prompt?.step === 'review' && noRoleExecutors(run.prompt.plan).length > 0,
+    reviewable: run?.prompt?.step === 'review' && reviewExecutors(run.prompt.plan).length > 0,
+    onRow: run !== undefined && isTable(draft) && executorsItem(draft, run.prompt)?.kind === 'row',
   };
   const bar =
     mode.kind === 'form'
@@ -1349,16 +1549,13 @@ export function SetupScreen(props: SetupScreenProps): ReactNode {
         ? MODELS_BAR
         : mode.kind === 'roles'
           ? ROLES_BAR
-          : mode.kind === 'loginCheck'
-            ? LOGIN_CHECK_BAR
-            : deriveShortcutBar(keymap.registry, keymap.keymap, ['setup'])
-                .filter((item) => relevantBar(item, barContext))
-                .map((item) =>
-                  // N326: with no account yet, Enter at the step opens the form instead of going on.
-                  onAccounts && !hasAccountNow && item.id === 'setup.advance'
-                    ? { ...item, text: { key: 'bar.setup.openForm' } }
-                    : item,
-                );
+          : mode.kind === 'effort'
+            ? EFFORT_BAR
+            : mode.kind === 'loginCheck'
+              ? LOGIN_CHECK_BAR
+              : deriveShortcutBar(keymap.registry, keymap.keymap, ['setup'])
+                  .filter((item) => relevantBar(item, barContext))
+                  .map((item) => barText(item, barContext, onAccounts && !hasAccountNow));
 
   return (
     <Box flexDirection="column" width={columns} height={rows}>

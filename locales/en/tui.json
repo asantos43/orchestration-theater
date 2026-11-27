@@ -175,7 +175,7 @@
       "effortPrev": "Previous effort of the model",
       "effortNext": "Next effort of the model",
       "type": "Type an Executor (account, model, effort)",
-      "role": "Give roles to the Executor with no role"
+      "role": "Change the roles of an Executor"
     },
     "plugins": {
       "itemPrev": "Previous plugin",
@@ -241,7 +241,9 @@
       "openForm": "Add account",
       "effort": "Effort",
       "type": "Type",
-      "role": "Give role"
+      "role": "Roles",
+      "cell": "Edit cell",
+      "column": "Column"
     },
     "settings": {
       "add": "Add account",
@@ -265,8 +267,12 @@
       "skip": "Go on"
     },
     "rolePick": {
-      "confirm": "Give the roles",
+      "confirm": "Confirm",
       "toggle": "Check",
+      "cancel": "Back"
+    },
+    "effortPick": {
+      "confirm": "Choose",
       "cancel": "Back"
     }
   },
@@ -1320,6 +1326,7 @@
       "executors": "Register Executors by API or local model and set the spending cap of each API account.",
       "review": "This is what will be written. Nothing is written before you confirm.",
       "accounts": "Add an account of a client (a subscription) and log in to it now, or continue without one: you can add accounts later in the Settings tab.",
+      "executorsTable": "One row per model: Up/Down change the row, Left/Right the column (Mark, Effort, Roles) and Space or Enter edit the cell. The / key types an Executor by API or local model; the spending cap of each API account is below the table.",
       "executorsList": "Check the models that become Executors (Space), change the effort with Left/Right and set the spending cap of each API account. The / key types an Executor by API or local model.",
       "security": "Choose whether the assistant writes security.unenforced: warn. If not, nothing changes."
     },
@@ -1341,6 +1348,18 @@
     },
     "executors": {
       "listTitle": "Executors to register",
+      "col": {
+        "mark": "Mark",
+        "model": "Model",
+        "effort": "Effort",
+        "roles": "Roles",
+        "position": "Position",
+        "status": "Status"
+      },
+      "next": "{{key}} goes on to the review",
+      "needsMark": "Check the model before choosing its roles.",
+      "registeredRow": "This model is already an Executor of the account: nothing to edit here.",
+      "noEffort": "This model has no effort to choose.",
       "none": "None. Enter continues without one.",
       "row": "{{profile}}  {{model}}",
       "rowEffort": "{{profile}}  {{model}}  effort {{effort}}",
@@ -1402,6 +1421,7 @@
         "noAccountFamily_other": "{{count}} models of the preset with no account ({{family}}): {{heads}}",
         "no_account": "{{heads}} has no account: left out of {{roles}}",
         "empty_list": "no Executor in {{roles}}: they follow the when-exhausted rule",
+        "role_emptied": "{{roles}}: no Executor is left in the list, which goes back to the preset's",
         "not_registered": "{{executors}} is neither registered nor in a catalog: left out of {{roles}}",
         "invalid_executor": "{{executors}} is invalid: left out of {{roles}}",
         "profile_not_allowed": "{{executors}} left out of {{roles}}: its account is not in roles.allowed_profiles",
@@ -1416,9 +1436,9 @@
         "unenforced_warn": "security.unenforced becomes warn: the Director opens without layer 3 (reduced protection), after the daemon restarts",
         "director_will_not_open": "without layer 3 and with security.unenforced at refuse, the Director will not open here"
       },
-      "giveRole": "{{key}} gives roles",
-      "rolesGiven": "{{executor}} joined the end of the list of: {{roles}}.",
-      "noRoleNone": "No Executor with no role to give roles to."
+      "giveRole": "{{key}} changes the roles",
+      "rolesGiven": "{{executor}} now serves in: {{roles}}.",
+      "noRoleNone": "No Executor in the plan to change the roles of."
     },
     "source": {
       "discovered": "found",
@@ -1504,8 +1524,15 @@
       "unavailable": "The client of {{profile}} did not list its models ({{reason}}). The preset decides its Executors."
     },
     "roles": {
-      "title": "Roles of {{executor}}: it joins the end of the list of each role checked",
-      "keys": "Up/Down move, Space checks, Enter gives the roles, Esc goes back"
+      "title": "Roles of {{executor}}: it serves in the roles checked",
+      "keys": "Up/Down move, Space checks, Enter confirms, Esc goes back"
+    },
+    "effort": {
+      "title": "Effort of {{model}}",
+      "none": "no effort",
+      "current": "current",
+      "taken": "already on another row",
+      "keys": "Up/Down move, Enter chooses, Esc goes back"
     },
     "security": {
       "risk": "Layer 3 (the sandbox) is not available on this system and security.unenforced is {{value}}: the Director will not open. With warn it opens, but without the sandbox limit: an Executor can change files and use the network without that barrier.",

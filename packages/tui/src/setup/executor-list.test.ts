@@ -4,8 +4,15 @@ import { describe, expect, it } from 'vitest';
 import {
   listOf,
   presetIdOf,
+  presetRolesOf,
   rolesOfId,
+  rowEffortChoices,
   rowEffortMoved,
+  rowEffortSet,
+  rowOfExecutor,
+  rowPositions,
+  rowRoles,
+  rowRolesSet,
   rowsSubmission,
   rowToggled,
   seededRows,
@@ -46,6 +53,12 @@ const SOL = model('gpt-sol', {
   preset: [{ id: 'codex-sol-high@codex/work', effort: 'high' }],
 });
 
+function rowAt(rows: readonly ExecutorRow[], index: number): ExecutorRow {
+  const row = rows[index];
+  if (row === undefined) throw new Error(`no row ${String(index)}`);
+  return row;
+}
+
 function rowsOf(models: SetupModel[]): ExecutorRow[] {
   return listOf([{ profileId: 'codex/work', found: catalog(models) }]).rows;
 }
@@ -73,7 +86,11 @@ describe('the rows of the list of models (N333)', () => {
     ]);
     expect(rows[0]?.effort).toBe('minimal');
     expect(rows[1]).toMatchObject({ registered: true, on: false });
-    expect(rowsSubmission(rowToggled(rows, 1))).toEqual({ executors: [], exclude: [] });
+    expect(rowsSubmission(rowToggled(rows, 1))).toMatchObject({
+      executors: [],
+      exclude: [],
+      placements: [],
+    });
   });
 
   it('starts the rows as the Executors of the run, not of the preset the route read', () => {
@@ -106,7 +123,7 @@ describe('the rows of the list of models (N333)', () => {
       [true, 'high', 'claude-sonnet-high@codex/work'],
       [true, 'medium', 'claude-sonnet-medium@codex/work'],
     ]);
-    expect(rowsSubmission(rows)).toEqual({ executors: [], exclude: [] });
+    expect(rowsSubmission(rows)).toMatchObject({ executors: [], exclude: [], placements: [] });
     // The effort of one row skips the one the other holds.
     expect(rowEffortMoved(rows, 1, 1)[1]?.effort).toBe('medium');
     // A model the run did not discover starts off, whatever the route said.
@@ -131,17 +148,20 @@ describe('the rows of the list of models (N333)', () => {
 
   it('a row that is checked at its preset effort asks for nothing; a change asks for it with the preset name', () => {
     const rows = rowsOf([SOL, model('gpt-mini')]);
-    expect(rowsSubmission(rows)).toEqual({ executors: [], exclude: [] });
+    expect(rowsSubmission(rows)).toMatchObject({ executors: [], exclude: [], placements: [] });
     const moved = rowEffortMoved(rows, 0, 1);
     expect(moved[0]?.effort).toBe('xhigh');
-    expect(rowsSubmission(moved)).toEqual({
+    expect(rowsSubmission(moved)).toMatchObject({
       executors: [
         { profileId: 'codex/work', model: 'gpt-sol', effort: 'xhigh', alias: 'codex-sol' },
       ],
       exclude: ['codex-sol-high@codex/work'],
     });
     const off = rowToggled(rows, 0);
-    expect(rowsSubmission(off)).toEqual({ executors: [], exclude: ['codex-sol-high@codex/work'] });
+    expect(rowsSubmission(off)).toMatchObject({
+      executors: [],
+      exclude: ['codex-sol-high@codex/work'],
+    });
     const on = rowToggled(rows, 1);
     expect(rowsSubmission(on).executors).toEqual([
       { profileId: 'codex/work', model: 'gpt-mini', effort: 'medium' },
@@ -206,5 +226,88 @@ describe('the roles beside a row', () => {
     expect(rolesOfId(roles, 'a@x/y')).toEqual(['author', 'reviewer']);
     expect(rolesOfId(roles, 'c@x/y')).toEqual([]);
     expect(rolesOfId(roles, undefined)).toEqual([]);
+  });
+});
+
+describe('the table of the models: effort list, roles, position (N335)', () => {
+  const twin = model('gpt-sol', {
+    efforts: ['low', 'medium', 'high'],
+    preset: [
+      { id: 'codex-sol-low@codex/work', effort: 'low' },
+      { id: 'codex-sol-high@codex/work', effort: 'high' },
+    ],
+  });
+  const lists: SetupRoleList[] = [
+    {
+      role: 'author',
+      executors: ['other@x/y', 'codex-sol-high@codex/work'],
+      whenExhausted: 'next',
+    },
+    { role: 'reviewer', executors: ['codex-sol-low@codex/work'], whenExhausted: 'next' },
+  ];
+  const run = {
+    done: [
+      {
+        step: 'preset',
+        input: { preset: 'balanced' },
+        output: { preset: 'balanced', discovered: [], roles: lists, notes: [] },
+      },
+    ],
+  } as never;
+
+  it('offers the efforts of the model, marking the ones another row holds', () => {
+    const rows = rowsOf([twin]);
+    expect(rowEffortChoices(rows, 0)).toEqual([
+      { effort: 'low', taken: false },
+      { effort: 'medium', taken: false },
+      { effort: 'high', taken: true },
+    ]);
+    expect(rowEffortSet(rows, 0, 'medium')[0]?.effort).toBe('medium');
+    // An effort another row holds, or one the model does not take, changes nothing.
+    expect(rowEffortSet(rows, 0, 'high')[0]?.effort).toBe('low');
+    expect(rowEffortSet(rows, 0, 'xhigh')[0]?.effort).toBe('low');
+  });
+
+  it('says where each role of a row puts it, from 1, and a role added has no place yet', () => {
+    expect(presetRolesOf((run as { done: never[] }).done)).toEqual(lists);
+    const rows = rowsOf([twin]);
+    expect(rowPositions(run, rowAt(rows, 1))).toEqual([{ role: 'author', position: 2 }]);
+    const added = rowRolesSet(rows, 1, ['author', 'reviewer'], rowRoles(run, rowAt(rows, 1)));
+    expect(rowPositions(run, rowAt(added, 1))).toEqual([
+      { role: 'author', position: 2 },
+      { role: 'reviewer', position: null },
+    ]);
+  });
+
+  it('roles equal to the preset are not kept, so the row asks for nothing', () => {
+    const rows = rowsOf([twin]);
+    const base = rowRoles(run, rowAt(rows, 1));
+    const changed = rowRolesSet(rows, 1, ['reviewer', 'author'], ['reviewer']);
+    expect(changed[1]?.roles).toEqual(['author', 'reviewer']);
+    // The same set as the preset's goes back to it, in whatever order.
+    expect(rowRolesSet(changed, 1, [...base], base)[1]?.roles).toBeUndefined();
+    expect(rowsSubmission(rowRolesSet(rows, 1, [...base], base)).placements).toEqual([]);
+  });
+
+  it('asks for the roles of an Executor of the preset by id, and of a new one by request', () => {
+    const rows = rowsOf([twin, model('gpt-mini')]);
+    const exact = rowRolesSet(rowToggled(rows, 2), 1, [], ['author']);
+    const withNew = rowRolesSet(exact, 2, ['critic'], []);
+    const submission = rowsSubmission(withNew);
+    expect(submission.executors).toEqual([
+      { profileId: 'codex/work', model: 'gpt-mini', effort: 'medium' },
+    ]);
+    expect(submission.placements).toEqual([
+      { executorId: 'codex-sol-high@codex/work', mode: 'exact', roles: [] },
+      { request: 0, mode: 'exact', roles: ['critic'] },
+    ]);
+    // The row of an Executor of the plan, by id or by the order of the requests.
+    expect(
+      rowOfExecutor(withNew, ['gpt-mini-medium@codex/work'], 'codex-sol-high@codex/work'),
+    ).toBe(1);
+    expect(
+      rowOfExecutor(withNew, ['gpt-mini-medium@codex/work'], 'gpt-mini-medium@codex/work'),
+    ).toBe(2);
+    expect(rowOfExecutor(withNew, [], 'nobody@x/y')).toBeUndefined();
   });
 });

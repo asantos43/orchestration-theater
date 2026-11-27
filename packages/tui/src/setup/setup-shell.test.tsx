@@ -30,6 +30,7 @@ function settingsWith(open: 'auto' | 'never', readTimeoutMs = 5000): UiSettings 
       reviewNotes: 'grouped',
       modelPick: 'preset',
       executorsInput: 'list',
+      executorsLayout: 'table',
     },
   };
 }

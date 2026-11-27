@@ -7,8 +7,10 @@ import type {
   SetupModelFloating,
   SetupModels,
   SetupRoleList,
+  SetupRolePlacement,
   SetupRunView,
 } from '@otheater/protocol';
+import { ROLE_IDS } from './role-pick.js';
 
 /**
  * The list of models of the step "Executores" (N333, the owner on 2026-11-26): per account, the
@@ -17,7 +19,14 @@ import type {
  * This module is pure: the rows, what each key does to them and what they give the step. The route
  * is the one of the list after a login (N324, `GET /v1/setup/models/:client/:name`); nothing here
  * calls the daemon.
+ *
+ * N335 (the owner on 2026-11-27): the rows are also the lines of a table with the roles of each
+ * Executor (`ui.setup.executorsLayout`); a row whose roles the person changed carries them in
+ * `roles`, and the answer of the step sends them as an exact placement.
  */
+
+/** A role of the seven the preset names. */
+export type RowRole = SetupRoleList['role'];
 
 /** The efforts a model takes when its catalog lists none. [proposta] N333, item 2. */
 export const DEFAULT_EFFORTS = ['low', 'medium', 'high'] as const;
@@ -52,6 +61,11 @@ export interface ExecutorRow {
   readonly seed: RowSeed | null;
   /** The model already runs as an Executor of the account: it is shown, and does not take part. */
   readonly registered: boolean;
+  /**
+   * N335 [proposta]: the roles the person chose for this row, when they differ from the ones the
+   * preset gives it; absent while the row keeps the preset's. The answer sends them as `exact`.
+   */
+  readonly roles?: readonly RowRole[];
 }
 
 /** What the catalog said of one account, for the heading of its rows. */
@@ -233,8 +247,50 @@ export function rowToggled(rows: readonly ExecutorRow[], index: number): Executo
 }
 
 /** The efforts a row cycles through: its own, and none first when the preset gives it with none. */
-function effortOptions(row: ExecutorRow): readonly (string | null)[] {
+export function effortOptions(row: ExecutorRow): readonly (string | null)[] {
   return row.seed !== null && row.seed.effort === null ? [null, ...row.efforts] : row.efforts;
+}
+
+/** The efforts another row of the same model and account already holds (two rows would be one Executor). */
+function takenEfforts(rows: readonly ExecutorRow[], index: number): Set<string | null> {
+  const row = rows[index];
+  return new Set(
+    rows
+      .filter(
+        (other, at) =>
+          row !== undefined &&
+          at !== index &&
+          other.profileId === row.profileId &&
+          other.model === row.model &&
+          !other.registered,
+      )
+      .map((other) => other.effort),
+  );
+}
+
+/** N335: the efforts the list of a row offers, with the ones another row of the model holds marked. */
+export function rowEffortChoices(
+  rows: readonly ExecutorRow[],
+  index: number,
+): { effort: string | null; taken: boolean }[] {
+  const row = rows[index];
+  if (row === undefined || row.registered) return [];
+  const taken = takenEfforts(rows, index);
+  return effortOptions(row).map((effort) => ({ effort, taken: taken.has(effort) }));
+}
+
+/** N335: the row with the effort chosen in the list; one the model does not take, or another row holds, changes nothing. */
+export function rowEffortSet(
+  rows: readonly ExecutorRow[],
+  index: number,
+  effort: string | null,
+): ExecutorRow[] {
+  const row = rows[index];
+  if (row === undefined || row.registered) return [...rows];
+  if (!effortOptions(row).includes(effort) || takenEfforts(rows, index).has(effort)) {
+    return [...rows];
+  }
+  return rows.map((other, at) => (at === index ? { ...other, effort } : other));
 }
 
 /**
@@ -250,17 +306,7 @@ export function rowEffortMoved(
   const row = rows[index];
   if (row === undefined || row.registered) return [...rows];
   const options = effortOptions(row);
-  const taken = new Set(
-    rows
-      .filter(
-        (other, at) =>
-          at !== index &&
-          other.profileId === row.profileId &&
-          other.model === row.model &&
-          !other.registered,
-      )
-      .map((other) => other.effort),
-  );
+  const taken = takenEfforts(rows, index);
   let at = options.indexOf(row.effort);
   if (at < 0) at = 0;
   for (let step = at + delta; step >= 0 && step < options.length; step += delta) {
@@ -271,37 +317,98 @@ export function rowEffortMoved(
   return [...rows];
 }
 
-/** What the rows give the step: the requests for the models checked and the preset ids left out. */
+/** Where the Executor of a row stands in the answer of the step: its id, or the index of its request. */
+export interface RowPlace {
+  readonly index: number;
+  readonly executorId?: string;
+  readonly request?: number;
+}
+
+/**
+ * What the rows give the step: the requests for the models checked, the preset ids left out and,
+ * for the rows whose roles the person changed, the exact placements (N335): by `executorId` for an
+ * Executor the preset already names (a row left as the preset has it), by `request` for a new one
+ * (the index in the `executors` this returns, which the answer puts before the typed ones). A row
+ * whose roles were not changed gives no placement. `places` says where each row that takes part
+ * stands in the answer, to find the row of an Executor of the plan afterwards.
+ */
 export function rowsSubmission(rows: readonly ExecutorRow[]): {
   executors: SetupExecutorRequest[];
   exclude: string[];
+  placements: SetupRolePlacement[];
+  places: RowPlace[];
 } {
   const executors: SetupExecutorRequest[] = [];
   const exclude: string[] = [];
-  for (const row of rows) {
-    if (row.registered) continue;
+  const placements: SetupRolePlacement[] = [];
+  const places: RowPlace[] = [];
+  rows.forEach((row, index) => {
+    if (row.registered) return;
     const seed = row.seed;
+    const requested = (alias?: string): RowPlace => {
+      const place = { index, request: executors.length };
+      executors.push({
+        profileId: row.profileId,
+        model: row.model,
+        ...(row.effort === null ? {} : { effort: row.effort }),
+        ...(alias === undefined ? {} : { alias }),
+      });
+      return place;
+    };
+    let place: RowPlace | undefined;
     if (seed !== null) {
-      if (row.on && row.effort === seed.effort) continue;
-      exclude.push(seed.id);
-      if (!row.on) continue;
-      executors.push({
-        profileId: row.profileId,
-        model: row.model,
-        ...(row.effort === null ? {} : { effort: row.effort }),
-        alias: seed.alias,
-      });
-      continue;
+      if (row.on && row.effort === seed.effort) {
+        place = { index, executorId: seed.id };
+      } else {
+        exclude.push(seed.id);
+        if (row.on) place = requested(seed.alias);
+      }
+    } else if (row.on) {
+      place = requested();
     }
-    if (row.on) {
-      executors.push({
-        profileId: row.profileId,
-        model: row.model,
-        ...(row.effort === null ? {} : { effort: row.effort }),
-      });
-    }
-  }
-  return { executors, exclude };
+    if (place === undefined) return;
+    places.push(place);
+    if (row.roles === undefined) return;
+    placements.push({
+      ...(place.executorId === undefined ? {} : { executorId: place.executorId }),
+      ...(place.request === undefined ? {} : { request: place.request }),
+      mode: 'exact',
+      roles: [...row.roles],
+    });
+  });
+  return { executors, exclude, placements, places };
+}
+
+/** The row that gives the Executor `id` of the plan, given the ids the done step lists in the order of the requests. */
+export function rowOfExecutor(
+  rows: readonly ExecutorRow[],
+  requested: readonly string[],
+  id: string,
+): number | undefined {
+  const { places } = rowsSubmission(rows);
+  return places.find((place) =>
+    place.executorId === undefined
+      ? place.request !== undefined && requested[place.request] === id
+      : place.executorId === id,
+  )?.index;
+}
+
+/** N335: the row with its roles set (in the order of the registry); the same as `base` goes back to the preset's. */
+export function rowRolesSet(
+  rows: readonly ExecutorRow[],
+  index: number,
+  roles: readonly RowRole[],
+  base: readonly RowRole[],
+): ExecutorRow[] {
+  const wanted = ROLE_IDS.filter((role) => roles.includes(role));
+  const same = wanted.join(',') === ROLE_IDS.filter((role) => base.includes(role)).join(',');
+  return rows.map((row, at) => {
+    if (at !== index || row.registered) return row;
+    const next: { -readonly [K in keyof ExecutorRow]: ExecutorRow[K] } = { ...row };
+    if (same) delete next.roles;
+    else next.roles = wanted;
+    return next;
+  });
 }
 
 // ---- the roles beside a row ----------------------------------------------------------------------
@@ -313,14 +420,39 @@ export function presetRolesOf(done: readonly SetupDoneStep[]): readonly SetupRol
 }
 
 /** The roles of the preset that hold the Executor id, in the order of the roles. */
-export function rolesOfId(roles: readonly SetupRoleList[], id: string | undefined): string[] {
+export function rolesOfId(roles: readonly SetupRoleList[], id: string | undefined): RowRole[] {
   if (id === undefined) return [];
   return roles.filter((list) => list.executors.includes(id)).map((list) => list.role);
 }
 
-/** The roles beside a row, from the preset of the run. */
-export function rowRoles(run: SetupRunView | undefined, row: ExecutorRow): string[] {
+/** The roles the preset of the run gives a row (its Executor `<alias>-<effort>@<account>`). */
+export function presetRowRoles(run: SetupRunView | undefined, row: ExecutorRow): RowRole[] {
   return rolesOfId(presetRolesOf(run?.done ?? []), presetIdOf(row));
+}
+
+/** The roles beside a row: the ones the person chose (N335), or the preset's. */
+export function rowRoles(run: SetupRunView | undefined, row: ExecutorRow): readonly RowRole[] {
+  return row.roles ?? presetRowRoles(run, row);
+}
+
+/**
+ * N335: the place of a row in the list of each of its roles, from 1, as the preset has it. A role
+ * the person added to the row has no place yet (`null`): the Executor enters at the end of that
+ * list, and the review shows where.
+ */
+export function rowPositions(
+  run: SetupRunView | undefined,
+  row: ExecutorRow,
+): { role: RowRole; position: number | null }[] {
+  const lists = presetRolesOf(run?.done ?? []);
+  const id = presetIdOf(row);
+  return rowRoles(run, row).map((role) => {
+    const at =
+      id === undefined
+        ? -1
+        : (lists.find((list) => list.role === role)?.executors.indexOf(id) ?? -1);
+    return { role, position: at < 0 ? null : at + 1 };
+  });
 }
 
 /** What the catalogs found for the preset in this run (the `discovered` of the done steps). */

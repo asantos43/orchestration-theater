@@ -13,10 +13,13 @@ import {
 } from '@otheater/protocol';
 import {
   rowEffortMoved,
+  rowEffortSet,
+  rowRolesSet,
   rowToggled,
   rowsSubmission,
   type ExecutorGroup,
   type ExecutorRow,
+  type RowRole,
 } from './executor-list.js';
 
 /**
@@ -30,6 +33,10 @@ export interface DetectRow {
   readonly profileId: string;
   readonly on: boolean;
 }
+
+/** The cells of the table of the step Executors the person can change, from left to right (N335). */
+export const EXECUTOR_COLUMNS = ['mark', 'effort', 'roles'] as const;
+export type ExecutorColumn = (typeof EXECUTOR_COLUMNS)[number];
 
 export type Draft =
   | { readonly kind: 'detect'; readonly rows: readonly DetectRow[]; readonly cursor: number }
@@ -62,6 +69,13 @@ export type Draft =
        * one; kept so the step, answered again, repeats them. Any edit of the step clears them.
        */
       readonly placements?: readonly SetupRolePlacement[];
+      /**
+       * N335: how the list is drawn (`ui.setup.executorsLayout`): `table` has the cell the cursor is
+       * on and an item "go on" at the end; `list` is the one of N333. Set with the list.
+       */
+      readonly layout?: 'table' | 'list';
+      /** N335: the cell of the row under the cursor the keys act on (table only); absent: the mark. */
+      readonly column?: ExecutorColumn;
     }
   | { readonly kind: 'review' };
 
@@ -143,6 +157,11 @@ export function reconciledDraft(
   return { ...remembered, rows, cursor: Math.min(remembered.cursor, Math.max(0, rows.length - 1)) };
 }
 
+/** The step of the Executors is drawn as the table (N335): the layout says so and there are rows. */
+export function isTable(draft: Draft): boolean {
+  return draft.kind === 'executors' && draft.layout === 'table' && (draft.rows?.length ?? 0) > 0;
+}
+
 /** How many rows the cursor walks at the step. */
 export function itemCount(draft: Draft, prompt: SetupPrompt | null): number {
   if (prompt === null) return 0;
@@ -159,7 +178,8 @@ export function itemCount(draft: Draft, prompt: SetupPrompt | null): number {
       return (
         (draft.rows?.length ?? 0) +
         draft.executors.length +
-        (prompt.step === 'executors' ? prompt.apiProfiles.length : 0)
+        (prompt.step === 'executors' ? prompt.apiProfiles.length : 0) +
+        (isTable(draft) ? 1 : 0)
       );
     case 'review':
       return 0;
@@ -194,9 +214,46 @@ export function toggled(draft: Draft): Draft {
  * (←→). Nothing happens off the rows of the list.
  */
 export function effortMoved(draft: Draft, delta: -1 | 1): Draft {
-  if (draft.kind !== 'executors' || draft.rows === undefined) return draft;
+  if (draft.kind !== 'executors' || draft.rows === undefined || isTable(draft)) return draft;
   if (draft.cursor >= draft.rows.length) return draft;
   return edited(draft, { rows: rowEffortMoved(draft.rows, draft.cursor, delta) });
+}
+
+/** N335: the cell of the table the keys act on (the mark until one is chosen). */
+export function columnOf(draft: Draft): ExecutorColumn {
+  return draft.kind === 'executors' ? (draft.column ?? 'mark') : 'mark';
+}
+
+/** N335: the cell moved by `delta` among the ones that can be changed (←/→); it stops at the ends. */
+export function columnMoved(draft: Draft, delta: -1 | 1): Draft {
+  if (draft.kind !== 'executors' || !isTable(draft)) return draft;
+  const at = EXECUTOR_COLUMNS.indexOf(columnOf(draft)) + delta;
+  const column = EXECUTOR_COLUMNS[Math.min(EXECUTOR_COLUMNS.length - 1, Math.max(0, at))];
+  return column === undefined ? draft : { ...draft, column };
+}
+
+/** N335: the row of the table under the cursor, when the cursor is on a row a person can change. */
+export function tableRowUnderCursor(draft: Draft): number | undefined {
+  if (draft.kind !== 'executors' || !isTable(draft)) return undefined;
+  const row = draft.rows?.[draft.cursor];
+  return row === undefined || row.registered ? undefined : draft.cursor;
+}
+
+/** N335: the effort chosen in the list for the row (the model's own, and no row's other). */
+export function withRowEffort(draft: Draft, index: number, effort: string | null): Draft {
+  if (draft.kind !== 'executors' || draft.rows === undefined) return draft;
+  return edited(draft, { rows: rowEffortSet(draft.rows, index, effort) });
+}
+
+/** N335: the roles chosen in the list for the row; the ones `base` has leave the row as the preset has it. */
+export function withRowRoles(
+  draft: Draft,
+  index: number,
+  roles: readonly RowRole[],
+  base: readonly RowRole[],
+): Draft {
+  if (draft.kind !== 'executors' || draft.rows === undefined) return draft;
+  return edited(draft, { rows: rowRolesSet(draft.rows, index, roles, base) });
 }
 
 /** The draft of the Executors with a change; the roles given at the review are given up (any edit clears them). */
@@ -228,7 +285,9 @@ export function reordered(draft: Draft, delta: -1 | 1): Draft {
 export type ExecutorsItem =
   | { readonly kind: 'row'; readonly index: number }
   | { readonly kind: 'executor'; readonly index: number }
-  | { readonly kind: 'budget'; readonly profileId: string };
+  | { readonly kind: 'budget'; readonly profileId: string }
+  /** N335 [proposta]: the last item of the table, where Enter goes on (Enter edits the cells above). */
+  | { readonly kind: 'next' };
 
 export function executorsItem(draft: Draft, prompt: SetupPrompt | null): ExecutorsItem | undefined {
   if (draft.kind !== 'executors' || prompt?.step !== 'executors') return undefined;
@@ -237,7 +296,10 @@ export function executorsItem(draft: Draft, prompt: SetupPrompt | null): Executo
   const typed = draft.cursor - rows;
   if (typed < draft.executors.length) return { kind: 'executor', index: typed };
   const profile = prompt.apiProfiles[typed - draft.executors.length];
-  return profile === undefined ? undefined : { kind: 'budget', profileId: profile.profileId };
+  if (profile !== undefined) return { kind: 'budget', profileId: profile.profileId };
+  return isTable(draft) && typed - draft.executors.length === prompt.apiProfiles.length
+    ? { kind: 'next' }
+    : undefined;
 }
 
 export function withExecutor(draft: Draft, executor: SetupExecutorRequest): Draft {
@@ -266,6 +328,8 @@ export function withList(
     readonly groups: readonly ExecutorGroup[];
     readonly executors: readonly SetupExecutorRequest[];
     readonly exclude: readonly string[];
+    /** N335: the layout of the list (`ui.setup.executorsLayout`); `table` when absent. */
+    readonly layout?: 'table' | 'list';
   },
 ): Draft {
   if (draft.kind !== 'executors') return draft;
@@ -275,17 +339,33 @@ export function withList(
     rows: [...list.rows],
     groups: [...list.groups],
     list: 'ready' as const,
+    layout: list.layout ?? ('table' as const),
   };
   delete next.exclude;
   return list.exclude.length === 0 ? next : { ...next, exclude: [...list.exclude] };
 }
 
-/** The Executors of the plan the preset leaves without a role: the ones the review can give one. */
-export function noRoleExecutors(plan: SetupPlan | undefined): readonly string[] {
-  if (plan === undefined) return [];
-  return plan.executors
-    .map((executor) => executor.id)
-    .filter((id) => !plan.roles.some((role) => role.executors.includes(id)));
+/**
+ * The Executors of the plan, in the order of the plan: the ones the review walks and P gives roles
+ * (N335: any of them, not only the ones the preset leaves without a role).
+ */
+export function reviewExecutors(plan: SetupPlan | undefined): readonly string[] {
+  return plan === undefined ? [] : plan.executors.map((executor) => executor.id);
+}
+
+/**
+ * Where the cursor of the review starts [proposta]: on the first Executor with no role (what P was
+ * made for in N333), or on the first one.
+ */
+export function reviewStart(plan: SetupPlan | undefined): number {
+  const ids = reviewExecutors(plan);
+  const at = ids.findIndex((id) => planRolesOf(plan, id).length === 0);
+  return Math.max(0, at);
+}
+
+/** The roles of the lists of the plan that hold the Executor, in the order of the roles. */
+export function planRolesOf(plan: SetupPlan | undefined, id: string): RowRole[] {
+  return (plan?.roles ?? []).filter((list) => list.executors.includes(id)).map((list) => list.role);
 }
 
 export function withBudget(draft: Draft, budget: SetupBudget): Draft {
@@ -333,15 +413,22 @@ export function submissionOf(
       const exclude = [...listed.exclude, ...(draft.exclude ?? [])].filter(
         (id, at, all) => all.indexOf(id) === at,
       );
+      // N335: the roles of the rows (exact, by `executorId` or `request`), then the ones given at the
+      // review to an Executor that is not a row; one Executor takes one placement, the row's first.
+      const given = new Set(listed.placements.flatMap((place) => place.executorId ?? []));
+      const roles = [
+        ...listed.placements,
+        ...(draft.placements ?? []).filter(
+          (place) => place.executorId === undefined || !given.has(place.executorId),
+        ),
+      ].map((place) => ({ ...place, roles: [...place.roles] }));
       return {
         step: 'executors',
         input: {
           executors: [...listed.executors, ...draft.executors],
           budgets: Object.values(draft.budgets),
           ...(exclude.length === 0 ? {} : { exclude }),
-          ...(draft.placements === undefined || draft.placements.length === 0
-            ? {}
-            : { roles: draft.placements.map((place) => ({ ...place, roles: [...place.roles] })) }),
+          ...(roles.length === 0 ? {} : { roles }),
         },
       };
     }

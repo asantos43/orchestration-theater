@@ -13,7 +13,11 @@ import type {
   SetupModels,
   SetupNote,
 } from '@otheater/protocol';
-import type { SetupExecutorsInputMode, SetupModelPickMode } from '../settings.js';
+import type {
+  SetupExecutorsInputMode,
+  SetupExecutorsLayoutMode,
+  SetupModelPickMode,
+} from '../settings.js';
 import type { SetupFlow } from './api.js';
 import {
   FakeSetupApi,
@@ -82,6 +86,8 @@ function mount(
   api: FakeSetupApi = new FakeSetupApi({ profiles: PROFILES }),
   modelPick?: SetupModelPickMode,
   executorsInput?: SetupExecutorsInputMode,
+  // N335: the tests of the list of N333 stay on the list; the ones of the table say `table`.
+  executorsLayout: SetupExecutorsLayoutMode = 'list',
 ): Mounted {
   const outcomes: SetupOutcome[] = [];
   const view = render(
@@ -92,6 +98,7 @@ function mount(
         keymap={keymap}
         modelPick={modelPick}
         executorsInput={executorsInput}
+        executorsLayout={executorsLayout}
         onClose={(o) => outcomes.push(o)}
       />
     </I18nextProvider>,
@@ -1385,8 +1392,9 @@ describe('the setup screen: the list of Executors and the roles of the review (N
   async function atList(
     api: FakeSetupApi = listing(),
     executorsInput?: SetupExecutorsInputMode,
+    executorsLayout?: SetupExecutorsLayoutMode,
   ): Promise<Mounted> {
-    const screen = mount('first_run', api, undefined, executorsInput);
+    const screen = mount('first_run', api, undefined, executorsInput, executorsLayout);
     await screen.seen('Add an account of a client');
     await screen.press(ENTER);
     await screen.seen('Pick the accounts that take part');
@@ -1527,8 +1535,8 @@ describe('the setup screen: the list of Executors and the roles of the review (N
     const screen = await atReview(api);
     const review = screen.frame();
     expect(review).toContain('no role');
-    expect(review).toContain('P gives roles');
-    expect(review).toContain('P  Give role');
+    expect(review).toContain('P changes the roles');
+    expect(review).toContain('P  Roles');
     const list = await screen.press('p');
     expect(list).toContain('Roles of claude-haiku-4-5@claude-code/main');
     for (const role of [
@@ -1542,7 +1550,7 @@ describe('the setup screen: the list of Executors and the roles of the review (N
     ]) {
       expect(list).toContain(`[ ] ${role}`);
     }
-    expect(list).toContain('Enter  Give the roles');
+    expect(list).toContain('Enter  Confirm');
     // Down twice to author, check it, down once and check the reviewer.
     await screen.press(DOWN);
     await screen.press(DOWN);
@@ -1553,7 +1561,7 @@ describe('the setup screen: the list of Executors and the roles of the review (N
     expect(checked).toContain('[x] reviewer');
     const calls = api.calls.length;
     await screen.press(ENTER);
-    const done = await screen.seen('joined the end of the list of: author, reviewer.');
+    const done = await screen.seen('now serves in: author, reviewer.');
     expect(api.calls.slice(calls)).toEqual(['back', 'submit:executors']);
     expect(api.submissions.at(-1)).toEqual({
       step: 'executors',
@@ -1564,14 +1572,13 @@ describe('the setup screen: the list of Executors and the roles of the review (N
         roles: [
           {
             executorId: 'claude-haiku-4-5@claude-code/main',
-            mode: 'add',
+            mode: 'exact',
             roles: ['author', 'reviewer'],
           },
         ],
       },
     });
-    // The Executor has roles now: it is no longer without one.
-    expect(done).not.toContain('P gives roles');
+    // The Executor has roles now.
     expect(done).toContain('author');
   });
 
@@ -1609,14 +1616,252 @@ describe('the setup screen: the list of Executors and the roles of the review (N
     expect(frame).toContain('[x] claude-haiku-4-5');
   });
 
-  it('with no Executor without a role, P says so', async () => {
+  it('P works for an Executor that already has roles: its roles come checked (N335)', async () => {
     const api = listing();
     const screen = await atList(api);
     await screen.seen('Check the models that become Executors');
     await screen.press(ENTER);
     await screen.seen('This is what will be written.');
+    // The cursor starts on the first Executor of the plan, gpt-sol (author, reviewer).
     const frame = await screen.press('p');
-    expect(frame).toContain('No Executor with no role to give roles to.');
-    expect(frame).not.toContain('Roles of');
+    expect(frame).toContain(`Roles of ${SOL_HIGH}`);
+    expect(frame).toContain('[x] author');
+    expect(frame).toContain('[x] reviewer');
+    expect(frame).toContain('[ ] director');
+    // Uncheck the reviewer (down to it) and confirm: the Executor stays only in author.
+    await screen.press(DOWN);
+    await screen.press(DOWN);
+    await screen.press(DOWN);
+    await screen.press(' ');
+    await screen.press(ENTER);
+    await screen.seen('now serves in: author.');
+    expect(api.submissions.at(-1)).toMatchObject({
+      step: 'executors',
+      input: { roles: [{ executorId: SOL_HIGH, mode: 'exact', roles: ['author'] }] },
+    });
+  });
+
+  // ---- N335: the table of the models --------------------------------------------------------------
+
+  /** The step of the Executors drawn as a table (the default of `ui.setup.executorsLayout`). */
+  const atTable = (api: FakeSetupApi = listing()): Promise<Mounted> =>
+    atList(api, undefined, 'table');
+
+  /** On the row `row` (0-based among the rows), at the column of the mark. */
+  async function toRow(screen: Mounted, row: number): Promise<void> {
+    for (let at = 0; at < row; at += 1) await screen.press(DOWN);
+  }
+
+  it('draws a row per model with the effort, the roles and the position of each Executor', async () => {
+    const screen = await atTable();
+    const frame = await screen.seen('Position');
+    expect(frame).toContain('Mark  Model');
+    expect(frame).toContain('claude-code/main');
+    expect(frame).toContain(
+      '[x]   claude-sonnet-4-5  -       director, reviewer, actor  director#1 reviewer#2 actor#1',
+    );
+    expect(frame).toContain('[ ]   claude-haiku-4-5   medium');
+    expect(frame).toContain(
+      '[x]   gpt-sol            high    author, reviewer           author#1 reviewer#1',
+    );
+    expect(frame).toContain('Enter goes on to the review');
+    // Enter edits the cell here, so the bar says so; Space is not offered apart.
+    expect(frame).toContain('Enter  Edit cell');
+    expect(frame).toContain('→  Column');
+    expect(frame).not.toContain('Space  Pick');
+  });
+
+  it('ui.setup.executorsLayout list keeps the rows of before', async () => {
+    const screen = await atList(listing(), undefined, 'list');
+    const frame = await screen.seen('Check the models that become Executors');
+    expect(frame).toContain('[x] gpt-sol  ‹high›  → author, reviewer');
+    expect(frame).not.toContain('Position');
+  });
+
+  it('Enter edits the cell: the mark flips, the effort and the roles come from lists, and a new Executor asks by request', async () => {
+    const api = listing();
+    const screen = await atTable(api);
+    await screen.seen('Position');
+    // gpt-mini is the fourth row: Enter on the mark checks it.
+    await toRow(screen, 3);
+    expect(await screen.press(ENTER)).toContain('[x]   gpt-mini');
+    // Right goes to the effort: its list opens with the efforts the model takes, and Enter chooses.
+    await screen.press(RIGHT);
+    const efforts = await screen.press(ENTER);
+    expect(efforts).toContain('Effort of gpt-mini');
+    expect(efforts).toContain('Enter  Choose');
+    await screen.press(DOWN);
+    expect(await screen.press(ENTER)).toMatch(/\[x\] +gpt-mini +high/);
+    // Right goes to the roles: author is checked, and Enter takes the list.
+    await screen.press(RIGHT);
+    const roles = await screen.press(ENTER);
+    expect(roles).toContain('Roles of gpt-mini');
+    await screen.press(DOWN);
+    await screen.press(DOWN);
+    await screen.press(' ');
+    const cell = await screen.press(ENTER);
+    expect(cell).toContain('author');
+    expect(cell).toContain('author#+');
+    // Down to the last item of the table and Enter go on.
+    await screen.press(DOWN);
+    await screen.press(ENTER);
+    await screen.seen('This is what will be written.');
+    expect(api.submissions.at(-1)).toEqual({
+      step: 'executors',
+      input: {
+        executors: [{ profileId: WORK, model: 'gpt-mini', effort: 'high' }],
+        budgets: [],
+        roles: [{ request: 0, mode: 'exact', roles: ['author'] }],
+      },
+    });
+  });
+
+  it('Esc closes the list of efforts and the list of roles with no change, and nothing is sent for it', async () => {
+    const api = listing();
+    const screen = await atTable(api);
+    await screen.seen('Position');
+    await toRow(screen, 2);
+    await screen.press(RIGHT);
+    await screen.press(ENTER);
+    await screen.press(DOWN);
+    const closed = await screen.press(ESC);
+    expect(closed).not.toContain('Effort of');
+    expect(closed).toMatch(/\[x\] +gpt-sol +high/);
+    await screen.press(RIGHT);
+    await screen.press(ENTER);
+    await screen.press(DOWN);
+    await screen.press(' ');
+    expect(await screen.press(ESC)).not.toContain('Roles of');
+    // Enter with the same set as the one it opened with is no change either.
+    await screen.press(ENTER);
+    expect(await screen.press(ENTER)).not.toContain('Roles of');
+    await screen.press(DOWN);
+    await screen.press(DOWN);
+    await screen.press(ENTER);
+    await screen.seen('This is what will be written.');
+    expect(api.submissions.at(-1)).toEqual({
+      step: 'executors',
+      input: { executors: [], budgets: [] },
+    });
+  });
+
+  it('takes a role out of an Executor of the preset and adds another: exact, by its id', async () => {
+    const api = listing();
+    const screen = await atTable(api);
+    await screen.seen('Position');
+    await toRow(screen, 2);
+    await screen.press(RIGHT);
+    await screen.press(RIGHT);
+    const list = await screen.press(ENTER);
+    // It opens with the roles of the Executor checked.
+    expect(list).toContain('[x] author');
+    expect(list).toContain('[x] reviewer');
+    // Down to the reviewer: take it out; down to the critic: add it.
+    for (let at = 0; at < 3; at += 1) await screen.press(DOWN);
+    await screen.press(' ');
+    for (let at = 0; at < 3; at += 1) await screen.press(DOWN);
+    await screen.press(' ');
+    const cell = await screen.press(ENTER);
+    expect(cell).toContain('author, critic');
+    expect(cell).toContain('author#1 critic#+');
+    await screen.press(DOWN);
+    await screen.press(DOWN);
+    await screen.press(ENTER);
+    await screen.seen('This is what will be written.');
+    expect(api.submissions.at(-1)).toEqual({
+      step: 'executors',
+      input: {
+        executors: [],
+        budgets: [],
+        roles: [{ executorId: SOL_HIGH, mode: 'exact', roles: ['author', 'critic'] }],
+      },
+    });
+  });
+
+  it('a role list the placement empties goes back to the preset and the review says so', async () => {
+    const api = listing();
+    const screen = await atTable(api);
+    await screen.seen('Position');
+    await toRow(screen, 2);
+    await screen.press(RIGHT);
+    await screen.press(RIGHT);
+    await screen.press(ENTER);
+    // Down to author (it is the only Executor in the list): take it out.
+    await screen.press(DOWN);
+    await screen.press(DOWN);
+    await screen.press(' ');
+    await screen.press(ENTER);
+    await screen.press(DOWN);
+    await screen.press(DOWN);
+    await screen.press(ENTER);
+    const review = await screen.seen('This is what will be written.');
+    expect(review).toContain('no Executor is left in the list');
+  });
+
+  it('P at the review changes the roles of an Executor the table gave, and replaces the placement of the table', async () => {
+    const api = listing();
+    const screen = await atTable(api);
+    await screen.seen('Position');
+    await toRow(screen, 3);
+    await screen.press(ENTER);
+    await screen.press(RIGHT);
+    await screen.press(RIGHT);
+    await screen.press(ENTER);
+    await screen.press(DOWN);
+    await screen.press(DOWN);
+    await screen.press(' ');
+    await screen.press(ENTER);
+    await screen.press(DOWN);
+    await screen.press(ENTER);
+    await screen.seen('This is what will be written.');
+    // The cursor of the review starts on the Executor with no role, or on the first one; this one has author.
+    await screen.press(DOWN);
+    await screen.press(DOWN);
+    const list = await screen.press('p');
+    expect(list).toContain('Roles of gpt-mini@codex/work');
+    expect(list).toContain('[x] author');
+    // Take author out, add the critic.
+    await screen.press(DOWN);
+    await screen.press(DOWN);
+    await screen.press(' ');
+    for (let at = 0; at < 4; at += 1) await screen.press(DOWN);
+    await screen.press(' ');
+    await screen.press(ENTER);
+    await screen.seen('now serves in: critic.');
+    expect(api.submissions.at(-1)).toEqual({
+      step: 'executors',
+      input: {
+        executors: [{ profileId: WORK, model: 'gpt-mini', effort: 'medium' }],
+        budgets: [],
+        exclude: [],
+        roles: [{ executorId: 'gpt-mini@codex/work', mode: 'exact', roles: ['critic'] }],
+      },
+    });
+    // Back at the step of the Executors, the row of the table has the roles given at the review.
+    await screen.press(ESC);
+    const table = await screen.seen('Position');
+    expect(table).toContain('critic');
+  });
+
+  it('a registered row is not edited: Enter says so', async () => {
+    const api = listing();
+    if (api.accounts === undefined) throw new Error('the fake has no accounts');
+    const base = catalogOf;
+    api.accounts.modelsOf = (profileId) => {
+      const found = base(profileId);
+      return profileId === MAIN
+        ? {
+            ...found,
+            models: found.models.map((entry) =>
+              entry.id === 'claude-haiku-4-5' ? { ...entry, registered: ['haiku@x'] } : entry,
+            ),
+          }
+        : found;
+    };
+    const screen = await atTable(api);
+    const frame = await screen.seen('Position');
+    expect(frame).toContain('[=]   claude-haiku-4-5');
+    await toRow(screen, 1);
+    expect(await screen.press(ENTER)).toContain('already an Executor of the account');
   });
 });

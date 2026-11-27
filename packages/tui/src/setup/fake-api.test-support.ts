@@ -443,14 +443,9 @@ export class FakeSetupApi implements SetupApi {
     throw requestError('not_found', 404, `No run ${runId}.`);
   }
 
-  #plan(flow: SetupFlow, inputs: Map<SetupStepId, unknown>): SetupPlan {
-    const preset =
-      (inputs.get('preset') as { preset?: SetupPlan['preset'] } | undefined)?.preset ?? null;
-    const answered = inputs.get('executors') as SetupExecutorsAnswer | undefined;
-    const fromPreset = this.planExecutors.filter(
-      (executor) => !(answered?.exclude ?? []).includes(executor.id),
-    );
-    const requested = (answered?.executors ?? []).map((executor) => {
+  /** The Executors the answer asks to register, in the order of the request (N335: `request` is the index). */
+  #requested(answered: SetupExecutorsAnswer | undefined): SetupExecutor[] {
+    return (answered?.executors ?? []).map((executor) => {
       const alias = executor.alias ?? executor.model;
       const effort = executor.alias === undefined ? null : (executor.effort ?? null);
       return {
@@ -465,21 +460,47 @@ export class FakeSetupApi implements SetupApi {
         local: null,
       };
     });
+  }
+
+  #plan(flow: SetupFlow, inputs: Map<SetupStepId, unknown>): SetupPlan {
+    const preset =
+      (inputs.get('preset') as { preset?: SetupPlan['preset'] } | undefined)?.preset ?? null;
+    const answered = inputs.get('executors') as SetupExecutorsAnswer | undefined;
+    const fromPreset = this.planExecutors.filter(
+      (executor) => !(answered?.exclude ?? []).includes(executor.id),
+    );
+    const requested = this.#requested(answered);
     const executors = [...fromPreset, ...requested];
-    // N333: an Executor given roles goes at the end of the list of each one.
-    const roles = this.planRoles.map((list) => ({
-      ...list,
-      executors: [
-        ...list.executors.filter((id) => executors.some((executor) => executor.id === id)),
-        ...(answered?.roles ?? []).flatMap((place) =>
-          place.executorId !== undefined &&
-          place.roles.includes(list.role) &&
-          !list.executors.includes(place.executorId)
-            ? [place.executorId]
-            : [],
-        ),
-      ],
-    }));
+    // N333, N335: the placements, as the daemon resolves them. `request` is the index among the
+    // `executors` of the answer; `add` appends the Executor to each role listed, `exact` also takes
+    // it out of the lists of the roles not listed (and leaves it where it was in the others). A list
+    // `exact` leaves empty goes back to the one of the preset, with the note `role_emptied`.
+    const emptied = new Set<SetupRoleList['role']>();
+    const roles = this.planRoles.map((list) => {
+      const ids = list.executors.filter((id) => executors.some((executor) => executor.id === id));
+      let took = false;
+      for (const place of answered?.roles ?? []) {
+        const id =
+          place.executorId ??
+          (place.request === undefined ? undefined : requested[place.request]?.id);
+        if (id === undefined || !executors.some((executor) => executor.id === id)) continue;
+        const listed = place.roles.includes(list.role);
+        if (listed && !ids.includes(id)) ids.push(id);
+        if (!listed && place.mode === 'exact') {
+          const at = ids.indexOf(id);
+          if (at >= 0) {
+            ids.splice(at, 1);
+            took = true;
+          }
+        }
+      }
+      if (ids.length > 0 || !took) return { ...list, executors: ids };
+      emptied.add(list.role);
+      return {
+        ...list,
+        executors: list.executors.filter((id) => executors.some((executor) => executor.id === id)),
+      };
+    });
     const writes = [
       ...(preset === null ? [] : ['roles.preset']),
       ...((inputs.get('security') as { warn?: boolean } | undefined)?.warn === true
@@ -487,7 +508,21 @@ export class FakeSetupApi implements SetupApi {
         : []),
       ...executors.map((executor) => `executors.${executor.id}`),
     ];
-    return { flow, preset, roles, executors, budgets: [], writes, notes: [...this.notes] };
+    const emptiedNotes: SetupNote[] = [...emptied].map((role) => ({
+      severity: 'warning',
+      code: 'role_emptied',
+      role,
+      message: `roles.${role}.executors: no Executor is left in the list; the role takes the list of the preset`,
+    }));
+    return {
+      flow,
+      preset,
+      roles,
+      executors,
+      budgets: [],
+      writes,
+      notes: [...this.notes, ...emptiedNotes],
+    };
   }
 
   #prompt(
@@ -572,7 +607,7 @@ export class FakeSetupApi implements SetupApi {
             exclude: answered.exclude ?? [],
             roles: (answered.roles ?? []).map((place) => ({ ...place, mode: place.mode ?? 'add' })),
           },
-          output: { executors: [], budgets: [], notes: [] },
+          output: { executors: this.#requested(answered), budgets: [], notes: [] },
         });
       }
     }

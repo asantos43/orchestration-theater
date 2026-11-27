@@ -792,6 +792,7 @@ function ShellBody(props: ShellProps): ReactNode {
         reviewNotes={settings.setup.reviewNotes}
         modelPick={settings.setup.modelPick}
         executorsInput={settings.setup.executorsInput}
+        executorsLayout={settings.setup.executorsLayout}
         onClose={() => {
           setAssistant(undefined);
         }}

@@ -175,7 +175,7 @@
       "effortPrev": "Esforço anterior do modelo",
       "effortNext": "Próximo esforço do modelo",
       "type": "Digitar um Executor (conta, modelo, esforço)",
-      "role": "Dar papéis ao Executor sem papel"
+      "role": "Mudar os papéis de um Executor"
     },
     "plugins": {
       "itemPrev": "Plugin anterior",
@@ -241,7 +241,9 @@
       "openForm": "Adicionar conta",
       "effort": "Esforço",
       "type": "Digitar",
-      "role": "Dar papel"
+      "role": "Papéis",
+      "cell": "Editar célula",
+      "column": "Coluna"
     },
     "settings": {
       "add": "Adicionar conta",
@@ -265,8 +267,12 @@
       "skip": "Seguir"
     },
     "rolePick": {
-      "confirm": "Dar os papéis",
+      "confirm": "Confirmar",
       "toggle": "Marcar",
+      "cancel": "Voltar"
+    },
+    "effortPick": {
+      "confirm": "Escolher",
       "cancel": "Voltar"
     }
   },
@@ -1320,6 +1326,7 @@
       "executors": "Cadastre Executores por API ou modelo local e defina o teto de gasto de cada conta de API.",
       "review": "Isto é o que será gravado. Nada é gravado antes de você confirmar.",
       "accounts": "Adicione uma conta de um cliente (uma assinatura) e entre nela agora, ou continue sem nenhuma: dá para adicionar contas depois na aba Configurações.",
+      "executorsTable": "Uma linha por modelo: ↑/↓ trocam de linha, ←/→ de coluna (Marca, Esforço, Papéis) e Espaço ou Enter editam a célula. A tecla / digita um Executor por API ou modelo local; o teto de gasto de cada conta de API fica abaixo da tabela.",
       "executorsList": "Marque os modelos que viram Executores (Espaço), mude o esforço com ←/→ e defina o teto de gasto de cada conta de API. A tecla / digita um Executor por API ou modelo local.",
       "security": "Escolha se o assistente grava security.unenforced: warn. Sem gravar, nada muda."
     },
@@ -1341,6 +1348,18 @@
     },
     "executors": {
       "listTitle": "Executores a cadastrar",
+      "col": {
+        "mark": "Marca",
+        "model": "Modelo",
+        "effort": "Esforço",
+        "roles": "Papéis",
+        "position": "Posição",
+        "status": "Situação"
+      },
+      "next": "{{key}} segue para a revisão",
+      "needsMark": "Marque o modelo antes de escolher os papéis dele.",
+      "registeredRow": "Este modelo já é um Executor da conta: não há o que editar aqui.",
+      "noEffort": "Este modelo não tem esforço para escolher.",
       "none": "Nenhum. Enter segue sem um.",
       "row": "{{profile}}  {{model}}",
       "rowEffort": "{{profile}}  {{model}}  esforço {{effort}}",
@@ -1402,6 +1421,7 @@
         "noAccountFamily_other": "{{count}} modelos do preset sem conta ({{family}}): {{heads}}",
         "no_account": "{{heads}} sem conta: fica fora de {{roles}}",
         "empty_list": "sem Executor em {{roles}}: seguem a regra ao esgotar",
+        "role_emptied": "{{roles}}: nenhum Executor ficou na lista, que volta à do preset",
         "not_registered": "{{executors}} não está cadastrado nem num catálogo: fica fora de {{roles}}",
         "invalid_executor": "{{executors}} inválido: fica fora de {{roles}}",
         "profile_not_allowed": "{{executors}} fora de {{roles}}: a conta não está em roles.allowed_profiles",
@@ -1416,9 +1436,9 @@
         "unenforced_warn": "security.unenforced passa a warn: o Diretor abre sem a camada 3 (proteção reduzida), depois de reiniciar o daemon",
         "director_will_not_open": "sem a camada 3 e com security.unenforced em refuse, o Diretor não abre aqui"
       },
-      "giveRole": "{{key}} dá papéis",
-      "rolesGiven": "{{executor}} entrou no fim da lista de: {{roles}}.",
-      "noRoleNone": "Nenhum Executor sem papel para receber papéis."
+      "giveRole": "{{key}} muda os papéis",
+      "rolesGiven": "{{executor}} passa a servir em: {{roles}}.",
+      "noRoleNone": "Nenhum Executor no plano para mudar os papéis."
     },
     "source": {
       "discovered": "achado",
@@ -1504,8 +1524,15 @@
       "unavailable": "O cliente de {{profile}} não listou os modelos ({{reason}}). O preset decide os Executores dela."
     },
     "roles": {
-      "title": "Papéis de {{executor}}: ele entra no fim da lista de cada papel marcado",
-      "keys": "↑/↓ andam, Espaço marca, Enter dá os papéis, Esc volta"
+      "title": "Papéis de {{executor}}: ele serve nos papéis marcados",
+      "keys": "↑/↓ andam, Espaço marca, Enter confirma, Esc volta"
+    },
+    "effort": {
+      "title": "Esforço de {{model}}",
+      "none": "sem esforço",
+      "current": "atual",
+      "taken": "já em outra linha",
+      "keys": "↑/↓ andam, Enter escolhe, Esc volta"
     },
     "security": {
       "risk": "A camada 3 (o sandbox) não está disponível neste sistema e security.unenforced está em {{value}}: o Diretor não abre. Com warn, ele abre, mas sem o limite do sandbox: um Executor pode alterar arquivos e usar a rede sem essa barreira.",

@@ -4,7 +4,9 @@ import type { TFunction } from 'i18next';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { createTuiI18n, loadTuiCatalogs } from '../locale.js';
 import { profileOf } from './fake-api.test-support.js';
+import type { ExecutorRow } from './executor-list.js';
 import { setupLines, type SetupLine } from './lines.js';
+import type { Draft } from './model.js';
 
 /** The review and the finished screen (2026-11-26, the owner's "Por conta" and "Resumo igual"). */
 
@@ -292,5 +294,106 @@ describe('the security step and the restart line (N334, [proposta])', () => {
     );
     expect(lines().some((line) => line.includes('Restart the daemon'))).toBe(false);
     expect(lines([]).some((line) => line.includes('Restart the daemon'))).toBe(false);
+  });
+});
+
+describe('the table of the models (N335)', () => {
+  function row(model: string, extra: Partial<ExecutorRow> = {}): ExecutorRow {
+    return {
+      profileId: 'codex/work',
+      model,
+      name: null,
+      floating: null,
+      efforts: ['low', 'high'],
+      effort: 'high',
+      on: true,
+      seed: null,
+      registered: false,
+      ...extra,
+    };
+  }
+
+  const rows = [
+    row('gpt-sol', {
+      seed: { id: 'gpt-sol-high@codex/work', effort: 'high' } as ExecutorRow['seed'],
+    }),
+    row('gpt-old', { on: false, registered: true, effort: null }),
+  ];
+
+  function draftOf(extra: Partial<Extract<Draft, { kind: 'executors' }>> = {}): Draft {
+    return {
+      kind: 'executors',
+      executors: [],
+      budgets: {},
+      cursor: 0,
+      layout: 'table',
+      list: 'ready',
+      rows,
+      groups: [{ profileId: 'codex/work', catalog: 'listed', reason: null }],
+      ...extra,
+    };
+  }
+
+  function table(width: number, draft: Draft = draftOf()): SetupLine[] {
+    const executors: SetupRunView['prompt'] = {
+      step: 'executors',
+      apiProfiles: [],
+      suggestedBudget: { dailyUsd: 5, monthlyUsd: 50 },
+    };
+    return setupLines({
+      run: { ...run(null, []), step: 'executors', prompt: executors },
+      draft,
+      t,
+      closeKey: 'Enter',
+      width,
+    });
+  }
+
+  it('draws the head, the rows as raw lines, and the item that goes on', () => {
+    const lines = table(120);
+    const head = lines.find((line) => line.key === 'h.table');
+    expect(head?.raw).toBe(true);
+    expect(head?.text).toMatch(/Mark +Model +Effort +Roles +Position +Status/);
+    const first = lines.find((line) => line.key === 'r.0');
+    expect(first?.raw).toBe(true);
+    expect(first?.selected).toBe(true);
+    expect(first?.text).toMatch(/\[x\] +gpt-sol +high/);
+    // The registered row is dim, marks `[=]` and has no effort.
+    const second = lines.find((line) => line.key === 'r.1');
+    expect(second?.dim).toBe(true);
+    expect(second?.text).toMatch(/\[=\] +gpt-old/);
+    expect(lines.find((line) => line.key === 'e.next')?.text).toBe('Enter goes on to the review');
+  });
+
+  it('puts the focus on the cell of the column, and on no cell of a registered row', () => {
+    const mark = table(120).find((line) => line.key === 'r.0');
+    const effort = table(120, draftOf({ column: 'effort' })).find((line) => line.key === 'r.0');
+    expect(mark?.focus).toBeDefined();
+    expect(effort?.focus).toBeDefined();
+    expect(effort?.focus?.[0]).toBeGreaterThan(mark?.focus?.[1] ?? 0);
+    const registered = table(120, draftOf({ cursor: 1 })).find((line) => line.key === 'r.1');
+    expect(registered?.focus).toBeUndefined();
+  });
+
+  it('drops Status, then Position, on a narrow terminal [proposta], and keeps every line inside it', () => {
+    const wide = table(120).find((line) => line.key === 'h.table')?.text ?? '';
+    expect(wide).toContain('Status');
+    expect(wide).toContain('Position');
+    for (const width of [60, 40, 32]) {
+      const lines = table(width).filter((line) => line.raw === true);
+      for (const line of lines) expect(line.text.length).toBeLessThan(width);
+    }
+    const narrow = table(36).find((line) => line.key === 'h.table')?.text ?? '';
+    expect(narrow).not.toContain('Status');
+    expect(narrow).not.toContain('Position');
+    expect(narrow).toContain('Mark');
+    expect(narrow).toContain('Effort');
+    expect(narrow).toContain('Roles');
+  });
+
+  it('keeps the rows of before with the layout list', () => {
+    const lines = table(120, draftOf({ layout: 'list' }));
+    expect(lines.some((line) => line.key === 'h.table')).toBe(false);
+    expect(lines.some((line) => line.key === 'e.next')).toBe(false);
   });
 });

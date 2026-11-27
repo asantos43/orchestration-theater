@@ -60,6 +60,7 @@ describe('parseUiSettings', () => {
         reviewNotes: 'grouped',
         modelPick: 'preset',
         executorsInput: 'list',
+        executorsLayout: 'table',
       },
       newProject: { repo: 'cwd', type: 'chat', picker: 'browser', hidden: 'hide', favorites: [] },
       sidebar: { finishedPlays: 'collapsed', finishedLimit: 20 },
@@ -233,6 +234,7 @@ describe('parseUiSettings', () => {
       reviewNotes: 'grouped',
       modelPick: 'preset',
       executorsInput: 'list',
+      executorsLayout: 'table',
     });
     expect(
       parseUiSettings({
@@ -242,6 +244,7 @@ describe('parseUiSettings', () => {
           reviewNotes: 'all',
           modelPick: 'none',
           executorsInput: 'prompt',
+          executorsLayout: 'list',
         },
       }).setup,
     ).toEqual({
@@ -250,7 +253,12 @@ describe('parseUiSettings', () => {
       reviewNotes: 'all',
       modelPick: 'none',
       executorsInput: 'prompt',
+      executorsLayout: 'list',
     });
+    // N335: a layout the TUI does not know falls back to table.
+    expect(parseUiSettings({ setup: { executorsLayout: 'grid' } }).setup.executorsLayout).toBe(
+      'table',
+    );
     // N333: a mode of executorsInput the TUI does not know falls back to list.
     expect(parseUiSettings({ setup: { executorsInput: 'some' } }).setup.executorsInput).toBe(
       'list',

@@ -160,8 +160,8 @@ const SETUP_KEYS: readonly (readonly [
   // N326: at the step that adds an account, continue without one. [proposta] S.
   ['skip', ['S'], ['bar.setup.skip', 15]],
   // N333: at the step of the Executors, the effort of the row under the cursor ([proposta] ←/→); `/`
-  // opens the typed line `<account> <model> [effort]`; at the review, P gives roles to an Executor
-  // with none.
+  // opens the typed line `<account> <model> [effort]`. N335: in the table ←/→ walk the editable
+  // cells; at the review, P changes the roles of any Executor of the plan.
   ['effortPrev', ['Left']],
   ['effortNext', ['Right'], ['bar.setup.effort', 13]],
   ['type', ['/'], ['bar.setup.type', 16]],

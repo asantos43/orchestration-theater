@@ -9,8 +9,18 @@ import type {
 } from '@otheater/protocol';
 import type { TFunction } from 'i18next';
 import { TOKEN } from '../layout/theme.js';
-import { rowRoles, type ExecutorRow } from './executor-list.js';
-import { accountClients, noRoleExecutors, stepNumber, type Draft } from './model.js';
+import { cellWidth, fit } from '../layout/text.js';
+import { rowPositions, rowRoles, type ExecutorRow } from './executor-list.js';
+import {
+  accountClients,
+  columnOf,
+  isTable,
+  planRolesOf,
+  reviewExecutors,
+  stepNumber,
+  type Draft,
+  type ExecutorColumn,
+} from './model.js';
 
 /** One row of the setup screen, before it is cut to the width. */
 export interface SetupLine {
@@ -23,6 +33,13 @@ export interface SetupLine {
   readonly selected?: boolean;
   /** Spaces before the text, kept on every row it wraps to (2026-11-26); default none. */
   readonly indent?: number;
+  /**
+   * N335: a line already cut to the width (a row of the table): the screen draws it as it is, with
+   * no wrapping that would collapse its spaces.
+   */
+  readonly raw?: boolean;
+  /** N335: the cells `[from, to)` of `text` that hold the cell the keys act on; drawn as the caret. */
+  readonly focus?: readonly [number, number];
 }
 
 export interface SetupLinesInput {
@@ -31,6 +48,8 @@ export interface SetupLinesInput {
   readonly t: TFunction;
   /** The label of the key that closes the finished screen (the `advance` key). */
   readonly closeKey: string;
+  /** The width the screen has for a line, in cells (N335: the table drops columns that do not fit). */
+  readonly width?: number | undefined;
   /** The step that adds an account (N274): present only when the screen has it in this run. */
   readonly accounts?: AccountsStage | undefined;
   /** How the review draws its notes (N324); folded with no key label when absent. */
@@ -41,13 +60,13 @@ export interface SetupLinesInput {
    */
   readonly confirmedPlan?: SetupPlan | undefined;
   /**
-   * N333: the review lets the person give roles to an Executor that has none: which of those the
-   * cursor is on, and the label of the key (P). Absent: the review draws no cursor.
+   * N333, N335: the review lets the person change the roles of an Executor of the plan: which of
+   * them the cursor is on, and the label of the key (P). Absent: the review draws no cursor.
    */
   readonly reviewRoles?: ReviewRolesView | undefined;
 }
 
-/** The cursor of the review over the Executors with no role (N333). */
+/** The cursor of the review over the Executors of the plan (N333; N335: any of them). */
 export interface ReviewRolesView {
   readonly cursor: number;
   readonly key: string;
@@ -315,16 +334,132 @@ function groupNote(
   }
 }
 
+/** The columns of the table of the Executors (N335), from left to right. */
+const TABLE_COLUMNS = ['mark', 'model', 'effort', 'roles', 'position', 'status'] as const;
+type TableColumn = (typeof TABLE_COLUMNS)[number];
+
+/** Spaces before the table and between its columns. */
+const TABLE_INDENT = 2;
+const TABLE_GAP = 2;
+/** The least a column that is clipped keeps. */
+const TABLE_MIN = 8;
+
+/** What each cell of a row says (N335); empty where the row has nothing to say. */
+function tableCells(
+  row: ExecutorRow,
+  run: SetupRunView | undefined,
+  t: TFunction,
+): Record<TableColumn, string> {
+  const part = !row.registered && row.on;
+  const roles = part ? rowRoles(run, row) : [];
+  const status = [
+    ...(row.floating === null ? [] : [t(`setup.models.floating.${row.floating}`)]),
+    ...(row.registered ? [t('setup.models.registered')] : []),
+    ...(row.name !== null && row.name !== row.model ? [row.name] : []),
+  ];
+  return {
+    mark: row.registered ? '[=]' : row.on ? '[x]' : '[ ]',
+    model: row.model,
+    effort: row.registered ? '' : (row.effort ?? '-'),
+    roles: part ? (roles.length === 0 ? '-' : roles.join(', ')) : '',
+    // [proposta] `author#1 reviewer#3`; a role the person added has no place yet and goes to the end (`#+`).
+    position: part
+      ? rowPositions(run, row)
+          .map((entry) => `${entry.role}#${entry.position === null ? '+' : String(entry.position)}`)
+          .join(' ')
+      : '',
+    status: status.join(', '),
+  };
+}
+
+interface TableLayout {
+  readonly header: SetupLine;
+  readonly line: (index: number, selected: boolean, column: ExecutorColumn) => SetupLine;
+}
+
+/**
+ * The table of the models (N335): the head and one line per row, each cut to `width`. [proposta]
+ * On a narrow terminal the columns go in this order: Situação, then Posição; after that the model
+ * and the roles are clipped (never under {@link TABLE_MIN} cells), and the marks and the effort stay.
+ */
+function tableLayout(
+  rows: readonly ExecutorRow[],
+  run: SetupRunView | undefined,
+  t: TFunction,
+  width: number,
+): TableLayout {
+  const cells = rows.map((row) => tableCells(row, run, t));
+  const title = (column: TableColumn): string => t(`setup.executors.col.${column}`);
+  const widths: Record<TableColumn, number> = {
+    mark: 0,
+    model: 0,
+    effort: 0,
+    roles: 0,
+    position: 0,
+    status: 0,
+  };
+  for (const column of TABLE_COLUMNS) {
+    widths[column] = Math.max(cellWidth(title(column)), ...cells.map((c) => cellWidth(c[column])));
+  }
+  const shown: TableColumn[] = [...TABLE_COLUMNS];
+  const total = (): number =>
+    TABLE_INDENT +
+    shown.reduce((sum, column) => sum + widths[column], 0) +
+    TABLE_GAP * (shown.length - 1);
+  const room = Math.max(1, width - 1);
+  for (const drop of ['status', 'position'] as const) {
+    if (total() > room) shown.splice(shown.indexOf(drop), 1);
+  }
+  for (const column of ['model', 'roles'] as const) {
+    const cut = Math.min(Math.max(0, total() - room), Math.max(0, widths[column] - TABLE_MIN));
+    widths[column] -= cut;
+  }
+  const compose = (
+    cellOf: (column: TableColumn) => string,
+  ): { text: string; at: Map<TableColumn, readonly [number, number]> } => {
+    const at = new Map<TableColumn, readonly [number, number]>();
+    let text = ' '.repeat(TABLE_INDENT);
+    shown.forEach((column, index) => {
+      if (index > 0) text += ' '.repeat(TABLE_GAP);
+      const from = cellWidth(text);
+      at.set(column, [from, from + widths[column]]);
+      text += fit(cellOf(column), widths[column]);
+    });
+    return { text, at };
+  };
+  return {
+    header: { key: 'h.table', raw: true, dim: true, text: compose(title).text },
+    line: (index, selected, column) => {
+      const entry = cells[index];
+      const row = rows[index];
+      const { text, at } = compose((name) => entry?.[name] ?? '');
+      const focus = selected && row !== undefined && !row.registered ? at.get(column) : undefined;
+      return {
+        key: `r.${String(index)}`,
+        raw: true,
+        text,
+        selected,
+        ...(row?.registered === true ? { dim: true } : {}),
+        ...(focus === undefined ? {} : { focus }),
+      };
+    },
+  };
+}
+
 function executorsLines(
   prompt: Extract<SetupPrompt, { step: 'executors' }>,
   draft: Extract<Draft, { kind: 'executors' }>,
   t: TFunction,
   run?: SetupRunView,
+  width = 80,
+  nextKey = '',
 ): SetupLine[] {
   const rows = draft.rows ?? [];
+  const table = isTable(draft) ? tableLayout(rows, run, t, width) : undefined;
   const lines: SetupLine[] = [
     { key: 'h.list', text: t('setup.executors.listTitle'), color: TOKEN.accent, bold: true },
   ];
+  if (table !== undefined) lines.push(table.header);
   if (draft.list === 'loading') {
     lines.push({ key: 'e.loading', text: t('setup.executors.loading'), dim: true });
   }
@@ -338,6 +473,10 @@ function executorsLines(
     if (note !== undefined)
       lines.push({ key: `g.${group.profileId}.note`, indent: 2, text: note, dim: true });
     for (const { row, index } of own) {
+      if (table !== undefined) {
+        lines.push(table.line(index, index === draft.cursor, columnOf(draft)));
+        continue;
+      }
       lines.push({
         key: `r.${String(index)}`,
         indent: 2,
@@ -402,6 +541,16 @@ function executorsLines(
       selected: rows.length + draft.executors.length + index === draft.cursor,
     });
   });
+  if (table !== undefined) {
+    // N335 [proposta]: Enter edits the cell under the cursor, so going on is the last item of the table.
+    lines.push({ key: 'gap.next', text: '' });
+    lines.push({
+      key: 'e.next',
+      text: t('setup.executors.next', { key: nextKey }),
+      bold: true,
+      selected: rows.length + draft.executors.length + prompt.apiProfiles.length === draft.cursor,
+    });
+  }
   return lines;
 }
 
@@ -502,8 +651,8 @@ function summaryLines(
   const name = nameOf(plan, run);
   const taking = takingOf(run);
   const out = outOf(run, t);
-  // N333: the Executor with no role the cursor is on (P gives it roles).
-  const under = pick === undefined ? undefined : noRoleExecutors(plan)[pick.cursor];
+  // N335: the Executor of the plan the cursor is on (P changes its roles).
+  const under = pick === undefined ? undefined : reviewExecutors(plan)[pick.cursor];
   const ids = [
     ...plan.executors.map((executor) => executor.id),
     ...plan.roles.flatMap((role) => role.executors),
@@ -537,19 +686,14 @@ function summaryLines(
     const own = ids.filter((id) => splitId(id).profileId === profileId);
     const padHead = padded(own.map((id) => splitId(id).head));
     for (const id of own) {
-      const roles = plan.roles
-        .filter((role) => role.executors.includes(id))
-        .map((role) => role.role);
-      const selected = pick !== undefined && roles.length === 0 && id === under;
+      const roles = planRolesOf(plan, id);
+      const selected = pick !== undefined && id === under;
       lines.push({
         key: `x.${id}`,
         indent: 4,
         text: `${padHead(splitId(id).head)}  ${
-          roles.length === 0
-            ? t('setup.review.noRole') +
-              (selected ? `  (${t('setup.review.giveRole', { key: pick.key })})` : '')
-            : roles.join(', ')
-        }`,
+          roles.length === 0 ? t('setup.review.noRole') : roles.join(', ')
+        }${selected ? `  (${t('setup.review.giveRole', { key: pick.key })})` : ''}`,
         ...(selected ? { selected: true } : {}),
       });
     }
@@ -813,9 +957,10 @@ function finishedLines(input: SetupLinesInput): SetupLine[] {
 
 /** The hint of a step: the Executors step with the list of models (N333) has its own. */
 function hintOf(step: string, draft: Draft): string {
-  return step === 'executors' && draft.kind === 'executors' && (draft.rows?.length ?? 0) > 0
-    ? 'executorsList'
-    : step;
+  if (step !== 'executors' || draft.kind !== 'executors' || (draft.rows?.length ?? 0) === 0) {
+    return step;
+  }
+  return isTable(draft) ? 'executorsTable' : 'executorsList';
 }
 
 /** The rows of the screen: the progress, the hint of the step and the step itself (or the end). */
@@ -855,7 +1000,9 @@ export function setupLines(input: SetupLinesInput): SetupLine[] {
       if (draft.kind === 'security') lines.push(...securityLines(prompt, draft, t));
       break;
     case 'executors':
-      if (draft.kind === 'executors') lines.push(...executorsLines(prompt, draft, t, run));
+      if (draft.kind === 'executors') {
+        lines.push(...executorsLines(prompt, draft, t, run, input.width, input.closeKey));
+      }
       break;
     case 'review':
       lines.push(...planLines(prompt.plan, t, input.reviewNotes, run, input.reviewRoles));
