@@ -31,6 +31,12 @@ export const UI_SETUP_MODEL_PICK_MODES = ['preset', 'all', 'none'] as const;
  * arrow keys; `prompt` the line `<conta> <modelo> [esforço]` typed, as before.
  */
 export const UI_SETUP_EXECUTORS_INPUT_MODES = ['list', 'prompt'] as const;
+/**
+ * `ui.setup.executorsLayout` (N335): how the step "Executores" draws the models it lists: `table`
+ * (default) one row per model with the columns Marca, Modelo, Esforço, Papéis, Posição and Situação,
+ * edited cell by cell; `list` the list as before, with the effort on the arrow keys.
+ */
+export const UI_SETUP_EXECUTORS_LAYOUT_MODES = ['table', 'list'] as const;
 export const UI_INK_PATCHES = ['cache', 'grid'] as const;
 export const UI_SCROLL_STEPS = ['page', 'half', 'line'] as const;
 export const UI_DENSITIES = ['comfortable', 'compact'] as const;
@@ -412,6 +418,8 @@ export type UiTuiMouseConfig = z.output<typeof UiTuiMouseConfigSchema>;
  * - `executorsInput` (N333): how the step of the Executors takes them: `list` (default) a list of
  *   the models of each account, with the preset's already checked and the effort on the arrows;
  *   `prompt` the typed line `<account> <model> [effort]`.
+ * - `executorsLayout` (N335): how that list is drawn: `table` (default) a table with one row per
+ *   model, edited cell by cell; `list` the list as before.
  */
 export const UiSetupConfigSchema = z.strictObject({
   open: z.enum(UI_SETUP_OPEN_MODES).default('auto'),
@@ -419,6 +427,7 @@ export const UiSetupConfigSchema = z.strictObject({
   reviewNotes: z.enum(UI_SETUP_REVIEW_NOTES_MODES).default('grouped'),
   modelPick: z.enum(UI_SETUP_MODEL_PICK_MODES).default('preset'),
   executorsInput: z.enum(UI_SETUP_EXECUTORS_INPUT_MODES).default('list'),
+  executorsLayout: z.enum(UI_SETUP_EXECUTORS_LAYOUT_MODES).default('table'),
 });
 export type UiSetupConfig = z.output<typeof UiSetupConfigSchema>;
 

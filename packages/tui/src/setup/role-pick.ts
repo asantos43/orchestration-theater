@@ -3,9 +3,12 @@ import { SetupRolePlacementSchema, type SetupRolePlacement } from '@otheater/pro
 import type { TFunction } from 'i18next';
 
 /**
- * The roles of an Executor the preset left without one (N333, item 4; the owner on 2026-11-26):
- * a multi-select of the seven roles, opened in the review with P. The Executor enters at the end of
- * the list of each role checked. This module is pure: what each key does and what it draws.
+ * The roles of an Executor, as a multi-select of the seven roles (N333, item 4; N335, the owner on
+ * 2026-11-27). It opens in two places: in the table of the step Executors, on the cell Papéis of a
+ * row, and in the review with P, for any Executor of the plan. The roles it opens with are the
+ * Executor's own (checked); what is left checked is what the Executor serves (`exact`): one taken
+ * out leaves that list, one added enters at the end of it. This module is pure: what each key does
+ * and what it draws.
  */
 
 export type PickRole = SetupRolePlacement['roles'][number];
@@ -13,20 +16,42 @@ export type PickRole = SetupRolePlacement['roles'][number];
 /** The seven roles, in the order of the registry. */
 export const ROLE_IDS: readonly PickRole[] = SetupRolePlacementSchema.shape.roles.element.options;
 
+/** What the roles are for: an Executor of the plan at the review, or a row of the table. */
+export type RolePickTarget =
+  | { readonly kind: 'review'; readonly executorId: string }
+  | { readonly kind: 'row'; readonly index: number };
+
 export interface RolePick {
-  /** The Executor of the plan the roles are for. */
-  readonly executorId: string;
+  readonly target: RolePickTarget;
+  /** How the title calls the Executor. */
+  readonly name: string;
+  /** The roles the Executor had when the list opened: Enter with the same set leaves it as it was. */
+  readonly initial: readonly PickRole[];
   readonly checked: readonly PickRole[];
   readonly cursor: number;
 }
 
-export function rolePickStart(executorId: string): RolePick {
-  return { executorId, checked: [], cursor: 0 };
+/** The list opens with `initial` checked, in the order of the registry. */
+export function rolePickStart(
+  target: RolePickTarget,
+  name: string,
+  initial: readonly PickRole[] = [],
+): RolePick {
+  const checked = ROLE_IDS.filter((role) => initial.includes(role));
+  return { target, name, initial: checked, checked, cursor: 0 };
+}
+
+/** The checked roles are not the ones the list opened with. */
+export function rolePickChanged(pick: RolePick): boolean {
+  return (
+    pick.checked.length !== pick.initial.length ||
+    pick.checked.some((role) => !pick.initial.includes(role))
+  );
 }
 
 export interface RolePickStep {
   readonly pick: RolePick;
-  /** `confirm`: Enter took at least one role; `cancel`: Esc, or Enter with none checked. */
+  /** `confirm`: Enter with the roles changed (even with none left); `cancel`: Esc, or Enter with no change. */
   readonly done?: 'confirm' | 'cancel';
 }
 
@@ -37,7 +62,7 @@ export function rolePickKey(pick: RolePick, combo: string | undefined): RolePick
     case 'Esc':
       return { pick, done: 'cancel' };
     case 'Enter':
-      return { pick, done: pick.checked.length === 0 ? 'cancel' : 'confirm' };
+      return { pick, done: rolePickChanged(pick) ? 'confirm' : 'cancel' };
     case 'Up':
       return { pick: { ...pick, cursor: Math.max(0, pick.cursor - 1) } };
     case 'Down':
@@ -63,10 +88,10 @@ export interface RolePickLine {
   readonly tone?: 'accent';
 }
 
-/** The lines of the list; `name` is how the review calls the Executor. */
-export function rolePickLines(pick: RolePick, name: string, t: TFunction): readonly RolePickLine[] {
+/** The lines of the list. */
+export function rolePickLines(pick: RolePick, t: TFunction): readonly RolePickLine[] {
   const lines: RolePickLine[] = [
-    { key: 'rp.title', text: t('setup.roles.title', { executor: name }), tone: 'accent' },
+    { key: 'rp.title', text: t('setup.roles.title', { executor: pick.name }), tone: 'accent' },
   ];
   ROLE_IDS.forEach((role, index) => {
     lines.push({

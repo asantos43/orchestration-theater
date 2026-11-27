@@ -167,6 +167,8 @@ export const SETUP_MODEL_PICK_MODES = ['preset', 'all', 'none'] as const;
 export type SetupModelPickMode = (typeof SETUP_MODEL_PICK_MODES)[number];
 export const SETUP_EXECUTORS_INPUT_MODES = ['list', 'prompt'] as const;
 export type SetupExecutorsInputMode = (typeof SETUP_EXECUTORS_INPUT_MODES)[number];
+export const SETUP_EXECUTORS_LAYOUT_MODES = ['table', 'list'] as const;
+export type SetupExecutorsLayoutMode = (typeof SETUP_EXECUTORS_LAYOUT_MODES)[number];
 
 /** `ui.setup` (P17): whether the first run opens the assistant, and how long the TUI waits to know. */
 export interface UiSetupSettings {
@@ -178,6 +180,8 @@ export interface UiSetupSettings {
   readonly modelPick: SetupModelPickMode;
   /** How the step of the Executors takes them (N333): a list of models to check, or a typed line. */
   readonly executorsInput: SetupExecutorsInputMode;
+  /** How the models of that step are drawn (N335): a table edited cell by cell, or the list as before. */
+  readonly executorsLayout: SetupExecutorsLayoutMode;
 }
 
 export const NEW_PROJECT_REPO_MODES = ['cwd', 'git_root', 'empty'] as const;
@@ -345,6 +349,7 @@ export const DEFAULT_SETUP: UiSetupSettings = {
   reviewNotes: 'grouped',
   modelPick: 'preset',
   executorsInput: 'list',
+  executorsLayout: 'table',
 };
 
 export const DEFAULT_NEW_PROJECT: UiNewProjectSettings = {
@@ -612,6 +617,11 @@ export function parseUiSettings(ui: unknown): UiSettings {
         field(setup, 'executorsInput'),
         SETUP_EXECUTORS_INPUT_MODES,
         DEFAULT_SETUP.executorsInput,
+      ),
+      executorsLayout: oneOf(
+        field(setup, 'executorsLayout'),
+        SETUP_EXECUTORS_LAYOUT_MODES,
+        DEFAULT_SETUP.executorsLayout,
       ),
     },
     newProject: {
