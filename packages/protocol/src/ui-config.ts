@@ -454,16 +454,31 @@ export type UiNewProjectRepoMode = (typeof UI_NEW_PROJECT_REPO_MODES)[number];
  */
 export const UI_NEW_PROJECT_TYPE_MODES = ['chat', 'project'] as const;
 export type UiNewProjectTypeMode = (typeof UI_NEW_PROJECT_TYPE_MODES)[number];
+/**
+ * How the prompt asks for the folder of a project (N332): `browser` (default) opens the folder
+ * browser of the TUI as soon as the type is the project; `path` is the field of a path alone.
+ */
+export const UI_NEW_PROJECT_PICKER_MODES = ['browser', 'path'] as const;
+export type UiNewProjectPickerMode = (typeof UI_NEW_PROJECT_PICKER_MODES)[number];
+/** Whether the folder browser starts showing the hidden folders (N332, [proposta]): `hide` (default) or `show`. */
+export const UI_NEW_PROJECT_HIDDEN_MODES = ['hide', 'show'] as const;
+export type UiNewProjectHiddenMode = (typeof UI_NEW_PROJECT_HIDDEN_MODES)[number];
 
 /**
  * `ui.newProject` (P22), [proposta]: the architecture fixes that the TUI creates a project and asks
  * for the repository, and not what the prompt starts with, so the pattern is a key with modes:
  * `repo` is `cwd` (default), `git_root` or `empty`. Since N329 the prompt opens any official type,
- * and `type` is the one it starts on: `chat` (default) or `project`.
+ * and `type` is the one it starts on: `chat` (default) or `project`. Since N332 `picker` says how
+ * the folder is asked (`browser`, default, or `path`), `hidden` whether the browser starts with the
+ * hidden folders (`hide`, default, or `show`) and `favorites` is the list of folders the browser
+ * keeps at the top, which the browser itself edits ([proposta]: at most 64, each up to 4096 characters).
  */
 export const UiNewProjectConfigSchema = z.strictObject({
   repo: z.enum(UI_NEW_PROJECT_REPO_MODES).default('cwd'),
   type: z.enum(UI_NEW_PROJECT_TYPE_MODES).default('chat'),
+  picker: z.enum(UI_NEW_PROJECT_PICKER_MODES).default('browser'),
+  hidden: z.enum(UI_NEW_PROJECT_HIDDEN_MODES).default('hide'),
+  favorites: z.array(z.string().min(1).max(4096)).max(64).default([]),
 });
 export type UiNewProjectConfig = z.output<typeof UiNewProjectConfigSchema>;
 

@@ -2,7 +2,7 @@
 import { execFile } from 'node:child_process';
 import { mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { basename, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { promisify } from 'node:util';
 import {
   FakeClientAdapter,
@@ -135,6 +135,23 @@ async function openProjectPrompt(app: RenderedApp, T: (key: string) => string): 
   await seen(app, T('layout.newProject.label'));
 }
 
+/**
+ * Opens the prompt by the key of the side bar and moves to the project with Tab: with
+ * `ui.newProject.picker: browser` that is the folder browser, on the folder `dir` (N332).
+ */
+async function openBrowser(
+  app: RenderedApp,
+  T: (key: string, vars?: Record<string, unknown>) => string,
+  dir: string,
+): Promise<void> {
+  await focusSidebar(app, T('bar.sidebar.newProject'));
+  await press(app, 'n');
+  await seen(app, T('layout.newProject.nameLabel'));
+  await pause();
+  await press(app, TAB);
+  await seen(app, T('layout.newProject.picker.dir', { dir }));
+}
+
 async function focusSidebar(app: RenderedApp, shortcut: string): Promise<void> {
   for (let tab = 0; tab < 3; tab += 1) {
     const before = barOf(app);
@@ -158,6 +175,7 @@ describe.skipIf(NO_LAUNCHER).each(LOCALES)(
         T: (key: string, vars?: Record<string, unknown>) => string;
       }) => Promise<void>,
       openScenario = true,
+      picker: 'browser' | 'path' = 'path',
     ): Promise<void> {
       const other = await makeRepo('otheater-p22-other-');
       try {
@@ -166,7 +184,11 @@ describe.skipIf(NO_LAUNCHER).each(LOCALES)(
             connector: chat.connector,
             systemLocale,
             size: SIZE,
-            settings: TEST_UI_SETTINGS,
+            // The tests of the field type a path; the browser has its own test (N332).
+            settings: {
+              ...TEST_UI_SETTINGS,
+              newProject: { ...TEST_UI_SETTINGS.newProject, picker },
+            },
             chatSocket: { initialDelayMs: 20, maxDelayMs: 50, jitter: 0 },
             cwd: other,
           });
@@ -258,6 +280,85 @@ describe.skipIf(NO_LAUNCHER).each(LOCALES)(
             await rm(notRepo, { recursive: true, force: true });
           }
         });
+      },
+      TEST_MS,
+    );
+
+    it(
+      'browses the folders: walks up, filters, opens the project with Space (N332)',
+      async () => {
+        await withApp(
+          async ({ app, chat, other, T }) => {
+            await openBrowser(app, T, other);
+            // The folder of the TUI is a repository: the browser says so, with its branch.
+            expect(flat(app.frame())).toContain(T('layout.newProject.picker.git', { ref: 'main' }));
+            expect(flat(app.frame())).not.toContain(T('layout.newProject.label'));
+            await pause();
+            // Left goes up; typing the name filters; Enter goes back in.
+            await press(app, '\x1b[D');
+            await seen(app, T('layout.newProject.picker.dir', { dir: dirname(other) }));
+            await typeText(app, basename(other));
+            await seen(app, T('layout.newProject.picker.filter', { text: basename(other) }));
+            await press(app, ENTER);
+            await seen(app, T('layout.newProject.picker.dir', { dir: other }));
+            // Space chooses the folder and opens it through the same route as the field.
+            await press(app, ' ');
+            await gone(app, T('layout.newProject.picker.dir', { dir: other }));
+            const scenario = await projectOf(chat, other);
+            expect(scenario.name).toBe(basename(other));
+            await seen(app, T('layout.newProject.opened', { name: basename(other) }));
+          },
+          true,
+          'browser',
+        );
+      },
+      TEST_MS,
+    );
+
+    it(
+      'shows the refusal in the browser, and goes to the field with / and back with Ctrl+O (N332)',
+      async () => {
+        await withApp(
+          async ({ app, chat, other, T }) => {
+            const notRepo = await realpath(await mkdtemp(join(BASE, 'otheater-n332-plain-')));
+            try {
+              await openBrowser(app, T, other);
+              await pause();
+              // The slash hands the folder to the field; the field takes another folder.
+              await press(app, '/');
+              await seen(app, T('layout.newProject.label'));
+              await seen(app, `> ${other}`);
+              await press(app, '\x15');
+              await typeText(app, notRepo);
+              // Ctrl+O comes back to the browser, on the folder of the field.
+              await press(app, '\x0f');
+              await seen(app, T('layout.newProject.picker.dir', { dir: notRepo }));
+              await press(app, ' ');
+              const before = (
+                T('layout.newProject.badRepo', { repo: '@@' }).split('@@')[0] ?? ''
+              ).replace(/[\s"“”«»]+$/u, '');
+              await seen(app, before);
+              // Still in the browser, nothing created.
+              expect(flat(app.frame())).toContain(
+                T('layout.newProject.picker.dir', { dir: notRepo }),
+              );
+              const all = await chat.daemon.store.scenarios.list();
+              expect(all.some((scenario) => scenario.folder === notRepo)).toBe(false);
+              // Back to the field with the slash, and open the repository from there.
+              await press(app, '/');
+              await seen(app, `> ${notRepo}`);
+              await press(app, '\x15');
+              await typeText(app, other);
+              await press(app, ENTER);
+              await projectOf(chat, other);
+              await seen(app, T('layout.newProject.opened', { name: basename(other) }));
+            } finally {
+              await rm(notRepo, { recursive: true, force: true });
+            }
+          },
+          true,
+          'browser',
+        );
       },
       TEST_MS,
     );

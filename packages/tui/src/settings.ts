@@ -184,12 +184,22 @@ export const NEW_PROJECT_REPO_MODES = ['cwd', 'git_root', 'empty'] as const;
 export type NewProjectRepoMode = (typeof NEW_PROJECT_REPO_MODES)[number];
 export const NEW_PROJECT_TYPE_MODES = ['chat', 'project'] as const;
 export type NewProjectTypeMode = (typeof NEW_PROJECT_TYPE_MODES)[number];
+export const NEW_PROJECT_PICKER_MODES = ['browser', 'path'] as const;
+export type NewProjectPickerMode = (typeof NEW_PROJECT_PICKER_MODES)[number];
+export const NEW_PROJECT_HIDDEN_MODES = ['hide', 'show'] as const;
+export type NewProjectHiddenMode = (typeof NEW_PROJECT_HIDDEN_MODES)[number];
 
 /** `ui.newProject` (P22, N329): what the prompt of a new scenario starts with. */
 export interface UiNewProjectSettings {
   readonly repo: NewProjectRepoMode;
   /** The type the prompt starts on (N329). */
   readonly type: NewProjectTypeMode;
+  /** How the folder of a project is asked: the folder browser or a path field (N332). */
+  readonly picker: NewProjectPickerMode;
+  /** Whether the folder browser starts with the hidden folders (N332). */
+  readonly hidden: NewProjectHiddenMode;
+  /** The folders the browser keeps at the top (N332). */
+  readonly favorites: readonly string[];
 }
 
 export const SIDEBAR_FINISHED_MODES = ['collapsed', 'hidden', 'expanded'] as const;
@@ -337,7 +347,13 @@ export const DEFAULT_SETUP: UiSetupSettings = {
   executorsInput: 'list',
 };
 
-export const DEFAULT_NEW_PROJECT: UiNewProjectSettings = { repo: 'cwd', type: 'chat' };
+export const DEFAULT_NEW_PROJECT: UiNewProjectSettings = {
+  repo: 'cwd',
+  type: 'chat',
+  picker: 'browser',
+  hidden: 'hide',
+  favorites: [],
+};
 
 export const DEFAULT_SIDEBAR: UiSidebarSettings = { finishedPlays: 'collapsed', finishedLimit: 20 };
 
@@ -399,6 +415,12 @@ function integer(value: unknown, min: number, max: number, fallback: number): nu
   return typeof value === 'number' && Number.isInteger(value) && value >= min && value <= max
     ? value
     : fallback;
+}
+
+/** A list of non-empty texts; what is not a text is dropped, and anything but a list is the fallback. */
+function strings(value: unknown, fallback: readonly string[]): readonly string[] {
+  if (!Array.isArray(value)) return fallback;
+  return value.filter((item): item is string => typeof item === 'string' && item !== '');
 }
 
 function patches(value: unknown, fallback: readonly InkPatchName[]): readonly InkPatchName[] {
@@ -595,6 +617,17 @@ export function parseUiSettings(ui: unknown): UiSettings {
     newProject: {
       repo: oneOf(field(newProject, 'repo'), NEW_PROJECT_REPO_MODES, DEFAULT_NEW_PROJECT.repo),
       type: oneOf(field(newProject, 'type'), NEW_PROJECT_TYPE_MODES, DEFAULT_NEW_PROJECT.type),
+      picker: oneOf(
+        field(newProject, 'picker'),
+        NEW_PROJECT_PICKER_MODES,
+        DEFAULT_NEW_PROJECT.picker,
+      ),
+      hidden: oneOf(
+        field(newProject, 'hidden'),
+        NEW_PROJECT_HIDDEN_MODES,
+        DEFAULT_NEW_PROJECT.hidden,
+      ),
+      favorites: strings(field(newProject, 'favorites'), DEFAULT_NEW_PROJECT.favorites),
     },
     sidebar: {
       finishedPlays: oneOf(

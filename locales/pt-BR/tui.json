@@ -608,6 +608,7 @@
       "title": "Novo cenário",
       "label": "Repositório (uma pasta de repositório git)",
       "hint": "Tab troca o tipo · Enter abre · Esc cancela",
+      "hintField": "Tab tipo · Enter abre · Ctrl+O navega pelas pastas · Esc cancela",
       "opening": "Abrindo o cenário…",
       "opened": "Cenário {{name}} aberto.",
       "badRepo": "Não deu para abrir um projeto em \"{{repo}}\": não é um repositório git em que o projeto possa começar.",
@@ -621,6 +622,32 @@
         "project": "Projeto",
         "task": "Tarefa",
         "chat": "Chat"
+      },
+      "picker": {
+        "dir": "Pasta: {{dir}}",
+        "sections": {
+          "shortcuts": "Atalhos",
+          "folders": "Pastas",
+          "drives": "Drives"
+        },
+        "here": "(esta pasta)",
+        "empty": "Nenhuma pasta aqui.",
+        "noMatch": "Nenhuma pasta combina com o filtro.",
+        "filter": "Filtro: {{text}}",
+        "filterEmpty": "Digite para filtrar as pastas",
+        "hiddenShown": "pastas ocultas: mostradas",
+        "hiddenHidden": "pastas ocultas: escondidas",
+        "root": "Ctrl+R sobe até a raiz do repositório: {{root}}",
+        "unreadable": "Não dá para ler esta pasta ({{code}}). ← volta.",
+        "git": "git {{ref}}",
+        "gitBare": "git",
+        "gitDetached": "git destacado {{ref}}",
+        "worktree": "{{label}}, worktree",
+        "project": "projeto aberto",
+        "favorite": "favorita",
+        "hintMove": "↑↓ andam · Enter entra · ← sobe · Espaço escolhe · / caminho · Esc cancela",
+        "hintMore": "Tab tipo · . ocultas · ~ início · Ctrl+F favorita · Ctrl+R raiz · Ctrl+U limpa",
+        "favoritesFailed": "Não foi possível salvar as favoritas: {{message}}"
       }
     },
     "link": {

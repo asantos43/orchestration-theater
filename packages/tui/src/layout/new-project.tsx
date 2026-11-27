@@ -4,14 +4,17 @@ import { Box } from 'ink';
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
-import { useEffect, useRef, useState, type RefObject, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type RefObject, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useTheme } from './theme-context.js';
 import { Text } from './themed-text.js';
 import { useRawKeys, type KeyEvent } from '../keys/use-keymap.js';
 import { MouseModalScope } from '../mouse/index.js';
-import type { NewProjectRepoMode, NewProjectTypeMode } from '../settings.js';
+import type { NewProjectPickerMode, NewProjectRepoMode, NewProjectTypeMode } from '../settings.js';
 import { fieldStep } from '../tabs/settings/field.js';
+import { nodeFolderFs } from './folder-fs.js';
+import type { FolderFs } from './folder-picker.js';
+import { FolderPicker, PICKER_FIXED_LINES, useFolderPicker } from './folder-picker-view.js';
 import { overlayRect, type OverlayFrame } from './overlays.js';
 import { clipStart } from './text.js';
 import { TOKEN } from './theme.js';
@@ -137,6 +140,14 @@ export function openFailure(
   });
 }
 
+/** [proposta] The overlay of the browser: wider and taller than the one of the field. */
+const BROWSER_WIDTH = 84;
+const BROWSER_HEIGHT = 26;
+/** The rows of the overlay that are not the list: border, title, types, folder, root, filter, status and hint. */
+const BROWSER_CHROME = 2 + 3 + PICKER_FIXED_LINES + 2 + 2;
+/** [proposta] The fewest rows of the list: below it the browser has no room to be useful. */
+const LIST_MIN = 3;
+
 export interface NewProjectPromptProps {
   readonly screen: OverlayFrame;
   /** What the field of the repository starts with. */
@@ -152,7 +163,23 @@ export interface NewProjectPromptProps {
   readonly onClose: () => void;
   /** The shell's flag that a field has the keyboard: set while the prompt is on screen. */
   readonly capture: RefObject<boolean>;
+  /** `ui.newProject.picker`: the project is asked in the folder browser, or in the field of the path (N332). */
+  readonly picker?: NewProjectPickerMode;
+  /** `ui.newProject.hidden`: the browser starts showing the hidden folders. */
+  readonly showHidden?: boolean;
+  /** The folders of the projects already open: shortcuts of the browser. */
+  readonly projects?: readonly string[];
+  /** `ui.newProject.favorites`: the folders the person marked. */
+  readonly favorites?: readonly string[];
+  /** The person marked or unmarked a favorite: the new list, to save. */
+  readonly onFavorites?: (favorites: readonly string[]) => void;
+  /** The prompt opens in the field of the path (a path was given: `/new project <path>`), not in the browser. */
+  readonly startInField?: boolean;
+  /** The disk the browser reads; the real one by default. */
+  readonly fs?: FolderFs;
 }
+
+const NO_FOLDERS: readonly string[] = [];
 
 /**
  * The prompt of a new scenario: the row of the types (Tab and Shift+Tab move, a type the daemon
@@ -173,7 +200,13 @@ export function NewProjectPrompt(props: NewProjectPromptProps): ReactNode {
   // The latest state, kept in step with every key, so keys that arrive faster than a render (a
   // paste, a burst of typing) each act on what the one before left.
   // `moved`: the person already changed the type, so the types read later do not move it back.
-  const latest = useRef({ type, texts, types, moved: false });
+  const browser = (props.picker ?? 'browser') === 'browser';
+  // N332: the project starts in the browser of the folders unless the path was given; Ctrl+O (and `/`)
+  // go between the two. The chat has no folder: it always has its field.
+  const [mode, setMode] = useState<'browser' | 'field'>(
+    browser && props.startInField !== true ? 'browser' : 'field',
+  );
+  const latest = useRef({ type, texts, types, moved: false, mode });
   const [error, setError] = useState<string | undefined>(undefined);
   const [busy, setBusy] = useState(false);
   const mounted = useRef(true);
@@ -202,9 +235,25 @@ export function NewProjectPrompt(props: NewProjectPromptProps): ReactNode {
     );
   }, [readTypes, initialType]);
 
-  const submit = (): void => {
+  const diskFs = useMemo(() => props.fs ?? nodeFolderFs(), [props.fs]);
+  const picker = useFolderPicker({
+    fs: diskFs,
+    enabled: browser,
+    wanted: resolveRepo(props.initial, props.cwd, diskFs.home),
+    showHidden: props.showHidden ?? false,
+    projects: props.projects ?? NO_FOLDERS,
+    favorites: props.favorites ?? NO_FOLDERS,
+    height: listHeight(props.screen.rows),
+  });
+
+  const submit = (chosen?: string): void => {
     const now = latest.current;
-    const request = newScenarioRequest(now.type, now.texts[now.type], props.cwd);
+    const request = newScenarioRequest(
+      now.type,
+      chosen ?? now.texts[now.type],
+      props.cwd,
+      diskFs.home,
+    );
     if ('missing' in request) {
       setError(t(request.missing));
       return;
@@ -225,6 +274,44 @@ export function NewProjectPrompt(props: NewProjectPromptProps): ReactNode {
     );
   };
 
+  const goTo = (next: 'browser' | 'field'): void => {
+    latest.current = { ...latest.current, mode: next };
+    setMode(next);
+  };
+
+  // The keys of the browser (N332): the model decides, the prompt does what it asks.
+  const browserKey = (event: KeyEvent): void => {
+    if (error !== undefined) setError(undefined);
+    const effect = picker.press(event);
+    switch (effect?.type) {
+      case 'close':
+        props.onClose();
+        break;
+      case 'choose': {
+        const now = latest.current;
+        const texts = { ...now.texts, project: effect.path };
+        latest.current = { ...now, texts };
+        setTexts(texts);
+        submit(effect.path);
+        break;
+      }
+      case 'path': {
+        // The field starts on the folder the browser was on, to edit from there [proposta].
+        const now = latest.current;
+        const texts = { ...now.texts, project: picker.current().dir };
+        latest.current = { ...now, texts };
+        setTexts(texts);
+        goTo('field');
+        break;
+      }
+      case 'favorites':
+        props.onFavorites?.(effect.favorites);
+        break;
+      case undefined:
+        break;
+    }
+  };
+
   useRawKeys((event: KeyEvent) => {
     if (busy) return;
     const now = latest.current;
@@ -234,6 +321,19 @@ export function NewProjectPrompt(props: NewProjectPromptProps): ReactNode {
       setType(next);
       if (error !== undefined) setError(undefined);
       return;
+    }
+    if (now.type === 'project' && browser) {
+      if (now.mode === 'browser') {
+        browserKey(event);
+        return;
+      }
+      if (event.combo === 'Ctrl+O') {
+        // Back to the browser, on the folder the field names [proposta].
+        picker.reset(resolveRepo(now.texts.project, props.cwd, diskFs.home));
+        if (error !== undefined) setError(undefined);
+        goTo('browser');
+        return;
+      }
     }
     const step = fieldStep(now.texts[now.type], event.combo, event.data);
     if (step.done === 'cancel') {
@@ -250,11 +350,29 @@ export function NewProjectPrompt(props: NewProjectPromptProps): ReactNode {
   });
 
   const palette = useTheme();
-  const rect = overlayRect(props.screen, { width: 72, height: 11 });
+  const browsing = browser && type === 'project' && mode === 'browser';
+  const rect = overlayRect(
+    props.screen,
+    browsing ? { width: BROWSER_WIDTH, height: BROWSER_HEIGHT } : { width: 72, height: 11 },
+  );
   const inner = Math.max(1, rect.width - 4);
   const value = texts[type];
   // Off: the daemon cannot open it yet, or the TUI has no field for it yet (the task before Phase 9b).
   const off = types.filter((choice) => !choice.creatable || !askable(choice.id));
+  const status = (
+    <>
+      {busy && (
+        <Text color={TOKEN.warn} wrap="truncate">
+          {t('layout.newProject.opening')}
+        </Text>
+      )}
+      {error !== undefined && (
+        <Text color={TOKEN.error} wrap="wrap">
+          {error}
+        </Text>
+      )}
+    </>
+  );
   return (
     <Box
       position="absolute"
@@ -293,31 +411,55 @@ export function NewProjectPrompt(props: NewProjectPromptProps): ReactNode {
         <Text dimColor wrap="truncate">
           {off.length === 0 ? ' ' : off.map((choice) => typeOff(choice.id, t as never)).join(' · ')}
         </Text>
-        <Text dimColor wrap="truncate">
-          {t(type === 'chat' ? 'layout.newProject.nameLabel' : 'layout.newProject.label')}
-        </Text>
-        <Text wrap="truncate">
-          <Text color={TOKEN.accent}>{'> '}</Text>
-          {clipStart(value, Math.max(1, inner - 3))}
-          {busy ? '' : <Text caret> </Text>}
-        </Text>
-        {busy && (
-          <Text color={TOKEN.warn} wrap="truncate">
-            {t('layout.newProject.opening')}
-          </Text>
+        {browsing ? (
+          <>
+            <FolderPicker
+              state={picker.state}
+              rows={picker.rows}
+              width={inner}
+              height={listHeight(props.screen.rows)}
+            />
+            <Box flexDirection="column" height={2}>
+              {status}
+            </Box>
+            <Box flexGrow={1} />
+            <Text dimColor wrap="truncate">
+              {t('layout.newProject.picker.hintMove')}
+            </Text>
+            <Text dimColor wrap="truncate">
+              {t('layout.newProject.picker.hintMore')}
+            </Text>
+          </>
+        ) : (
+          <>
+            <Text dimColor wrap="truncate">
+              {t(type === 'chat' ? 'layout.newProject.nameLabel' : 'layout.newProject.label')}
+            </Text>
+            <Text wrap="truncate">
+              <Text color={TOKEN.accent}>{'> '}</Text>
+              {clipStart(value, Math.max(1, inner - 3))}
+              {busy ? '' : <Text caret> </Text>}
+            </Text>
+            {status}
+            <Box flexGrow={1} />
+            <Text dimColor wrap="truncate">
+              {t(
+                browser && type === 'project'
+                  ? 'layout.newProject.hintField'
+                  : 'layout.newProject.hint',
+              )}
+            </Text>
+          </>
         )}
-        {error !== undefined && (
-          <Text color={TOKEN.error} wrap="wrap">
-            {error}
-          </Text>
-        )}
-        <Box flexGrow={1} />
-        <Text dimColor wrap="truncate">
-          {t('layout.newProject.hint')}
-        </Text>
       </MouseModalScope>
     </Box>
   );
+}
+
+/** The rows of the list of the browser on a screen of `rows` rows: what the overlay leaves after its own lines. */
+export function listHeight(rows: number): number {
+  const overlay = Math.max(5, Math.min(BROWSER_HEIGHT, rows - 2));
+  return Math.max(LIST_MIN, overlay - BROWSER_CHROME);
 }
 
 type Translate = (key: string, params?: Record<string, string>) => string;
