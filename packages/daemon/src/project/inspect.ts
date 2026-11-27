@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 import { readdir, realpath, stat } from 'node:fs/promises';
-import { resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
 import { AdapterUnavailable, InvalidInput, supportsLocate, type Vcs } from '@otheater/core';
 import type { FolderState } from '@otheater/protocol';
 
@@ -30,8 +30,10 @@ export async function inspectFolder(vcs: Vcs, folder: string): Promise<FolderIns
     info = await stat(path);
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code;
-    if (code === 'ENOENT') return { path, state: 'missing', git: null };
-    if (code === 'ENOTDIR') {
+    // Windows answers ENOENT, not ENOTDIR, for a path below a file: the nearest part that exists says.
+    if (code === 'ENOENT' && !(await belowAFile(path)))
+      return { path, state: 'missing', git: null };
+    if (code === 'ENOENT' || code === 'ENOTDIR') {
       throw new InvalidInput(`"${path}" is inside something that is not a folder`);
     }
     throw error;
@@ -48,4 +50,13 @@ export async function inspectFolder(vcs: Vcs, folder: string): Promise<FolderIns
   }
   const entries = await readdir(path);
   return { path, state: entries.length === 0 ? 'empty' : 'files', git: null };
+}
+
+/** Whether the nearest part of `path` that exists is a file (so `path` can never be a folder). */
+async function belowAFile(path: string): Promise<boolean> {
+  for (let current = dirname(path); ; current = dirname(current)) {
+    const info = await stat(current).catch(() => undefined);
+    if (info !== undefined) return !info.isDirectory();
+    if (dirname(current) === current) return false;
+  }
 }
