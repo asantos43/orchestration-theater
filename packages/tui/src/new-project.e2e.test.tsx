@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 import { execFile } from 'node:child_process';
-import { mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { promisify } from 'node:util';
@@ -74,6 +74,23 @@ async function makeRepo(prefix: string): Promise<string> {
   await git('commit', '--quiet', '-m', 'initial commit');
   return folder;
 }
+
+/** What `git` says about a folder (with no configuration of the machine). */
+async function gitOut(folder: string, ...args: string[]): Promise<string> {
+  const { stdout } = await run('git', args, {
+    cwd: folder,
+    env: { PATH: process.env.PATH ?? '', HOME: folder, GIT_CONFIG_GLOBAL: '/dev/null' },
+  });
+  return stdout.trim();
+}
+
+/** How many commits the folder has. */
+const commitsOf = (folder: string): Promise<string> =>
+  gitOut(folder, 'rev-list', '--count', 'HEAD');
+
+/** The files in the first commit, one per line. */
+const trackedOf = (folder: string): Promise<string> =>
+  gitOut(folder, 'ls-tree', '-r', '--name-only', 'HEAD');
 
 /** The frame without the runs of spaces, so a text on one line matches wherever the column puts it. */
 function flat(frame: string): string {
@@ -252,13 +269,22 @@ describe.skipIf(NO_LAUNCHER).each(LOCALES)(
           await gone(app, T('layout.newProject.label'));
 
           const notRepo = await realpath(await mkdtemp(join(BASE, 'otheater-p22-plain-')));
+          const aFile = `${notRepo}.txt`;
+          await writeFile(aFile, 'x\n');
           try {
             await openProjectPrompt(app, T);
             // Lets the prompt take the keyboard, then clears the field and types a folder with no
-            // repository in it.
+            // repository in it: an empty one, which asks what to do (N332), and Esc goes back.
             await new Promise<void>((resolve) => setTimeout(resolve, 200));
             await press(app, '\x15');
             await typeText(app, notRepo);
+            await press(app, ENTER);
+            await seen(app, T('layout.newProject.init.ask.empty'));
+            await press(app, ESC);
+            await seen(app, T('layout.newProject.label'));
+            // What is not a folder at all is still refused by the daemon, with the catalog text.
+            await press(app, '\x15');
+            await typeText(app, aFile);
             await press(app, ENTER);
             // The message wraps in the box, and a long path (macOS /private/tmp) wraps right after the
             // text before the quotes: only that part is on one line.
@@ -278,6 +304,7 @@ describe.skipIf(NO_LAUNCHER).each(LOCALES)(
             await gone(app, T('layout.newProject.label'));
           } finally {
             await rm(notRepo, { recursive: true, force: true });
+            await rm(aFile, { force: true });
           }
         });
       },
@@ -316,11 +343,11 @@ describe.skipIf(NO_LAUNCHER).each(LOCALES)(
     );
 
     it(
-      'shows the refusal in the browser, and goes to the field with / and back with Ctrl+O (N332)',
+      'asks about an empty folder in the browser, cancels with Esc, and starts an empty repository (N332)',
       async () => {
         await withApp(
           async ({ app, chat, other, T }) => {
-            const notRepo = await realpath(await mkdtemp(join(BASE, 'otheater-n332-plain-')));
+            const empty = await realpath(await mkdtemp(join(BASE, 'otheater-n332-plain-')));
             try {
               await openBrowser(app, T, other);
               await pause();
@@ -329,36 +356,105 @@ describe.skipIf(NO_LAUNCHER).each(LOCALES)(
               await seen(app, T('layout.newProject.label'));
               await seen(app, `> ${other}`);
               await press(app, '\x15');
-              await typeText(app, notRepo);
+              await typeText(app, empty);
               // Ctrl+O comes back to the browser, on the folder of the field.
               await press(app, '\x0f');
-              await seen(app, T('layout.newProject.picker.dir', { dir: notRepo }));
+              await seen(app, T('layout.newProject.picker.dir', { dir: empty }));
               await press(app, ' ');
-              const before = (
-                T('layout.newProject.badRepo', { repo: '@@' }).split('@@')[0] ?? ''
-              ).replace(/[\s"“”«»]+$/u, '');
-              await seen(app, before);
-              // Still in the browser, nothing created.
-              expect(flat(app.frame())).toContain(
-                T('layout.newProject.picker.dir', { dir: notRepo }),
-              );
+              await seen(app, T('layout.newProject.init.ask.empty'));
+              // Esc goes back to the browser, and nothing was created.
+              await press(app, ESC);
+              await seen(app, T('layout.newProject.picker.sections.folders'));
+              expect(flat(app.frame())).not.toContain(T('layout.newProject.init.ask.empty'));
               const all = await chat.daemon.store.scenarios.list();
-              expect(all.some((scenario) => scenario.folder === notRepo)).toBe(false);
-              // Back to the field with the slash, and open the repository from there.
-              await press(app, '/');
-              await seen(app, `> ${notRepo}`);
-              await press(app, '\x15');
-              await typeText(app, other);
+              expect(all.some((scenario) => scenario.folder === empty)).toBe(false);
+              // The second option is the empty repository: one commit, no file.
+              await press(app, ' ');
+              await seen(app, T('layout.newProject.init.ask.empty'));
+              await press(app, '\x1b[B');
               await press(app, ENTER);
-              await projectOf(chat, other);
-              await seen(app, T('layout.newProject.opened', { name: basename(other) }));
+              await projectOf(chat, empty);
+              await seen(app, T('layout.newProject.opened', { name: basename(empty) }));
+              expect(await commitsOf(empty)).toBe('1');
+              expect(await trackedOf(empty)).toBe('');
             } finally {
-              await rm(notRepo, { recursive: true, force: true });
+              await rm(empty, { recursive: true, force: true });
             }
           },
           true,
           'browser',
         );
+      },
+      TEST_MS,
+    );
+
+    it(
+      'a folder with files asks, and the first option commits all of them (N332)',
+      async () => {
+        await withApp(async ({ app, chat, T }) => {
+          const plain = await realpath(await mkdtemp(join(BASE, 'otheater-n332-files-')));
+          try {
+            await writeFile(join(plain, 'notes.txt'), 'hello\n');
+            await focusSidebar(app, T('bar.sidebar.newProject'));
+            await openProjectPrompt(app, T);
+            await new Promise<void>((resolve) => setTimeout(resolve, 200));
+            await press(app, '\x15');
+            await typeText(app, plain);
+            await press(app, ENTER);
+            await seen(app, T('layout.newProject.init.ask.files'));
+            await press(app, ENTER);
+            await projectOf(chat, plain);
+            await seen(app, T('layout.newProject.opened', { name: basename(plain) }));
+            expect(await trackedOf(plain)).toBe('notes.txt');
+          } finally {
+            await rm(plain, { recursive: true, force: true });
+          }
+        });
+      },
+      TEST_MS,
+    );
+
+    it(
+      'a folder with files: the second option is an empty first commit, and a folder that does not exist yet starts from the software model (N332)',
+      async () => {
+        await withApp(async ({ app, chat, T }) => {
+          const parent = await realpath(await mkdtemp(join(BASE, 'otheater-n332-two-')));
+          const plain = join(parent, 'files');
+          const fresh = join(parent, 'fresh');
+          try {
+            await mkdir(plain);
+            await writeFile(join(plain, 'notes.txt'), 'hello\n');
+            await focusSidebar(app, T('bar.sidebar.newProject'));
+            await openProjectPrompt(app, T);
+            await new Promise<void>((resolve) => setTimeout(resolve, 200));
+            await press(app, '\x15');
+            await typeText(app, plain);
+            await press(app, ENTER);
+            await seen(app, T('layout.newProject.init.ask.files'));
+            await press(app, '\x1b[B');
+            await press(app, ENTER);
+            await projectOf(chat, plain);
+            await seen(app, T('layout.newProject.opened', { name: basename(plain) }));
+            expect(await commitsOf(plain)).toBe('1');
+            expect(await trackedOf(plain)).toBe('');
+
+            // The folder is missing: the software model creates it with the structure of the profile.
+            await focusSidebar(app, T('bar.sidebar.newProject'));
+            await openProjectPrompt(app, T);
+            await new Promise<void>((resolve) => setTimeout(resolve, 200));
+            await press(app, '\x15');
+            await typeText(app, fresh);
+            await press(app, ENTER);
+            await seen(app, T('layout.newProject.init.ask.missing'));
+            await press(app, ENTER);
+            await projectOf(chat, fresh);
+            await seen(app, T('layout.newProject.opened', { name: basename(fresh) }));
+            expect(await readFile(join(fresh, 'README.md'), 'utf8')).toContain('fresh');
+            expect(await trackedOf(fresh)).toContain('README.md');
+          } finally {
+            await rm(parent, { recursive: true, force: true });
+          }
+        });
       },
       TEST_MS,
     );

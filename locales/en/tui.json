@@ -615,6 +615,38 @@
       "failed": "Could not open the scenario: {{message}}",
       "noRepo": "Type the repository of the project.",
       "noConnection": "There is no connection with the daemon.",
+      "init": {
+        "folder": "Folder: {{repo}}",
+        "ask": {
+          "files": "It has files and no git repository. Start the project with:",
+          "empty": "It is empty and has no git repository. Start the project with:",
+          "missing": "It does not exist yet. Create it and start the project with:"
+        },
+        "options": {
+          "commit_all": {
+            "label": "Commit all the files",
+            "detail": "git init, then a first commit with everything"
+          },
+          "empty_commit": {
+            "label": "Empty first commit",
+            "detail": "git init; the files stay out of the commit"
+          },
+          "software": {
+            "label": "Software model",
+            "detail": "README, changelog, tests and CI"
+          },
+          "empty_repo": {
+            "label": "Empty repository",
+            "detail": "git init and an empty first commit"
+          },
+          "cancel": {
+            "label": "Cancel",
+            "detail": "go back; nothing is created"
+          }
+        },
+        "hint": "↑↓ choose · Enter confirms · Esc cancels",
+        "refused": "\"{{repo}}\" has files and is not a git repository, and projects.init.mode is \"refuse\": the daemon does not initialize it."
+      },
       "nameLabel": "Name of the chat (optional)",
       "taskOff": "Task: comes with Phase 9b",
       "typeOff": "{{type}}: the daemon does not open this type yet",
