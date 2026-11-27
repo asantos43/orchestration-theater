@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 import type {
   SetupDoneStep,
+  SetupExecutor,
   SetupExecutorRequest,
   SetupModelCatalogState,
   SetupModelFloating,
@@ -84,7 +85,31 @@ export function presetIdOf(row: ExecutorRow): string | undefined {
   return `${alias}${row.effort === null ? '' : `-${row.effort}`}@${row.profileId}`;
 }
 
-function rowsOf(profileId: string, found: SetupModels): ExecutorRow[] {
+/**
+ * The Executors of the preset a model starts as. With the `discovered` of the run, they are the
+ * run's: the route marks the models with the preset in force in the configuration, and the run may
+ * have chosen another one (a row seeded by the other preset would ask the daemon for an Executor the
+ * run already has, and the step is refused as "given twice").
+ */
+function seedsOf(
+  profileId: string,
+  model: SetupModels['models'][number],
+  discovered: readonly SetupExecutor[] | undefined,
+): { id: string; effort: string | null }[] {
+  const all =
+    discovered === undefined
+      ? model.preset
+      : discovered
+          .filter((executor) => executor.profileId === profileId && executor.model === model.id)
+          .map((executor) => ({ id: executor.id, effort: executor.effort }));
+  return all.filter((entry, at) => all.findIndex((x) => x.id === entry.id) === at);
+}
+
+function rowsOf(
+  profileId: string,
+  found: SetupModels,
+  discovered: readonly SetupExecutor[] | undefined,
+): ExecutorRow[] {
   const rows: ExecutorRow[] = [];
   for (const model of found.models) {
     const efforts = model.efforts.length > 0 ? model.efforts : [...DEFAULT_EFFORTS];
@@ -99,9 +124,7 @@ function rowsOf(profileId: string, found: SetupModels): ExecutorRow[] {
       rows.push({ ...base, effort: null, on: false, seed: null, registered: true });
       continue;
     }
-    const seeds = model.preset.filter(
-      (entry, at, all) => all.findIndex((x) => x.id === entry.id) === at,
-    );
+    const seeds = seedsOf(profileId, model, discovered);
     if (seeds.length === 0) {
       rows.push({
         ...base,
@@ -125,8 +148,15 @@ function rowsOf(profileId: string, found: SetupModels): ExecutorRow[] {
   return rows;
 }
 
-/** The rows and groups the reads give, in the order of the reads (the accounts of the run). */
-export function listOf(reads: readonly ModelsRead[]): {
+/**
+ * The rows and groups the reads give, in the order of the reads (the accounts of the run). With
+ * `discovered` (what the catalogs found for the preset of the run), the rows start as the run's
+ * Executors, not as the ones of the preset the route read.
+ */
+export function listOf(
+  reads: readonly ModelsRead[],
+  discovered?: readonly SetupExecutor[],
+): {
   rows: ExecutorRow[];
   groups: ExecutorGroup[];
 } {
@@ -142,7 +172,8 @@ export function listOf(reads: readonly ModelsRead[]): {
       catalog: read.found.catalog,
       reason: read.found.reason,
     });
-    if (read.found.catalog === 'listed') rows.push(...rowsOf(read.profileId, read.found));
+    if (read.found.catalog === 'listed')
+      rows.push(...rowsOf(read.profileId, read.found, discovered));
   }
   return { rows, groups };
 }
@@ -290,6 +321,15 @@ export function rolesOfId(roles: readonly SetupRoleList[], id: string | undefine
 /** The roles beside a row, from the preset of the run. */
 export function rowRoles(run: SetupRunView | undefined, row: ExecutorRow): string[] {
   return rolesOfId(presetRolesOf(run?.done ?? []), presetIdOf(row));
+}
+
+/** What the catalogs found for the preset in this run (the `discovered` of the done steps). */
+export function discoveredOfRun(done: readonly SetupDoneStep[]): SetupExecutor[] {
+  const found: SetupExecutor[] = [];
+  for (const step of done) {
+    if (step.step === 'preset' || step.step === 'account') found.push(...step.output.discovered);
+  }
+  return found;
 }
 
 /** The accounts the run took in, in order (the detection's, or the one of the flow). */
