@@ -3540,6 +3540,112 @@
       }
     },
     {
+      "id": "inspectFolder",
+      "method": "POST",
+      "path": "/v1/folders/inspect",
+      "kind": "json",
+      "summary": "Tells what a folder is (missing, empty, files, repo, inside_repo) before a project is opened on it; changes nothing",
+      "pathParams": [],
+      "response": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "missing",
+              "empty",
+              "files",
+              "repo",
+              "inside_repo"
+            ]
+          },
+          "git": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "root": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "branch": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "root",
+                  "branch"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "initMode": {
+            "type": "string",
+            "enum": [
+              "ask",
+              "commit_all",
+              "empty_commit",
+              "refuse"
+            ]
+          }
+        },
+        "required": [
+          "path",
+          "state",
+          "git",
+          "initMode"
+        ],
+        "additionalProperties": false
+      },
+      "errors": {
+        "400": [
+          "invalid_input"
+        ],
+        "401": [
+          "unauthorized"
+        ],
+        "403": [
+          "forbidden"
+        ],
+        "500": [
+          "internal"
+        ],
+        "503": [
+          "unavailable"
+        ]
+      },
+      "body": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4096
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
       "id": "getHealth",
       "method": "GET",
       "path": "/v1/health",
@@ -14546,6 +14652,14 @@
           },
           "newProject": {
             "type": "boolean"
+          },
+          "init": {
+            "type": "string",
+            "enum": [
+              "commit_all",
+              "empty_commit",
+              "empty_repo"
+            ]
           }
         },
         "additionalProperties": false

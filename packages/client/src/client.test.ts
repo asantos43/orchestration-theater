@@ -18,6 +18,7 @@ import {
   ApiRequestError,
   ApiVersionError,
   DaemonIdMismatchError,
+  needsInitOf,
 } from './errors.js';
 import { order } from './stores/fixtures.test-support.js';
 import { startTestDaemon, type TestDaemon } from './test-daemon.test-support.js';
@@ -325,6 +326,61 @@ describe('pause, resume and cancel (N176)', () => {
     expect(JSON.parse(message?.body ?? '')).toEqual({ text: 'hello' });
     expect(JSON.parse(command?.body ?? '')).toEqual({ text: '/fake:fake-command x' });
     expect(JSON.parse(promote?.body ?? '')).toEqual({ target: 'demand' });
+  });
+});
+
+describe('folders and init (N332)', () => {
+  it('inspectFolder posts the path and returns the typed answer', async () => {
+    const answer = {
+      path: '/work/app',
+      state: 'files',
+      git: null,
+      initMode: 'ask',
+    };
+    const started = await daemon({
+      handler: (request) =>
+        request.target === '/v1/folders/inspect' ? { json: answer } : undefined,
+    });
+    expect(await clientOf(started).inspectFolder('/work/app')).toEqual(answer);
+    const [request] = started.requests;
+    expect(request?.method).toBe('POST');
+    expect(JSON.parse(request?.body ?? '')).toEqual({ path: '/work/app' });
+  });
+
+  it('sends init in the open and reads the needs_init details of a refusal', async () => {
+    const started = await daemon({
+      handler: () => ({
+        status: 400,
+        json: apiError('invalid_input', 'Choose', {
+          reason: 'needs_init',
+          choices: ['commit_all', 'empty_commit'],
+        }),
+      }),
+    });
+    const client = clientOf(started);
+    const error = await client
+      .call(API_ROUTES.openScenario, { body: { repo: '/work/app', init: 'commit_all' } })
+      .catch((caught: unknown) => caught);
+    expect(JSON.parse(started.requests[0]?.body ?? '')).toEqual({
+      repo: '/work/app',
+      init: 'commit_all',
+    });
+    expect(needsInitOf(error)).toEqual({
+      reason: 'needs_init',
+      choices: ['commit_all', 'empty_commit'],
+    });
+    expect(needsInitOf(new Error('x'))).toBeUndefined();
+  });
+
+  it('needsInitOf ignores an invalid_input of another kind', async () => {
+    const started = await daemon({
+      handler: () => ({ status: 400, json: apiError('invalid_input', 'No', { issues: [] }) }),
+    });
+    const error = await clientOf(started)
+      .inspectFolder('/work/app')
+      .catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(ApiRequestError);
+    expect(needsInitOf(error)).toBeUndefined();
   });
 });
 

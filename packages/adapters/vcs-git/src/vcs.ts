@@ -142,6 +142,7 @@ export class GitVcs
     if (!isRoot) await this.#git.run(real, ['init', '--quiet', `--initial-branch=${branch}`]);
     const head = await this.#git.try(real, ['rev-parse', '--verify', 'HEAD']);
     if (head.code !== 0) {
+      if (opts.commitAll === true) await this.#git.run(real, ['add', '-A', '--']);
       await this.#git.run(real, [
         'commit',
         '--quiet',
@@ -154,6 +155,20 @@ export class GitVcs
     }
     const current = (await this.#git.run(real, ['symbolic-ref', '--short', 'HEAD'])).trim();
     return { branch: current, head: await this.#head(real) };
+  }
+
+  async locate(
+    folder: string,
+  ): Promise<{ readonly root: string; readonly branch?: string } | undefined> {
+    assertAbsolute('folder', folder);
+    if (!(await pathExists(folder))) return undefined;
+    const real = await realpathOrSelf(folder);
+    const top = await this.#git.try(real, ['rev-parse', '--show-toplevel']);
+    if (top.code !== 0) return undefined;
+    const root = await realpathOrSelf(normalize(top.stdout.trim()));
+    const branch = await this.#git.try(root, ['symbolic-ref', '--short', 'HEAD']);
+    const name = branch.code === 0 ? branch.stdout.trim() : '';
+    return name === '' ? { root } : { root, branch: name };
   }
 
   async removeWorktree(worktree: string, opts: RemoveWorktreeOptions = {}): Promise<void> {

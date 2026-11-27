@@ -8,6 +8,8 @@
     "missingBackupPath": "\"ot restore\" precisa da pasta do backup a restaurar.",
     "tooManyArguments": "Argumentos demais para \"ot {{command}}\".",
     "invalidOption": "Opção inválida: {{message}}",
+    "badInit": "--init precisa ser um de: {{choices}}.",
+    "initWithNewProject": "--init não vai junto com --new-project: o projeto novo já cria o repositório.",
     "missingRepo": "\"ot chat\" precisa de um repositório: use --repo <pasta>.",
     "noInput": "\"ot chat\" precisa de um lugar de onde ler as mensagens.",
     "tuiNeedsTerminal": "\"ot tui\" precisa de um terminal: a entrada e a saída precisam ser um terminal.",
@@ -192,6 +194,7 @@
     "badOption": "Essa não é uma das opções. Digite uma de: {{options}}.",
     "answerFailed": "A resposta não foi aceita: {{message}}",
     "askWithdrawn": "A pergunta foi respondida em outro lugar e foi retirada.",
+    "needsInit": "\"{{repo}}\" tem arquivos e não é um repositório git. Rode \"ot chat\" de novo com um de: {{choices}}. commit_all faz um primeiro commit com todos os arquivos (o .gitignore é respeitado); empty_commit faz um primeiro commit vazio e deixa os arquivos de fora. Para decidir de uma vez, defina projects.init.mode na configuração.",
     "connectFailed": "Não foi possível alcançar o daemon: {{message}}",
     "sendFailed": "A mensagem não foi enviada: {{message}}",
     "reconnecting": "A conexão com o daemon caiu ({{message}}). Nova tentativa em {{seconds}} s.",
@@ -658,6 +661,10 @@
           },
           "new-project": {
             "summary": "Cria o projeto em --repo (pasta que não existe ou está vazia) com a estrutura do perfil software"
+          },
+          "init": {
+            "summary": "Quando --repo ainda não é um repositório git: commit_all (primeiro commit com todos os arquivos, respeitando o .gitignore), empty_commit (primeiro commit vazio, os arquivos ficam de fora) ou empty_repo (pasta vazia ou que não existe)",
+            "value": "<choice>"
           }
         },
         "notes": "No chat, \"/attach <arquivo>\" anexa um arquivo (copiado; \"/attach --ref <arquivo>\" o mantém no lugar): a próxima mensagem que você enviar o cita como A<n> para o Diretor."

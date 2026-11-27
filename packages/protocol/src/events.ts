@@ -126,6 +126,7 @@ import {
   ProfileWarningPayloadSchema,
 } from './profile-events.js';
 import {
+  ProjectRepoInitializedPayloadSchema,
   ScenarioAttachmentAddedPayloadSchema,
   ScenarioChatTransitionedPayloadSchema,
   ScenarioSystemMessagePayloadSchema,
@@ -537,6 +538,11 @@ export const DAEMON_EVENT_DEFINITIONS = [
     type: 'scenario.created',
     schemaVersion: 1,
     payload: ScenarioCreatedPayloadSchema,
+  }),
+  defineEventType({
+    type: 'project.repo_initialized',
+    schemaVersion: 1,
+    payload: ProjectRepoInitializedPayloadSchema,
   }),
   defineEventType({
     type: 'scenario.attachment_added',
@@ -1085,6 +1091,7 @@ export type ProfileDrainingPayload = DaemonEventPayloads['profile.draining'];
 export type ProfileDrainedPayload = DaemonEventPayloads['profile.drained'];
 export type ProfileRemovedPayload = DaemonEventPayloads['profile.removed'];
 export type ScenarioCreatedPayload = DaemonEventPayloads['scenario.created'];
+export type ProjectRepoInitializedPayload = DaemonEventPayloads['project.repo_initialized'];
 export type ScenarioAttachmentAddedPayload = DaemonEventPayloads['scenario.attachment_added'];
 export type ScenarioDirectorSleptPayload = DaemonEventPayloads['scenario.director_slept'];
 export type ScenarioDirectorWokePayload = DaemonEventPayloads['scenario.director_woke'];

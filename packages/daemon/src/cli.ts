@@ -7,6 +7,7 @@ import { Writable } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 import { parseArgs, type ParseArgsOptionDescriptor } from 'node:util';
 import { Secret } from '@otheater/core';
+import { FOLDER_INIT_CHOICES, type FolderInitChoice } from '@otheater/protocol';
 import type { TFunction } from 'i18next';
 import { runApiRotateTokenCommand } from './commands-api.js';
 import { runChatCommand } from './chat-command.js';
@@ -523,12 +524,20 @@ export async function main(argv: readonly string[], given: CliDeps): Promise<num
         const repo = values.repo ?? (type === 'project' ? deps.cwd : undefined);
         if (type === 'project' && repo === undefined) return usageError(t('usage.missingRepo'));
         if (deps.input === undefined) return usageError(t('usage.noInput'));
+        const init = values.init;
+        if (init !== undefined && !(FOLDER_INIT_CHOICES as readonly string[]).includes(init)) {
+          return usageError(t('usage.badInit', { choices: FOLDER_INIT_CHOICES.join(', ') }));
+        }
+        if (init !== undefined && values['new-project'] === true) {
+          return usageError(t('usage.initWithNewProject'));
+        }
         return await runChatCommand(context, {
           type,
           repo,
           base: values.base,
           name: values.name,
           newProject: values['new-project'],
+          init: init as FolderInitChoice | undefined,
           input: deps.input,
           signal: deps.signal,
         });
@@ -573,6 +582,7 @@ export const CLI_OPTIONS = {
   name: { type: 'string' },
   type: { type: 'string' },
   'new-project': { type: 'boolean' },
+  init: { type: 'string' },
   help: { type: 'boolean', short: 'h' },
   version: { type: 'boolean', short: 'v' },
   // The options of `ot directives`.

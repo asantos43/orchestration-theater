@@ -2,6 +2,8 @@
 import { AdapterUnavailable, InvalidInput, type JsonValue, type ProfileFact } from '@otheater/core';
 import { basename } from 'node:path';
 import { z } from 'zod';
+import { FOLDER_INIT_CHOICES, type FolderInitChoice } from '@otheater/protocol';
+import { NeedsInit } from '../project/init.js';
 import { redactConfig } from '../api/routes/redact.js';
 import { isPausedPlay, playOf, scenarioOf } from '../api/routes/projections.js';
 import { REMOVED_REASON } from '../executors/service.js';
@@ -523,6 +525,9 @@ const NAME = z
  */
 const PROJECT_ARGS = /^project(?:\s+([\s\S]*))?$/;
 
+/** [proposta] (N332) `/new project <repo> --init <choice>`: the choice is the last words. */
+const PROJECT_INIT = /^([\s\S]*?)\s+--init(?:\s+(\S+))?$/;
+
 const newScenario = define({
   id: 'new',
   origin: 'daemon',
@@ -536,12 +541,33 @@ const newScenario = define({
   async run(context) {
     const project = context.args === undefined ? null : PROJECT_ARGS.exec(context.args.trim());
     if (project !== null) {
-      const repo = (project[1] ?? '').trim();
+      let repo = (project[1] ?? '').trim();
+      let init: FolderInitChoice | undefined;
+      const withInit = PROJECT_INIT.exec(repo);
+      if (withInit !== null) {
+        repo = (withInit[1] ?? '').trim();
+        const asked = withInit[2];
+        const choices = FOLDER_INIT_CHOICES.join(', ');
+        if (asked === undefined || !(FOLDER_INIT_CHOICES as readonly string[]).includes(asked)) {
+          throw new InvalidInput(context.t('error.newProject.badInit', { choices }));
+        }
+        init = asked as FolderInitChoice;
+      }
       if (repo === '') throw new InvalidInput(context.t('error.newProject.noRepo'));
       // The same route as `ot chat --type project --repo <repo>` (`openChat`, the type registry).
       const opened = await channel(context)
-        .openChat({ type: 'project', repo })
+        .openChat({ type: 'project', repo, ...(init === undefined ? {} : { init }) })
         .catch((error: unknown) => {
+          if (error instanceof NeedsInit) {
+            // N332: the folder has files and no repository: say which choices there are and how to pass one.
+            throw new InvalidInput(
+              context.t('error.newProject.needsInit', {
+                repo,
+                choices: error.details.choices.map((choice) => `--init ${choice}`).join(' | '),
+              }),
+              { cause: error },
+            );
+          }
           if (error instanceof InvalidInput) {
             throw new InvalidInput(context.t('error.newProject.badRepo', { repo }), {
               cause: error,

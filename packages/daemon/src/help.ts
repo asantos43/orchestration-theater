@@ -38,7 +38,7 @@ export const HELP_COMMANDS: readonly HelpCommand[] = [
   {
     name: 'chat',
     group: 'start',
-    options: ['repo', 'base', 'name', 'type', 'new-project'],
+    options: ['repo', 'base', 'name', 'type', 'new-project', 'init'],
     notes: true,
   },
   { name: 'daemon', group: 'start' },

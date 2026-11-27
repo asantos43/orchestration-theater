@@ -1,5 +1,12 @@
 // SPDX-License-Identifier: MPL-2.0
-import type { ApiErrorBody, ApiErrorCode, ApiIssue, DaemonId } from '@otheater/protocol';
+import {
+  NeedsInitDetailsSchema,
+  type ApiErrorBody,
+  type ApiErrorCode,
+  type ApiIssue,
+  type DaemonId,
+  type NeedsInitDetails,
+} from '@otheater/protocol';
 
 /**
  * The typed errors of the client (plan docs/17 P9). A call to a daemon ends in a value of the
@@ -57,6 +64,17 @@ export class ApiRequestError extends ApiClientError {
     this.details = input.body.details;
     this.retryAfterSeconds = input.retryAfterSeconds;
   }
+}
+
+/**
+ * The choices a daemon asks the Producer to make when a project is opened on a folder with files
+ * and no git repository (N332, `projects.init.mode: ask`): the `details` of that `invalid_input`.
+ * `undefined` for any other failure. [proposta]
+ */
+export function needsInitOf(error: unknown): NeedsInitDetails | undefined {
+  if (!(error instanceof ApiRequestError) || error.code !== 'invalid_input') return undefined;
+  const parsed = NeedsInitDetailsSchema.safeParse(error.details);
+  return parsed.success ? parsed.data : undefined;
 }
 
 export const API_PROTOCOL_REASONS = [

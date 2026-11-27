@@ -3,6 +3,7 @@ import type { JsonValue } from '@otheater/core';
 import type { API_ROUTES, ApiRouteId } from '@otheater/protocol';
 import type { Logger } from '../../logger.js';
 import { ToolFailure } from '../../mcp/handlers.js';
+import { NeedsInit } from '../../project/init.js';
 import { ApiFailure, type ApiHandler, type ApiHandlers } from '../handlers.js';
 import { IDEMPOTENCY_REPLAYED_HEADER, type IdempotencyCache } from './idempotency.js';
 
@@ -28,6 +29,12 @@ export type CommandRegistrar = <Id extends ApiRouteId>(
  * else is left as it is, so an unexpected failure stays a 500 with a hidden message.
  */
 export function asApiFailure(error: unknown): unknown {
+  // N332: the folder needs the Producer's choice; `details` tell a client which ones, in a form it reads.
+  if (error instanceof NeedsInit) {
+    return new ApiFailure('invalid_input', error.message, {
+      details: { reason: error.details.reason, choices: [...error.details.choices] },
+    });
+  }
   if (!(error instanceof ToolFailure)) return error;
   const code =
     error.code === 'not_found' || error.code === 'conflict'
