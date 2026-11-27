@@ -903,6 +903,17 @@ export const CONVENTIONS_MODES = ['ask', 'detect', 'off'] as const;
 export type ConventionsMode = (typeof CONVENTIONS_MODES)[number];
 
 /**
+ * `projects.init.mode` [proposta] (N332): what the daemon does when the Producer opens a project on a
+ * folder that has files and no git repository. `ask` (default): it refuses with `invalid_input`
+ * (`details.reason: 'needs_init'`) and the client asks the Producer to choose; `commit_all`:
+ * `git init` and a first commit with every file (the `.gitignore` is respected); `empty_commit`:
+ * `git init` and an empty first commit (the files stay out of the index); `refuse`: it never
+ * initializes a repository in a folder with files.
+ */
+export const INIT_MODES = ['ask', 'commit_all', 'empty_commit', 'refuse'] as const;
+export type InitMode = (typeof INIT_MODES)[number];
+
+/**
  * Does a delivery keep a changelog? (N100, architecture 5.20.) `always` (default): every delivery
  * adds its entry, creating `CHANGELOG.md` in Keep a Changelog format when the repository has none;
  * `auto`: only when the repository has one or the project is new; `never`: it does not touch it.
@@ -2953,6 +2964,20 @@ export const DaemonConfigSchema = z
     project: z
       .strictObject({
         conventions: z.enum(CONVENTIONS_MODES).default('ask'),
+      })
+      .prefault({}),
+    /**
+     * Where the Producer opens projects (N332) [proposta]. `init` is what happens to a folder with
+     * no git repository: see {@link INIT_MODES}; `message` is the subject of the first commit it makes.
+     */
+    projects: z
+      .strictObject({
+        init: z
+          .strictObject({
+            mode: z.enum(INIT_MODES).default('ask'),
+            message: z.string().min(1).default('chore: initial commit'),
+          })
+          .prefault({}),
       })
       .prefault({}),
     /** Integration of the demands (architecture 5.5): the rebase of the dependents (N82). */

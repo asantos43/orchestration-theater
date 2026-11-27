@@ -6,6 +6,7 @@ import {
   ApiNetworkError,
   ApiRequestError,
   DaemonDirectoryError,
+  needsInitOf,
   type ApiClient,
   type ConnectedDaemon,
   type ReconnectOptions,
@@ -17,6 +18,7 @@ import {
   IDEMPOTENCY_KEY_HEADER,
   type ChatServerMessage,
   type ChatToolCall,
+  type FolderInitChoice,
   type IdeaQueueHeldPayload,
   type ScenarioDirectorFailoverNotice,
   type ScenarioDirectorSwitchNotice,
@@ -59,6 +61,8 @@ export interface ChatOptions {
   readonly name?: string | undefined;
   /** Create the project in `repo` with the structure of the `software` profile. */
   readonly newProject?: boolean | undefined;
+  /** [proposta] (N332) What to do when `repo` is not a repository yet: `--init`. */
+  readonly init?: FolderInitChoice | undefined;
   /** What the Producer types: one message per line. */
   readonly input: NodeJS.ReadableStream;
   /** Aborting leaves the chat (the entry point wires Ctrl+C to it). */
@@ -560,17 +564,32 @@ export async function runChatCommand(
   const connected = await connectLocal(context, options.signal);
   if (connected === undefined) return EXIT_FAILED;
   const { client } = connected;
-  const opened = await client.call(API_ROUTES.openScenario, {
-    body: {
-      ...(options.type === undefined ? {} : { type: options.type }),
-      ...(options.repo === undefined ? {} : { repo: options.repo }),
-      ...(options.base === undefined ? {} : { base: options.base }),
-      ...(options.name === undefined ? {} : { name: options.name }),
-      ...(options.newProject === true ? { newProject: true } : {}),
-    },
-    headers: commandHeaders(),
-    ...(options.signal === undefined ? {} : { signal: options.signal }),
-  });
+  const opened = await client
+    .call(API_ROUTES.openScenario, {
+      body: {
+        ...(options.type === undefined ? {} : { type: options.type }),
+        ...(options.repo === undefined ? {} : { repo: options.repo }),
+        ...(options.base === undefined ? {} : { base: options.base }),
+        ...(options.name === undefined ? {} : { name: options.name }),
+        ...(options.newProject === true ? { newProject: true } : {}),
+        ...(options.init === undefined ? {} : { init: options.init }),
+      },
+      headers: commandHeaders(),
+      ...(options.signal === undefined ? {} : { signal: options.signal }),
+    })
+    .catch((error: unknown) => {
+      // N332: the folder has files and no repository, and the daemon asks which way to start it.
+      const needs = needsInitOf(error);
+      if (needs === undefined) throw error;
+      err(
+        t('chat.needsInit', {
+          repo: options.repo ?? '',
+          choices: needs.choices.map((choice) => `--init ${choice}`).join(' | '),
+        }),
+      );
+      return undefined;
+    });
+  if (opened === undefined) return EXIT_FAILED;
   const scenarioId = opened.scenario.id;
   out(t('chat.opened', { scenarioId }));
 

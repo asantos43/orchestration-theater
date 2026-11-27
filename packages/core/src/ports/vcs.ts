@@ -265,8 +265,13 @@ export function supportsInspect(vcs: Vcs): vcs is Vcs & VcsInspect {
 export interface InitOptions {
   /** Name of the first branch. Default `main`. */
   readonly branch?: string;
-  /** Message of the empty first commit. Default `Initial commit`. */
+  /** Message of the first commit. Default `Initial commit`. */
   readonly message?: string;
+  /**
+   * [proposta] (N332) Put every file of the folder in the first commit (`.gitignore` respected),
+   * instead of leaving it empty. It only matters when the folder has no commit yet.
+   */
+  readonly commitAll?: boolean;
 }
 
 /**
@@ -285,6 +290,26 @@ export interface VcsInit {
     folder: string,
     opts?: InitOptions,
   ): Promise<{ readonly branch: string; readonly head: string }>;
+}
+
+/**
+ * Optional capability of a `Vcs` [proposta] (N332): where a folder sits in git, without changing
+ * anything. It is what the inspection of a folder (`POST /v1/folders/inspect`) needs to tell a
+ * plain folder from a repository root or a folder inside a repository. Check with
+ * {@link supportsLocate}.
+ */
+export interface VcsLocate {
+  /**
+   * The repository the folder belongs to: the absolute path of its root (real path, native
+   * separators) and the branch checked out (`undefined` for a detached head). `undefined` when the
+   * folder is not inside a repository, or does not exist.
+   */
+  locate(folder: string): Promise<{ readonly root: string; readonly branch?: string } | undefined>;
+}
+
+/** Narrows a `Vcs` to one that can locate the repository of a folder. */
+export function supportsLocate(vcs: Vcs): vcs is Vcs & VcsLocate {
+  return typeof (vcs as Partial<VcsLocate>).locate === 'function';
 }
 
 /** Narrows a `Vcs` to one that can create a repository. */

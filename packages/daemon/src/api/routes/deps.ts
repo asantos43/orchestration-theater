@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-import type { Clock, Store } from '@otheater/core';
+import type { Clock, Store, Vcs } from '@otheater/core';
 import type { BudgetService } from '../../budget/index.js';
 import type { DaemonConfig, PauseMode } from '../../config.js';
 import type { ConfigReloader } from '../../config-reload.js';
@@ -42,6 +42,8 @@ export interface ReadRouteDeps {
   readonly budget: BudgetService;
   readonly profiles: ProfileService;
   readonly attachments: AttachmentService;
+  /** The version control the inspection of a folder asks (N332). */
+  readonly vcs: Vcs;
   /** The layout preferences of the interfaces (P12). */
   readonly layout: LayoutPreferencesStore;
   /** The registry of the `/` commands (P3 of Phase 7); absent: the routes answer 503. */

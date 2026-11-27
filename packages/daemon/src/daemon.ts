@@ -1621,6 +1621,7 @@ async function run(input: RunInput): Promise<DaemonHandle> {
   // registered here and not where `getStatus` is; a read before this point answers 404.
   registerReadRoutes(api.handlers, {
     store,
+    vcs: composition.vcs,
     slash,
     direct,
     trajectory,

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 import { readdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { Readable } from 'node:stream';
 import type { SecretVault, Store } from '@otheater/core';
 import { FakeClock, InMemorySecretVault, InMemoryStore } from '@otheater/core/testing';
 import { describe, expect, it } from 'vitest';
@@ -316,6 +317,41 @@ describe('ot tui and ot with no command (Phase 7, P8)', () => {
       expect(result.code).toBe(0);
       const lines = result.out.join('\n').split('\n');
       expect(Math.max(...lines.map((line) => line.length))).toBeLessThanOrEqual(60);
+    } finally {
+      await tmp.dispose();
+    }
+  });
+});
+
+describe('ot chat --init (N332)', () => {
+  it('refuses a choice that is not one of the three, and --init with --new-project', async () => {
+    const tmp = await makeTempDataDir();
+    try {
+      const input = Readable.from([]);
+      const bad = await ot(
+        ['chat', '--repo', tmp.dir, '--init', 'sometimes', '--data-dir', tmp.dir],
+        tmp.dir,
+        {
+          input,
+        },
+      );
+      expect(bad.code).toBe(2);
+      expect(bad.err.join('\n')).toMatch(
+        /--init must be one of: commit_all, empty_commit, empty_repo/,
+      );
+      const both = await ot(
+        ['chat', '--repo', tmp.dir, '--new-project', '--init', 'empty_repo', '--data-dir', tmp.dir],
+        tmp.dir,
+        { input },
+      );
+      expect(both.code).toBe(2);
+      expect(both.err.join('\n')).toMatch(/--init cannot go with --new-project/);
+      const pt = await ot(
+        ['chat', '--repo', tmp.dir, '--init', 'x', '--data-dir', tmp.dir],
+        tmp.dir,
+        { input, systemLocale: 'pt-BR' },
+      );
+      expect(pt.err.join('\n')).toMatch(/--init precisa ser um de/);
     } finally {
       await tmp.dispose();
     }

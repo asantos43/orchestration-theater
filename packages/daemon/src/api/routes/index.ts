@@ -13,6 +13,7 @@ import { registerDecisionCommands } from './decision-commands.js';
 import type { CommandRouteDeps, ReadRouteDeps } from './deps.js';
 import { registerDirectCommands, registerDirectRoutes } from './direct.js';
 import { registerExecutorRoutes } from './executors.js';
+import { registerFolderRoutes } from './folders.js';
 import { registerIdeaCommands } from './idea-commands.js';
 import { registerIdeaRoutes } from './ideas.js';
 import { IdempotencyCache } from './idempotency.js';
@@ -41,6 +42,7 @@ export type { CommandRouteDeps, ReadRouteDeps } from './deps.js';
  */
 export function registerReadRoutes(handlers: ApiHandlers, deps: ReadRouteDeps): void {
   registerScenarioRoutes(handlers, deps);
+  registerFolderRoutes(handlers, deps);
   registerAttemptRoutes(handlers, deps);
   registerBlackboardRoutes(handlers, deps);
   registerAttachmentRoutes(handlers, deps);

@@ -26,6 +26,23 @@ export const ScenarioCreatedPayloadSchema = z.strictObject({
   folder: z.string().min(1),
 });
 
+/**
+ * `project.repo_initialized` [proposta] (N332): the daemon ran `git init` on the folder a project
+ * was opened on, because the Producer chose to (`init`) or `projects.init.mode` said so. The
+ * scenario was created right after the repository, so the envelope carries it.
+ */
+export const ProjectRepoInitializedPayloadSchema = z.strictObject({
+  scenarioId,
+  /** The folder the repository was made in. */
+  folder: z.string().min(1),
+  /** What was done: `commit_all`, `empty_commit` or `empty_repo` (see `FolderInitChoice`). */
+  mode: z.enum(['commit_all', 'empty_commit', 'empty_repo']),
+  /** The branch of the first commit. */
+  branch: z.string().min(1),
+  /** The sha of the first commit. */
+  head: z.string().min(1),
+});
+
 /** `scenario.attachment_added`: a file, a pasted text or a path became attachment `A<n>`. */
 export const ScenarioAttachmentAddedPayloadSchema = z.strictObject({
   scenarioId,

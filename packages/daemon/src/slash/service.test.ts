@@ -6,6 +6,7 @@ import type { BudgetService } from '../budget/index.js';
 import { parseConfig, type DaemonConfig } from '../config.js';
 import type { DirectiveService } from '../directives/index.js';
 import { createSilentLogger } from '../logger.js';
+import { NeedsInit } from '../project/init.js';
 import type { ProducerChannel } from '../orchestration/channel.js';
 import type { DirectorSessions } from '../orchestration/director.js';
 import type { PlayRunner } from '../pipeline/runner.js';
@@ -167,7 +168,10 @@ async function rig(yaml = '', locale: 'en' | 'pt-BR' = 'en'): Promise<Rig> {
         attached.push(input.path);
         return Promise.resolve({ id: 'att-1', name: 'notes.md' });
       },
-      openChat: (input: { type?: string; name?: string; repo?: string }) => {
+      openChat: (input: { type?: string; name?: string; repo?: string; init?: string }) => {
+        if (input.repo === '/with-files' && input.init === undefined) {
+          return Promise.reject(new NeedsInit('/with-files'));
+        }
         if (input.repo === '/not-a-repo') {
           return Promise.reject(new InvalidInput('"/not-a-repo" is not a git repository'));
         }
@@ -540,6 +544,41 @@ describe('running a line', () => {
     await expect(
       pt.service.execute('chat-1', { text: '/new project /not-a-repo' }),
     ).rejects.toThrow(/Não deu para abrir um projeto em "\/not-a-repo"/);
+  });
+
+  it('/new project <repo> --init <choice> passes the choice on (N332)', async () => {
+    const { service, openedInputs } = await rig();
+    const result = await service.execute('chat-1', {
+      text: '/new project /with-files --init commit_all',
+    });
+    expect(result.data).toEqual({ scenarioId: 'project-new', type: 'project' });
+    expect(openedInputs).toEqual([{ type: 'project', repo: '/with-files', init: 'commit_all' }]);
+    await service.execute('chat-1', { text: '/new project /work/my shop --init empty_repo' });
+    expect(openedInputs[1]).toEqual({ type: 'project', repo: '/work/my shop', init: 'empty_repo' });
+  });
+
+  it('/new project on a folder that needs init lists the choices and how to pass one (N332)', async () => {
+    const { service, openedInputs } = await rig();
+    const asked = service.execute('chat-1', { text: '/new project /with-files' });
+    await expect(asked).rejects.toThrow(/--init commit_all \| --init empty_commit/);
+    await expect(asked).rejects.toThrow(/has files and is not a git repository/);
+    expect(openedInputs).toEqual([]);
+    const pt = await rig('', 'pt-BR');
+    await expect(
+      pt.service.execute('chat-1', { text: '/new project /with-files' }),
+    ).rejects.toThrow(
+      /tem arquivos e não é um repositório git[\s\S]*--init commit_all \| --init empty_commit/,
+    );
+  });
+
+  it('/new project refuses an --init that is not one of the choices (N332)', async () => {
+    const { service } = await rig();
+    await expect(
+      service.execute('chat-1', { text: '/new project /with-files --init sometimes' }),
+    ).rejects.toThrow(/--init must be one of: commit_all, empty_commit, empty_repo/);
+    await expect(
+      service.execute('chat-1', { text: '/new project /with-files --init' }),
+    ).rejects.toThrow(/--init must be one of/);
   });
 
   it('/logs shows the last events of the scenario', async () => {

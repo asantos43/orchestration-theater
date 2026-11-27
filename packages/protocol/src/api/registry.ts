@@ -20,6 +20,7 @@ import { ORDER_ROUTES } from './orders.js';
 import { PLAY_ROUTES } from './plays.js';
 import { PLUGIN_ROUTES } from './plugins.js';
 import { PROFILE_ROUTES } from './profiles.js';
+import { FOLDER_ROUTES } from './folders.js';
 import { SCENARIO_ROUTES } from './scenarios.js';
 import { SETUP_ROUTES } from './setup.js';
 import { TELEMETRY_ROUTES } from './telemetry.js';
@@ -53,6 +54,7 @@ export const API_ROUTES = {
   ...PLUGIN_ROUTES,
   ...PROFILE_ROUTES,
   ...SCENARIO_ROUTES,
+  ...FOLDER_ROUTES,
   ...SETUP_ROUTES,
   ...USAGE_ROUTES,
   ...SLASH_COMMAND_ROUTES,

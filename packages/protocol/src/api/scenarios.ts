@@ -7,6 +7,7 @@ import {
   ScenarioRepoRecordSchema,
 } from '@otheater/core';
 import { z } from 'zod';
+import { FolderInitChoiceSchema } from './folders.js';
 import { ScenarioIdSchema } from './ids.js';
 import { IdempotencyHeadersSchema, PageQuerySchema, pageOf } from './page.js';
 import { defineRoute, defineRoutes } from './route.js';
@@ -85,6 +86,14 @@ export const OpenScenarioBodySchema = z.strictObject({
   base: z.string().min(1).max(256).optional(),
   name: z.string().min(1).max(256).optional(),
   newProject: z.boolean().optional(),
+  /**
+   * [proposta] (N332) What to do with the folder when it is not a repository yet: `commit_all` and
+   * `empty_commit` for a folder with files, `empty_repo` for an empty or missing one. Without it, a
+   * folder with files follows `projects.init.mode` (`ask` answers `invalid_input` with
+   * `details: { reason: 'needs_init', choices }`). On a repository it is ignored (a notice says so);
+   * with `newProject` it is `invalid_input`.
+   */
+  init: FolderInitChoiceSchema.optional(),
 });
 export type OpenScenarioBody = z.input<typeof OpenScenarioBodySchema>;
 

@@ -79,6 +79,7 @@ describe('daemon event registry', () => {
       'profile.drained',
       'profile.removed',
       'scenario.created',
+      'project.repo_initialized',
       'scenario.attachment_added',
       'scenario.director_slept',
       'scenario.director_woke',

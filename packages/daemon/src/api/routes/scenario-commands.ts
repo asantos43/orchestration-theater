@@ -16,6 +16,7 @@ export function registerScenarioCommands(register: CommandRegistrar, deps: Comma
       ...(body.base === undefined ? {} : { base: body.base }),
       ...(body.name === undefined ? {} : { name: body.name }),
       ...(body.newProject === undefined ? {} : { newProject: body.newProject }),
+      ...(body.init === undefined ? {} : { init: body.init }),
     });
     const record = await store.scenarios.get(scenarioId);
     if (record === undefined) throw new NotFound(`There is no scenario "${scenarioId}"`);

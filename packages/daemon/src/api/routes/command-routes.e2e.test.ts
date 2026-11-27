@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0
 /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment -- the answers of the API are read as loose JSON */
-import { readFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import {
   FakeClientAdapter,
   FakeClock,
@@ -110,6 +112,48 @@ describeWithLauncher(
         const events = (await store.events.readFrom(0, 100_000)).map((event) => event.type);
         expect(events.filter((type) => type === 'scenario.created')).toHaveLength(1);
         expect(events.filter((type) => type === 'scenario.attachment_added')).toHaveLength(1);
+      });
+    });
+
+    it('opens a project on a folder with files only when the Producer chooses how to start it (N332)', async () => {
+      await withPlayDaemon({ extra: 'ideas:\n  drain: manual' }, async (harness, send) => {
+        const folder = await mkdtemp(join(tmpdir(), 'otheater-open-init-'));
+        try {
+          await writeFile(join(folder, 'a.txt'), 'a\n');
+          const asked = await send(
+            'POST',
+            '/v1/scenarios',
+            { repo: folder },
+            { 'idempotency-key': 'init-1' },
+          );
+          expect(asked.status, asked.text).toBe(400);
+          expect(asked.json.error.code).toBe('invalid_input');
+          expect(asked.json.error.details).toEqual({
+            reason: 'needs_init',
+            choices: ['commit_all', 'empty_commit'],
+          });
+          const both = await send(
+            'POST',
+            '/v1/scenarios',
+            { repo: folder, newProject: true, init: 'commit_all' },
+            { 'idempotency-key': 'init-2' },
+          );
+          expect(both.status, both.text).toBe(400);
+          const opened = await send(
+            'POST',
+            '/v1/scenarios',
+            { repo: folder, init: 'commit_all' },
+            { 'idempotency-key': 'init-3' },
+          );
+          expect(opened.status, opened.text).toBe(200);
+          expect(opened.json.scenario.kind).toBe('project');
+          const types = (await harness.daemon.store.events.readFrom(0, 10_000)).map(
+            (event) => event.type,
+          );
+          expect(types.filter((type) => type === 'project.repo_initialized')).toHaveLength(1);
+        } finally {
+          await rm(folder, { recursive: true, force: true });
+        }
       });
     });
 

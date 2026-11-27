@@ -16,10 +16,11 @@ import {
   supportsInspect,
   type Vcs,
 } from '@otheater/core';
-import { buildDaemonEvent } from '@otheater/protocol';
+import { buildDaemonEvent, type FolderInitChoice } from '@otheater/protocol';
 import type { ConventionsMode } from '../config.js';
 import { createSoftwareProject } from '../project/create.js';
 import { detectConventions } from '../project/detect.js';
+import { initProjectFolder, type InitOutcome, type InitSettings } from '../project/init.js';
 
 export interface ScenarioServiceOptions {
   readonly store: Pick<Store, 'events' | 'scenarioRepos' | 'scenarios'>;
@@ -32,6 +33,11 @@ export interface ScenarioServiceOptions {
    * other value detects (the question to the Producer is the channel's). Default `ask`.
    */
   readonly conventionsMode?: () => ConventionsMode;
+  /**
+   * `projects.init.*` (N332) [proposta], read at each creation: what happens to a folder that is not
+   * a repository. Default `ask` and `chore: initial commit`.
+   */
+  readonly initSettings?: () => InitSettings;
 }
 
 export interface CreateScenarioInput {
@@ -49,6 +55,13 @@ export interface CreateScenarioInput {
    * the repository must exist (an import).
    */
   readonly newProject?: boolean;
+  /**
+   * [proposta] (N332) What to do when `repo` is not a repository yet: `commit_all` or `empty_commit`
+   * for a folder with files, `empty_repo` for an empty or missing one (the alternative to
+   * `newProject`). Without it, a folder with files follows `projects.init.mode`. Ignored, with a
+   * notice, when `repo` already is a repository; with `newProject` it is `InvalidInput`.
+   */
+  readonly init?: FolderInitChoice;
 }
 
 export interface CreatedScenario {
@@ -101,10 +114,13 @@ export const CREATABLE_SCENARIO_TYPES: readonly string[] = ['project', 'chat'];
 export class ScenarioService {
   readonly #options: ScenarioServiceOptions;
   readonly #conventionsMode: () => ConventionsMode;
+  readonly #initSettings: () => InitSettings;
 
   constructor(options: ScenarioServiceOptions) {
     this.#options = options;
     this.#conventionsMode = options.conventionsMode ?? (() => 'ask');
+    this.#initSettings =
+      options.initSettings ?? (() => ({ mode: 'ask', message: 'chore: initial commit' }));
   }
 
   async create(input: CreateScenarioInput): Promise<CreatedScenario> {
@@ -130,6 +146,11 @@ export class ScenarioService {
     if (input.repo === undefined || input.repo === '') {
       throw new InvalidInput('A project scenario needs the repository it works on (repo)');
     }
+    if (input.init !== undefined && input.newProject === true) {
+      throw new InvalidInput(
+        'init and newProject do not go together: newProject makes the structure of the software profile, init only turns the folder into a repository',
+      );
+    }
     const path = resolve(input.repo);
     const id = projectScenarioId(path);
     const existing = await store.scenarios.get(id);
@@ -143,7 +164,27 @@ export class ScenarioService {
             ...(input.base === undefined ? {} : { branch: input.base }),
           })
         : undefined;
-    const base = born?.branch ?? (await this.#baseOf(path, input.base));
+    let initiated: InitOutcome | undefined;
+    let base: string;
+    if (born !== undefined) {
+      base = born.branch;
+    } else {
+      try {
+        base = await this.#baseOf(path, input.base);
+      } catch (error) {
+        // Not a repository the project can start from: maybe it is a folder to turn into one (N332).
+        if (existing !== undefined || !(error instanceof InvalidInput)) throw error;
+        initiated = await initProjectFolder({
+          vcs,
+          folder: path,
+          choice: input.init,
+          branch: input.base,
+          settings: this.#initSettings(),
+          refusal: error,
+        });
+        base = initiated.branch;
+      }
+    }
     let conventions = parseConventions(existing?.conventions);
     if (born !== undefined) {
       conventions = born.conventions;
@@ -169,6 +210,29 @@ export class ScenarioService {
     }
     await store.scenarioRepos.put({ scenarioId: id, path, mainBranch: base });
     if (existing === undefined) await this.#announce(scenario, type);
+    if (initiated !== undefined) {
+      await store.events.append({
+        ...buildDaemonEvent('project.repo_initialized', {
+          scenarioId: id,
+          folder: path,
+          mode: initiated.choice,
+          branch: initiated.branch,
+          head: initiated.head,
+        }),
+        scenarioId: id,
+      });
+    } else if (input.init !== undefined && born === undefined) {
+      // The folder already is a repository: the choice has nothing to do (N332) [proposta].
+      await store.events.append({
+        ...buildDaemonEvent('scenario.notice', {
+          scenarioId: id,
+          kind: 'init_ignored',
+          subject: path,
+          detail: `The folder already is a git repository, so init "${input.init}" was ignored`,
+        }),
+        scenarioId: id,
+      });
+    }
     return {
       scenario,
       created: existing === undefined,

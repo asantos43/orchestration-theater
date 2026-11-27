@@ -178,6 +178,17 @@ export class ApiClient {
     return this.call(API_ROUTES.getStatus, options);
   }
 
+  /**
+   * `POST /v1/folders/inspect` (N332): what a folder is (`missing`, `empty`, `files`, `repo`,
+   * `inside_repo`), its repository, and the `projects.init.mode` in force. It changes nothing.
+   */
+  inspectFolder(
+    path: string,
+    options: CallControl = {},
+  ): Promise<RouteResponse<typeof API_ROUTES.inspectFolder>> {
+    return this.call(API_ROUTES.inspectFolder, { body: { path }, ...options });
+  }
+
   // ---- pause, resume and cancel (Phase 7, P2, N176) ----
 
   /** `POST /v1/plays/:playId/pause`: the play opens nothing new; `mode` overrides `pause.mode`. */
