@@ -30,7 +30,7 @@
     "logs": "[n]",
     "pause": "[motivo]",
     "cancel": "[motivo]",
-    "new": "[nome | project <repo>]",
+    "new": "[nome | project <repo> [--init <escolha>]]",
     "attach": "<caminho>",
     "config": "[chave]",
     "template": "<texto>",
@@ -58,6 +58,8 @@
     "noChannel": "Este daemon não fala com o Diretor: ele não roda peças.",
     "newProject": {
       "noRepo": "/new project precisa do repositório: /new project <repo>.",
+      "badInit": "--init precisa ser um de: {{choices}}.",
+      "needsInit": "\"{{repo}}\" tem arquivos e não é um repositório git. Repita o comando com um de: {{choices}} (/new project <repo> --init commit_all). commit_all faz um primeiro commit com todos os arquivos (o .gitignore é respeitado); empty_commit faz um primeiro commit vazio e deixa os arquivos de fora.",
       "badRepo": "Não deu para abrir um projeto em \"{{repo}}\": não é um repositório git em que o projeto possa começar."
     },
     "noRunner": "Este daemon não roda peças.",

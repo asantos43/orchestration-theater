@@ -30,7 +30,7 @@
     "logs": "[n]",
     "pause": "[reason]",
     "cancel": "[reason]",
-    "new": "[name | project <repo>]",
+    "new": "[name | project <repo> [--init <choice>]]",
     "attach": "<path>",
     "config": "[key]",
     "template": "<text>",
@@ -59,6 +59,8 @@
     "noRunner": "This daemon cannot run plays.",
     "newProject": {
       "noRepo": "/new project needs the repository: /new project <repo>.",
+      "badInit": "--init must be one of: {{choices}}.",
+      "needsInit": "\"{{repo}}\" has files and is not a git repository. Repeat the command with one of: {{choices}} (/new project <repo> --init commit_all). commit_all makes a first commit with every file (the .gitignore is respected); empty_commit makes an empty first commit and leaves the files out.",
       "badRepo": "Could not open a project on \"{{repo}}\": it is not a git repository the project can start from."
     },
     "notAvailable": {

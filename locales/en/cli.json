@@ -8,6 +8,8 @@
     "missingBackupPath": "\"ot restore\" needs the backup folder to restore.",
     "tooManyArguments": "Too many arguments for \"ot {{command}}\".",
     "invalidOption": "Invalid option: {{message}}",
+    "badInit": "--init must be one of: {{choices}}.",
+    "initWithNewProject": "--init cannot go with --new-project: the new project already makes the repository.",
     "missingRepo": "\"ot chat\" needs a repository: use --repo <folder>.",
     "noInput": "\"ot chat\" needs a place to read the messages from.",
     "tuiNeedsTerminal": "\"ot tui\" needs a terminal: the input and the output must be a terminal.",
@@ -192,6 +194,7 @@
     "badOption": "That is not one of the options. Type one of: {{options}}.",
     "answerFailed": "The answer was not taken: {{message}}",
     "askWithdrawn": "The question was answered somewhere else, so it was taken back.",
+    "needsInit": "\"{{repo}}\" has files and is not a git repository. Run \"ot chat\" again with one of: {{choices}}. commit_all makes a first commit with every file (the .gitignore is respected); empty_commit makes an empty first commit and leaves the files out. To decide once, set projects.init.mode in the configuration.",
     "connectFailed": "Could not reach the daemon: {{message}}",
     "sendFailed": "The message was not sent: {{message}}",
     "reconnecting": "The connection to the daemon dropped ({{message}}). Trying again in {{seconds}} s.",
@@ -658,6 +661,10 @@
           },
           "new-project": {
             "summary": "Create the project in --repo (a folder that does not exist or is empty) with the structure of the software profile"
+          },
+          "init": {
+            "summary": "When --repo is not a git repository yet: commit_all (first commit with every file, respecting .gitignore), empty_commit (empty first commit, the files stay out) or empty_repo (an empty or missing folder)",
+            "value": "<choice>"
           }
         },
         "notes": "In the chat, \"/attach <file>\" attaches a file (copied; \"/attach --ref <file>\" keeps it in place): the next message you send names it as A<n> for the Director."

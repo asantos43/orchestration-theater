@@ -9,6 +9,7 @@ import {
   NotFound,
   type Store,
 } from '@otheater/core';
+import type { FolderInitChoice } from '@otheater/protocol';
 import { z } from 'zod';
 import type { ConventionsMode } from '../config.js';
 import type { DrainResult, IdeaQueueService } from '../ideas/index.js';
@@ -58,6 +59,8 @@ export interface OpenChatInput {
   readonly name?: string;
   /** Create the project in `repo` with the structure of the `software` profile (a `project`). */
   readonly newProject?: boolean;
+  /** [proposta] (N332) What to do when `repo` is not a repository: see `CreateScenarioInput.init`. */
+  readonly init?: FolderInitChoice;
 }
 
 /** A demand that waits for an Executor, as the chat shows it (P16). */
@@ -203,6 +206,7 @@ export class ProducerChannel {
       ...(input.base === undefined ? {} : { base: input.base }),
       ...(input.name === undefined ? {} : { name: input.name }),
       ...(input.newProject === true ? { newProject: true } : {}),
+      ...(input.init === undefined ? {} : { init: input.init }),
     });
     const scenarioId = scenario.id;
     // An imported repository: the Producer confirms or corrects what the daemon detected. It does

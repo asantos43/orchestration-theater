@@ -442,6 +442,54 @@ describe('init', () => {
   });
 });
 
+describe('init with commitAll and locate (N332)', () => {
+  it('makes one first commit with every file and respects the .gitignore', async () => {
+    const vcs = new GitVcs();
+    const folder = join(root, 'files');
+    await mkdir(folder);
+    await writeFile(join(folder, 'a.txt'), 'a\n');
+    await writeFile(join(folder, '.gitignore'), 'secret.txt\n');
+    await writeFile(join(folder, 'secret.txt'), 'x\n');
+    const made = await vcs.init(folder, { commitAll: true, message: 'feat: start' });
+    expect(made.branch).toBe('main');
+    expect(await testGit(folder, 'rev-list', '--count', 'HEAD')).toBe('1');
+    expect(await testGit(folder, 'log', '-1', '--format=%s')).toBe('feat: start');
+    const tracked = (await testGit(folder, 'ls-files')).split('\n').sort();
+    expect(tracked).toEqual(['.gitignore', 'a.txt']);
+  });
+
+  it('keeps the files out of the commit without commitAll', async () => {
+    const vcs = new GitVcs();
+    const folder = join(root, 'files-empty');
+    await mkdir(folder);
+    await writeFile(join(folder, 'a.txt'), 'a\n');
+    await vcs.init(folder);
+    expect(await testGit(folder, 'ls-files')).toBe('');
+  });
+
+  it('locates the root and the branch of a repository, from the root and from a subfolder', async () => {
+    const vcs = new GitVcs();
+    await mkdir(join(repo, 'sub'));
+    expect(await vcs.locate(repo)).toEqual({ root: repo, branch: 'main' });
+    expect(await vcs.locate(join(repo, 'sub'))).toEqual({ root: repo, branch: 'main' });
+  });
+
+  it('answers undefined for a plain folder, a missing folder and rejects a relative path', async () => {
+    const vcs = new GitVcs();
+    const plain = join(root, 'plain-folder');
+    await mkdir(plain);
+    expect(await vcs.locate(plain)).toBeUndefined();
+    expect(await vcs.locate(join(root, 'missing'))).toBeUndefined();
+    await expect(vcs.locate('relative/path')).rejects.toThrow(/absolute/);
+  });
+
+  it('gives no branch for a detached head', async () => {
+    const vcs = new GitVcs();
+    await testGit(repo, 'checkout', '--quiet', '--detach');
+    expect(await vcs.locate(repo)).toEqual({ root: repo });
+  });
+});
+
 describe('parsers', () => {
   it('parseWorktreeList reads main, branch, detached and skips a bare entry', () => {
     const output = [

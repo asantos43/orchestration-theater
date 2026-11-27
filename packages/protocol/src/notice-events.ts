@@ -237,7 +237,8 @@ export const RecoveryNoticePayloadSchema = z.strictObject({
  * - `consult_worktree_stayed`: the worktree of a consultant could not be removed;
  * - `consult_files_refused`: the files of a consultant were not merged (`subject`: the branch; `detail`: why);
  * - `conventions_not_confirmed`: the confirmation of the conventions of the project failed;
- * - `direct_worktree_stayed`: the worktree of a direct session could not be removed (P19; `subject`: the branch).
+ * - `direct_worktree_stayed`: the worktree of a direct session could not be removed (P19; `subject`: the branch);
+ * - `init_ignored` [proposta] (N332): the `init` of an open was ignored because the folder already is a repository (`subject`: the folder).
  */
 export const SCENARIO_NOTICE_KINDS = [
   'ideas_setting_ignored',
@@ -246,6 +247,7 @@ export const SCENARIO_NOTICE_KINDS = [
   'consult_files_refused',
   'conventions_not_confirmed',
   'direct_worktree_stayed',
+  'init_ignored',
 ] as const;
 export type ScenarioNoticeKind = (typeof SCENARIO_NOTICE_KINDS)[number];
 
