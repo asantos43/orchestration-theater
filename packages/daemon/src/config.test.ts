@@ -206,7 +206,13 @@ describe('parseConfig', () => {
   });
 
   it('has the default of ui.newProject, takes its other modes and refuses bad values (P22)', () => {
-    expect(parseConfig('').ui.newProject).toEqual({ repo: 'cwd', type: 'chat' });
+    expect(parseConfig('').ui.newProject).toEqual({
+      repo: 'cwd',
+      type: 'chat',
+      picker: 'browser',
+      hidden: 'hide',
+      favorites: [],
+    });
     expect(parseConfig('ui:\n  newProject:\n    repo: git_root\n').ui.newProject.repo).toBe(
       'git_root',
     );
