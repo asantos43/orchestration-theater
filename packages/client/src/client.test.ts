@@ -336,6 +336,7 @@ describe('folders and init (N332)', () => {
       state: 'files',
       git: null,
       initMode: 'ask',
+      emptyMode: 'software',
     };
     const started = await daemon({
       handler: (request) =>
@@ -365,11 +366,36 @@ describe('folders and init (N332)', () => {
       repo: '/work/app',
       init: 'commit_all',
     });
+    // A daemon that does not say which folder it is (the first N332 steps) means one with files.
     expect(needsInitOf(error)).toEqual({
       reason: 'needs_init',
       choices: ['commit_all', 'empty_commit'],
+      state: 'files',
     });
     expect(needsInitOf(new Error('x'))).toBeUndefined();
+  });
+
+  it('needsInitOf reads the choices and the state of an empty or missing folder', async () => {
+    for (const state of ['empty', 'missing'] as const) {
+      const started = await daemon({
+        handler: () => ({
+          status: 400,
+          json: apiError('invalid_input', 'Choose', {
+            reason: 'needs_init',
+            choices: ['new_project', 'empty_repo'],
+            state,
+          }),
+        }),
+      });
+      const error = await clientOf(started)
+        .call(API_ROUTES.openScenario, { body: { repo: '/work/app' } })
+        .catch((caught: unknown) => caught);
+      expect(needsInitOf(error)).toEqual({
+        reason: 'needs_init',
+        choices: ['new_project', 'empty_repo'],
+        state,
+      });
+    }
   });
 
   it('needsInitOf ignores an invalid_input of another kind', async () => {

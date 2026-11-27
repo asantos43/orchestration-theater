@@ -19,6 +19,7 @@ export function registerFolderRoutes(handlers: ApiHandlers, deps: ReadRouteDeps)
         state: found.state,
         git: found.git,
         initMode: deps.config.projects.init.mode,
+        emptyMode: deps.config.projects.init.empty_mode,
       };
     },
     { command: false },

@@ -61,6 +61,7 @@
       "noRepo": "/new project needs the repository: /new project <repo>.",
       "badInit": "--init must be one of: {{choices}}.",
       "needsInit": "\"{{repo}}\" has files and is not a git repository. Repeat the command with one of: {{choices}} (/new project <repo> --init commit_all). commit_all makes a first commit with every file (the .gitignore is respected); empty_commit makes an empty first commit and leaves the files out.",
+      "needsInitEmpty": "\"{{repo}}\" is empty or does not exist, and it is not a git repository. Repeat the command with {{choices}} (/new project <repo> --init empty_repo), which makes an empty repository with an empty first commit. To start from the software model (README, changelog, tests and CI), set projects.init.empty_mode to software in the configuration.",
       "badRepo": "Could not open a project on \"{{repo}}\": it is not a git repository the project can start from."
     },
     "notAvailable": {

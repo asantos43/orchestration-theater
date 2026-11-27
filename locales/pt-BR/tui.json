@@ -645,7 +645,8 @@
           }
         },
         "hint": "↑↓ escolhem · Enter confirma · Esc cancela",
-        "refused": "\"{{repo}}\" tem arquivos e não é um repositório git, e projects.init.mode é \"refuse\": o daemon não o inicializa."
+        "refused": "\"{{repo}}\" tem arquivos e não é um repositório git, e projects.init.mode é \"refuse\": o daemon não o inicializa.",
+        "refusedEmpty": "\"{{repo}}\" está vazia ou não existe, e projects.init.empty_mode é \"refuse\": o daemon não começa um projeto nela."
       },
       "nameLabel": "Nome do chat (opcional)",
       "taskOff": "Tarefa: chega com a Fase 9b",

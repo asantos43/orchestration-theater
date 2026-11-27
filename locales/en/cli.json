@@ -195,6 +195,7 @@
     "answerFailed": "The answer was not taken: {{message}}",
     "askWithdrawn": "The question was answered somewhere else, so it was taken back.",
     "needsInit": "\"{{repo}}\" has files and is not a git repository. Run \"ot chat\" again with one of: {{choices}}. commit_all makes a first commit with every file (the .gitignore is respected); empty_commit makes an empty first commit and leaves the files out. To decide once, set projects.init.mode in the configuration.",
+    "needsInitEmpty": "\"{{repo}}\" is empty or does not exist, and it is not a git repository. Run \"ot chat\" again with one of: {{choices}}. --new-project makes the structure of the software profile (README, changelog, tests and CI); --init empty_repo makes an empty repository with an empty first commit. To decide once, set projects.init.empty_mode in the configuration.",
     "connectFailed": "Could not reach the daemon: {{message}}",
     "sendFailed": "The message was not sent: {{message}}",
     "reconnecting": "The connection to the daemon dropped ({{message}}). Trying again in {{seconds}} s.",

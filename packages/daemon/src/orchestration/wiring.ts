@@ -234,7 +234,11 @@ export function startOrchestration(input: OrchestrationInput): Orchestration {
     registries,
     scenariosDir: paths.scenarios,
     conventionsMode: () => config.project.conventions,
-    initSettings: () => config.projects.init,
+    initSettings: () => ({
+      mode: config.projects.init.mode,
+      emptyMode: config.projects.init.empty_mode,
+      message: config.projects.init.message,
+    }),
   });
   const confirmer = new ConventionConfirmer({ store, board: handlers.board, logger });
   const attachments = new AttachmentService({

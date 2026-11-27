@@ -560,11 +560,15 @@ const newScenario = define({
         .catch((error: unknown) => {
           if (error instanceof NeedsInit) {
             // N332: the folder has files and no repository: say which choices there are and how to pass one.
+            // `new_project` (empty folder) has no word in this command: the empty_mode key makes it.
+            const choices = error.details.choices.filter((choice) => choice !== 'new_project');
             throw new InvalidInput(
-              context.t('error.newProject.needsInit', {
-                repo,
-                choices: error.details.choices.map((choice) => `--init ${choice}`).join(' | '),
-              }),
+              context.t(
+                error.details.state === 'files'
+                  ? 'error.newProject.needsInit'
+                  : 'error.newProject.needsInitEmpty',
+                { repo, choices: choices.map((choice) => `--init ${choice}`).join(' | ') },
+              ),
               { cause: error },
             );
           }

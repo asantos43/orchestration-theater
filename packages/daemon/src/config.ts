@@ -914,6 +914,18 @@ export const INIT_MODES = ['ask', 'commit_all', 'empty_commit', 'refuse'] as con
 export type InitMode = (typeof INIT_MODES)[number];
 
 /**
+ * `projects.init.empty_mode` [proposta] (N332): what the daemon does when the Producer opens a project
+ * on an empty folder or one that does not exist, with no `init` and no `newProject` in the request
+ * (an explicit `init` or `newProject` always wins). `ask` (default): it refuses with `invalid_input`
+ * (`details.reason: 'needs_init'`, `details.state: 'empty' | 'missing'`) and the client asks the
+ * Producer to choose; `software`: it acts as if `newProject: true` came (the structure of the
+ * software profile); `empty_repo`: it acts as if `init: 'empty_repo'` came (`git init` and an empty
+ * first commit); `refuse`: it refuses, as it did before N332.
+ */
+export const EMPTY_INIT_MODES = ['ask', 'software', 'empty_repo', 'refuse'] as const;
+export type EmptyInitMode = (typeof EMPTY_INIT_MODES)[number];
+
+/**
  * Does a delivery keep a changelog? (N100, architecture 5.20.) `always` (default): every delivery
  * adds its entry, creating `CHANGELOG.md` in Keep a Changelog format when the repository has none;
  * `auto`: only when the repository has one or the project is new; `never`: it does not touch it.
@@ -2968,13 +2980,16 @@ export const DaemonConfigSchema = z
       .prefault({}),
     /**
      * Where the Producer opens projects (N332) [proposta]. `init` is what happens to a folder with
-     * no git repository: see {@link INIT_MODES}; `message` is the subject of the first commit it makes.
+     * no git repository: `mode` for a folder with files ({@link INIT_MODES}), `empty_mode` for an
+     * empty or missing one ({@link EMPTY_INIT_MODES}); `message` is the subject of the first commit
+     * it makes.
      */
     projects: z
       .strictObject({
         init: z
           .strictObject({
             mode: z.enum(INIT_MODES).default('ask'),
+            empty_mode: z.enum(EMPTY_INIT_MODES).default('ask'),
             message: z.string().min(1).default('chore: initial commit'),
           })
           .prefault({}),

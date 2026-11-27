@@ -99,6 +99,7 @@ describe('POST /v1/folders/inspect (N332)', () => {
       state: 'missing',
       git: null,
       initMode: 'ask',
+      emptyMode: 'ask',
     });
     expect(answers.get('empty')).toMatchObject({ path: empty, state: 'empty', git: null });
     expect(answers.get('files')).toMatchObject({ path: files, state: 'files', git: null });
@@ -107,6 +108,7 @@ describe('POST /v1/folders/inspect (N332)', () => {
       state: 'repo',
       git: { root: repo, branch: 'main' },
       initMode: 'ask',
+      emptyMode: 'ask',
     });
     expect(answers.get('inside')).toMatchObject({
       path: join(repo, 'sub'),
@@ -121,6 +123,16 @@ describe('POST /v1/folders/inspect (N332)', () => {
     expect(answer.status, answer.text).toBe(200);
     expect((answer.json as InspectFolderResult).initMode).toBe('commit_all');
   });
+
+  it.each(['software', 'empty_repo', 'refuse'] as const)(
+    'shows the projects.init.empty_mode in force (%s)',
+    async (mode) => {
+      await start(`projects:\n  init:\n    empty_mode: ${mode}\n`);
+      const answer = await inspect(work);
+      expect(answer.status, answer.text).toBe(200);
+      expect((answer.json as InspectFolderResult).emptyMode).toBe(mode);
+    },
+  );
 
   it('answers 400 invalid_input to a path that is a file, and to a body without a path', async () => {
     await start('');

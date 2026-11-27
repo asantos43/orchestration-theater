@@ -60,6 +60,7 @@
       "noRepo": "/new project precisa do repositório: /new project <repo>.",
       "badInit": "--init precisa ser um de: {{choices}}.",
       "needsInit": "\"{{repo}}\" tem arquivos e não é um repositório git. Repita o comando com um de: {{choices}} (/new project <repo> --init commit_all). commit_all faz um primeiro commit com todos os arquivos (o .gitignore é respeitado); empty_commit faz um primeiro commit vazio e deixa os arquivos de fora.",
+      "needsInitEmpty": "\"{{repo}}\" está vazia ou não existe, e não é um repositório git. Repita o comando com {{choices}} (/new project <repo> --init empty_repo), que cria um repositório vazio com um primeiro commit vazio. Para começar do modelo de software (README, changelog, testes e CI), defina projects.init.empty_mode como software na configuração.",
       "badRepo": "Não deu para abrir um projeto em \"{{repo}}\": não é um repositório git em que o projeto possa começar."
     },
     "noRunner": "Este daemon não roda peças.",
