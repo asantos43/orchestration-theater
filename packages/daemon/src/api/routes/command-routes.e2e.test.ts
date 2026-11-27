@@ -131,6 +131,7 @@ describeWithLauncher(
           expect(asked.json.error.details).toEqual({
             reason: 'needs_init',
             choices: ['commit_all', 'empty_commit'],
+            state: 'files',
           });
           const both = await send(
             'POST',

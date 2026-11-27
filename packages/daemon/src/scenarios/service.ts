@@ -18,7 +18,7 @@ import {
 } from '@otheater/core';
 import { buildDaemonEvent, type FolderInitChoice } from '@otheater/protocol';
 import type { ConventionsMode } from '../config.js';
-import { createSoftwareProject } from '../project/create.js';
+import { createSoftwareProject, type CreatedProject } from '../project/create.js';
 import { detectConventions } from '../project/detect.js';
 import { initProjectFolder, type InitOutcome, type InitSettings } from '../project/init.js';
 
@@ -58,7 +58,8 @@ export interface CreateScenarioInput {
   /**
    * [proposta] (N332) What to do when `repo` is not a repository yet: `commit_all` or `empty_commit`
    * for a folder with files, `empty_repo` for an empty or missing one (the alternative to
-   * `newProject`). Without it, a folder with files follows `projects.init.mode`. Ignored, with a
+   * `newProject`). Without it, a folder with files follows `projects.init.mode` and an empty or
+   * missing one follows `projects.init.empty_mode` (which may make it `newProject`). Ignored, with a
    * notice, when `repo` already is a repository; with `newProject` it is `InvalidInput`.
    */
   readonly init?: FolderInitChoice;
@@ -120,7 +121,8 @@ export class ScenarioService {
     this.#options = options;
     this.#conventionsMode = options.conventionsMode ?? (() => 'ask');
     this.#initSettings =
-      options.initSettings ?? (() => ({ mode: 'ask', message: 'chore: initial commit' }));
+      options.initSettings ??
+      (() => ({ mode: 'ask', emptyMode: 'ask', message: 'chore: initial commit' }));
   }
 
   async create(input: CreateScenarioInput): Promise<CreatedScenario> {
@@ -155,15 +157,14 @@ export class ScenarioService {
     const id = projectScenarioId(path);
     const existing = await store.scenarios.get(id);
     // A new project is born with the structure of the profile; its conventions are the profile's.
-    const born =
-      input.newProject === true
-        ? await createSoftwareProject({
-            vcs,
-            folder: path,
-            ...(input.name === undefined ? {} : { name: input.name }),
-            ...(input.base === undefined ? {} : { branch: input.base }),
-          })
-        : undefined;
+    const makeSoftware = (): Promise<CreatedProject> =>
+      createSoftwareProject({
+        vcs,
+        folder: path,
+        ...(input.name === undefined ? {} : { name: input.name }),
+        ...(input.base === undefined ? {} : { branch: input.base }),
+      });
+    let born = input.newProject === true ? await makeSoftware() : undefined;
     let initiated: InitOutcome | undefined;
     let base: string;
     if (born !== undefined) {
@@ -174,7 +175,7 @@ export class ScenarioService {
       } catch (error) {
         // Not a repository the project can start from: maybe it is a folder to turn into one (N332).
         if (existing !== undefined || !(error instanceof InvalidInput)) throw error;
-        initiated = await initProjectFolder({
+        const outcome = await initProjectFolder({
           vcs,
           folder: path,
           choice: input.init,
@@ -182,7 +183,14 @@ export class ScenarioService {
           settings: this.#initSettings(),
           refusal: error,
         });
-        base = initiated.branch;
+        if (outcome.choice === 'software') {
+          // `projects.init.empty_mode: software` (N332): the same as if `newProject` had come.
+          born = await makeSoftware();
+          base = born.branch;
+        } else {
+          initiated = outcome;
+          base = outcome.branch;
+        }
       }
     }
     let conventions = parseConventions(existing?.conventions);

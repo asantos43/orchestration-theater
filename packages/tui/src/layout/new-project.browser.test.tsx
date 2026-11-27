@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: MPL-2.0
 import { ApiRequestError } from '@otheater/client';
-import type { FolderInitMode, FolderState, InspectFolderResult } from '@otheater/protocol';
+import type {
+  FolderEmptyMode,
+  FolderInitMode,
+  FolderState,
+  InspectFolderResult,
+} from '@otheater/protocol';
 import { Box } from 'ink';
 import { render, cleanup } from 'ink-testing-library';
 import type { i18n as I18nInstance } from 'i18next';
@@ -392,23 +397,35 @@ function app_hidden(app: Mounted, shown: boolean): string {
 
 // N332 (step B2): what the prompt asks when the folder is not a repository yet.
 
-function found(state: FolderState, initMode: FolderInitMode = 'ask') {
+function found(
+  state: FolderState,
+  initMode: FolderInitMode = 'ask',
+  emptyMode: FolderEmptyMode = 'ask',
+) {
   return (path: string): Promise<InspectFolderResult> =>
     Promise.resolve({
       path,
       state,
       git: state === 'repo' || state === 'inside_repo' ? { root: path, branch: 'main' } : null,
       initMode,
+      emptyMode,
     });
 }
 
-const needsInit = (): ApiRequestError =>
+const needsInit = (state?: 'files' | 'empty' | 'missing'): ApiRequestError =>
   new ApiRequestError({
     status: 400,
     body: {
       code: 'invalid_input',
       message: 'needs init',
-      details: { reason: 'needs_init', choices: ['commit_all', 'empty_commit'] },
+      details:
+        state === undefined || state === 'files'
+          ? {
+              reason: 'needs_init',
+              choices: ['commit_all', 'empty_commit'],
+              ...(state === undefined ? {} : { state }),
+            }
+          : { reason: 'needs_init', choices: ['new_project', 'empty_repo'], state },
     },
   });
 
@@ -533,7 +550,7 @@ describe.skipIf(!posix)('the question of a folder that is not a repository (N332
   });
 
   it.each(['empty', 'missing'] as const)(
-    'an %s folder asks between the software model and an empty repository, whatever the mode',
+    'an %s folder with empty_mode ask asks between the software model and an empty repository, whatever projects.init.mode is',
     async (state) => {
       for (const mode of ['ask', 'refuse', 'commit_all'] as const) {
         const software = await mount({ inspect: found(state, mode) });
@@ -559,6 +576,46 @@ describe.skipIf(!posix)('the question of a folder that is not a repository (N332
       expect(cancel.opened).toEqual([]);
     },
   );
+
+  it.each(['empty', 'missing'] as const)(
+    'an %s folder with empty_mode software or empty_repo opens at once, without a question (the daemon applies it)',
+    async (state) => {
+      for (const emptyMode of ['software', 'empty_repo'] as const) {
+        for (const mode of ['ask', 'refuse'] as const) {
+          const app = await mount({ inspect: found(state, mode, emptyMode) });
+          await choose(app);
+          expect(app.opened).toEqual([{ type: 'project', repo: FOLDER }]);
+          expect(app.closed()).toBe(1);
+          expect(app.frame()).not.toContain(app.T(`layout.newProject.init.ask.${state}`));
+          cleanup();
+        }
+      }
+    },
+  );
+
+  it.each(['empty', 'missing'] as const)(
+    'an %s folder with empty_mode refuse says so, naming the key, and opens nothing',
+    async (state) => {
+      const app = await mount({ inspect: found(state, 'ask', 'refuse') });
+      await choose(app);
+      expect(app.opened).toEqual([]);
+      expect(app.closed()).toBe(0);
+      const refused = app.T('layout.newProject.init.refusedEmpty', { repo: FOLDER });
+      expect(refused).toContain('projects.init.empty_mode');
+      const head = refused.slice(0, refused.indexOf('does not exist'));
+      expect(app.frame()).toContain(head);
+      expect(app.frame()).not.toContain(app.T(`layout.newProject.init.ask.${state}`));
+      expect(app.frame()).toContain(app.T('layout.newProject.picker.sections.folders'));
+      await app.press(KEY.down);
+      expect(app.frame()).not.toContain(head);
+    },
+  );
+
+  it('empty_mode refuse does not change the question of a folder with files', async () => {
+    const app = await mount({ inspect: found('files', 'ask', 'refuse') });
+    await choose(app);
+    expect(app.frame()).toContain(app.T('layout.newProject.init.ask.files'));
+  });
 
   it('asks from the field of the path too, and cancel goes back to the field', async () => {
     const app = await mount({ inspect: found('files'), picker: 'path', initial: FOLDER });
@@ -591,6 +648,38 @@ describe.skipIf(!posix)('the question of a folder that is not a repository (N332
     expect(app.closed()).toBe(1);
   });
 
+  it.each(['empty', 'missing'] as const)(
+    'a needs_init of an %s folder on the open (it was emptied, or the inspection was not there) asks the question of that case',
+    async (state) => {
+      const app = await mount({
+        inspect: found('repo'),
+        fail: (request) =>
+          request.type === 'project' &&
+          request.init === undefined &&
+          request.newProject === undefined
+            ? needsInit(state)
+            : undefined,
+      });
+      await choose(app);
+      expect(app.opened).toEqual([{ type: 'project', repo: FOLDER }]);
+      expect(app.frame()).toContain(app.T(`layout.newProject.init.ask.${state}`));
+      expect(app.frame()).not.toContain(app.T('layout.newProject.init.ask.files'));
+      await app.press(KEY.enter);
+      expect(app.opened).toEqual([
+        { type: 'project', repo: FOLDER },
+        { type: 'project', repo: FOLDER, newProject: true },
+      ]);
+      expect(app.closed()).toBe(1);
+      cleanup();
+      const bare = await mount({ fail: () => needsInit(state) });
+      await choose(bare);
+      expect(bare.frame()).toContain(bare.T(`layout.newProject.init.ask.${state}`));
+      await bare.press(KEY.down);
+      await bare.press(KEY.enter);
+      expect(bare.opened.at(-1)).toEqual({ type: 'project', repo: FOLDER, init: 'empty_repo' });
+    },
+  );
+
   it('needs_init without the inspection asks too, and other refusals keep their message', async () => {
     const racing = await mount({ fail: () => needsInit() });
     await choose(racing);
@@ -609,5 +698,12 @@ describe.skipIf(!posix)('the question of a folder that is not a repository (N332
     expect(app.frame()).toContain('Modelo software');
     expect(app.frame()).toContain('Repositório vazio');
     expect(app.frame()).toContain('Cancelar');
+    cleanup();
+    const refused = await mount({ inspect: found('empty', 'ask', 'refuse'), pt: true });
+    await choose(refused);
+    expect(refused.T('layout.newProject.init.refusedEmpty', { repo: FOLDER })).toContain(
+      'está vazia ou não existe',
+    );
+    expect(refused.frame()).toContain('está vazia ou não existe');
   });
 });

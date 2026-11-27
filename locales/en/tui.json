@@ -645,7 +645,8 @@
           }
         },
         "hint": "↑↓ choose · Enter confirms · Esc cancels",
-        "refused": "\"{{repo}}\" has files and is not a git repository, and projects.init.mode is \"refuse\": the daemon does not initialize it."
+        "refused": "\"{{repo}}\" has files and is not a git repository, and projects.init.mode is \"refuse\": the daemon does not initialize it.",
+        "refusedEmpty": "\"{{repo}}\" is empty or does not exist, and projects.init.empty_mode is \"refuse\": the daemon does not start a project in it."
       },
       "nameLabel": "Name of the chat (optional)",
       "taskOff": "Task: comes with Phase 9b",

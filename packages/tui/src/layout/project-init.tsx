@@ -20,28 +20,36 @@ export type InitQuestionKind = 'files' | 'empty' | 'missing';
 export type InitOptionId = FolderInitChoice | 'software' | 'cancel';
 
 /**
- * What the prompt does after the inspection of the folder: `open` as before, `refuse` (the folder
- * has files and `projects.init.mode` is `refuse`: say so, open nothing) or `ask` this question.
+ * What the prompt does after the inspection of the folder: `open` as before, `refuse` (the key of
+ * the folder, `projects.init.mode` for one with files and `projects.init.empty_mode` for an empty or
+ * missing one, is `refuse`: say so, open nothing) or `ask` this question.
  */
 export type InitVerdict =
   | { readonly action: 'open' }
-  | { readonly action: 'refuse' }
+  | { readonly action: 'refuse'; readonly kind: 'files' | 'empty' }
   | { readonly action: 'ask'; readonly kind: InitQuestionKind };
 
-/** The verdict for what `POST /v1/folders/inspect` found. */
-export function initVerdict(found: Pick<InspectFolderResult, 'state' | 'initMode'>): InitVerdict {
+/**
+ * The verdict for what `POST /v1/folders/inspect` found. Only `ask` shows a question: with any
+ * other value of the key the daemon applies it on its own (`commit_all`, `empty_commit`, `software`
+ * and `empty_repo`) when the folder is opened.
+ */
+export function initVerdict(
+  found: Pick<InspectFolderResult, 'state' | 'initMode' | 'emptyMode'>,
+): InitVerdict {
   switch (found.state) {
     case 'repo':
     case 'inside_repo':
       return { action: 'open' };
     case 'files':
-      // `commit_all` and `empty_commit` are applied by the daemon on its own.
       if (found.initMode === 'ask') return { action: 'ask', kind: 'files' };
-      return { action: found.initMode === 'refuse' ? 'refuse' : 'open' };
+      return found.initMode === 'refuse' ? { action: 'refuse', kind: 'files' } : { action: 'open' };
     case 'empty':
-      return { action: 'ask', kind: 'empty' };
     case 'missing':
-      return { action: 'ask', kind: 'missing' };
+      if (found.emptyMode === 'ask') return { action: 'ask', kind: found.state };
+      return found.emptyMode === 'refuse'
+        ? { action: 'refuse', kind: 'empty' }
+        : { action: 'open' };
   }
 }
 

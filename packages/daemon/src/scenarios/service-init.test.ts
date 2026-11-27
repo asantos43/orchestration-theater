@@ -7,7 +7,7 @@ import { FakeClock, InMemoryStore } from '@otheater/core/testing';
 import { disposeTestGitIsolation, testGit } from '@otheater/sdk';
 import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { defaultVcs } from '../compose.js';
-import type { InitMode } from '../config.js';
+import type { EmptyInitMode, InitMode } from '../config.js';
 import { NeedsInit } from '../project/init.js';
 import { buildDaemonRegistries } from '../registries.js';
 import { ScenarioService } from './service.js';
@@ -26,13 +26,17 @@ afterEach(async () => {
   await rm(root, { recursive: true, force: true });
 });
 
-function service(mode: InitMode = 'ask', message = 'chore: initial commit'): ScenarioService {
+function service(
+  mode: InitMode = 'ask',
+  message = 'chore: initial commit',
+  emptyMode: EmptyInitMode = 'ask',
+): ScenarioService {
   return new ScenarioService({
     store,
     vcs: defaultVcs(),
     registries: buildDaemonRegistries(),
     scenariosDir: join(root, 'scenarios'),
-    initSettings: () => ({ mode, message }),
+    initSettings: () => ({ mode, emptyMode, message }),
   });
 }
 
@@ -135,6 +139,7 @@ describe('opening a project on a folder that is not a repository (N332)', () => 
     expect((error as NeedsInit).details).toEqual({
       reason: 'needs_init',
       choices: ['commit_all', 'empty_commit'],
+      state: 'files',
     });
     await expect(stat(join(folder, '.git'))).rejects.toThrow();
     expect(await store.scenarios.list({})).toHaveLength(0);
@@ -159,15 +164,145 @@ describe('opening a project on a folder that is not a repository (N332)', () => 
     await expect(stat(join(folder, '.git'))).rejects.toThrow();
   });
 
-  it('an empty or missing folder without init is refused as before, whatever the mode', async () => {
+  it('an empty or missing folder follows projects.init.empty_mode, whatever projects.init.mode is', async () => {
     const empty = join(root, 'empty');
     await mkdir(empty);
+    for (const mode of ['ask', 'commit_all', 'empty_commit', 'refuse'] as const) {
+      const error = await service(mode)
+        .create({ type: 'project', repo: empty })
+        .then(
+          () => undefined,
+          (caught: unknown) => caught,
+        );
+      expect(error).toBeInstanceOf(NeedsInit);
+    }
+    await expect(stat(join(empty, '.git'))).rejects.toThrow();
+  });
+
+  it('empty_mode ask: needs_init with the choices and the state of the folder, nothing is created', async () => {
+    const empty = join(root, 'empty');
+    await mkdir(empty);
+    const missing = join(root, 'nothing');
+    for (const [folder, state] of [
+      [empty, 'empty'],
+      [missing, 'missing'],
+    ] as const) {
+      const error = await service('ask', undefined, 'ask')
+        .create({ type: 'project', repo: folder })
+        .then(
+          () => undefined,
+          (caught: unknown) => caught,
+        );
+      expect(error).toBeInstanceOf(NeedsInit);
+      expect((error as NeedsInit).details).toEqual({
+        reason: 'needs_init',
+        choices: ['new_project', 'empty_repo'],
+        state,
+      });
+    }
+    await expect(stat(join(empty, '.git'))).rejects.toThrow();
+    await expect(stat(missing)).rejects.toThrow();
+    expect(await store.scenarios.list({})).toHaveLength(0);
+  });
+
+  it('empty_mode software: an empty or missing folder gets the software model, as with newProject', async () => {
+    const empty = join(root, 'empty');
+    await mkdir(empty);
+    const missing = join(root, 'nothing');
+    for (const folder of [empty, missing]) {
+      const { scenario, conventions } = await service('ask', undefined, 'software').create({
+        type: 'project',
+        repo: folder,
+      });
+      expect(scenario.baseBranch).toBe('main');
+      expect(conventions).toBeDefined();
+      expect(await trackedFiles(folder)).toContain('README.md');
+      expect(await trackedFiles(folder)).toContain('CHANGELOG.md');
+    }
+    expect(await initEvents()).toHaveLength(0);
+  });
+
+  it('empty_mode empty_repo: git init and an empty first commit, with the event', async () => {
+    const empty = join(root, 'empty');
+    await mkdir(empty);
+    const missing = join(root, 'nothing');
+    const first = await service('ask', undefined, 'empty_repo').create({
+      type: 'project',
+      repo: missing,
+    });
+    expect(first.scenario.baseBranch).toBe('main');
+    expect(await testGit(missing, 'rev-list', '--count', 'HEAD')).toBe('1');
+    await service('ask', undefined, 'empty_repo').create({
+      type: 'project',
+      repo: empty,
+      base: 'trunk',
+    });
+    expect(await testGit(empty, 'rev-parse', '--abbrev-ref', 'HEAD')).toBe('trunk');
+    expect(await trackedFiles(empty)).toEqual([]);
+    const events = await initEvents();
+    expect(events).toHaveLength(2);
+    expect(events[0]?.payload).toMatchObject({ mode: 'empty_repo', folder: missing });
+  });
+
+  it('empty_mode refuse: refuses an empty or missing folder, naming the key', async () => {
+    const empty = join(root, 'empty');
+    await mkdir(empty);
+    for (const folder of [empty, join(root, 'nothing')]) {
+      await expect(
+        service('commit_all', undefined, 'refuse').create({ type: 'project', repo: folder }),
+      ).rejects.toThrow(/projects\.init\.empty_mode is "refuse"/);
+    }
+    await expect(stat(join(empty, '.git'))).rejects.toThrow();
+    await expect(stat(join(root, 'nothing'))).rejects.toThrow();
+    expect(await store.scenarios.list({})).toHaveLength(0);
+  });
+
+  it('an explicit init or newProject wins over empty_mode', async () => {
+    const one = join(root, 'one');
+    await mkdir(one);
+    await service('ask', undefined, 'refuse').create({
+      type: 'project',
+      repo: one,
+      init: 'empty_repo',
+    });
+    expect(await trackedFiles(one)).toEqual([]);
+    const two = join(root, 'two');
+    await service('ask', undefined, 'empty_repo').create({
+      type: 'project',
+      repo: two,
+      newProject: true,
+    });
+    expect(await trackedFiles(two)).toContain('README.md');
+    const three = join(root, 'three');
+    await service('ask', undefined, 'ask').create({
+      type: 'project',
+      repo: three,
+      init: 'empty_repo',
+    });
+    expect(await trackedFiles(three)).toEqual([]);
+    const four = join(root, 'four');
+    await service('ask', undefined, 'software').create({
+      type: 'project',
+      repo: four,
+      init: 'empty_repo',
+    });
+    expect(await trackedFiles(four)).toEqual([]);
+    expect(await initEvents()).toHaveLength(3);
+  });
+
+  it('empty_mode does not touch a folder with files nor a repository', async () => {
+    const folder = await folderWithFiles();
     await expect(
-      service('commit_all').create({ type: 'project', repo: empty }),
-    ).rejects.toBeInstanceOf(InvalidInput);
-    await expect(
-      service('commit_all').create({ type: 'project', repo: join(root, 'nothing') }),
-    ).rejects.toBeInstanceOf(InvalidInput);
+      service('ask', undefined, 'software').create({ type: 'project', repo: folder }),
+    ).rejects.toBeInstanceOf(NeedsInit);
+    await expect(stat(join(folder, '.git'))).rejects.toThrow();
+    const repo = join(root, 'repo');
+    await mkdir(repo);
+    await testGit(repo, 'init', '--quiet', '--initial-branch=main');
+    await testGit(repo, 'commit', '--quiet', '--allow-empty', '-m', 'first');
+    const head = await testGit(repo, 'rev-parse', 'HEAD');
+    await service('ask', undefined, 'software').create({ type: 'project', repo });
+    expect(await testGit(repo, 'rev-parse', 'HEAD')).toBe(head);
   });
 
   it('init on a repository is ignored, with a notice', async () => {

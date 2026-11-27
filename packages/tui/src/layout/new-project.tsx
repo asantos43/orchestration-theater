@@ -336,12 +336,15 @@ export function NewProjectPrompt(props: NewProjectPromptProps): ReactNode {
       (failure: unknown) => {
         if (!mounted.current) return;
         setBusy(false);
+        const needs = needsInitOf(failure);
         if (
           request.type === 'project' &&
           request.init === undefined &&
-          needsInitOf(failure) !== undefined
+          request.newProject === undefined &&
+          needs !== undefined
         ) {
-          ask({ kind: 'files', repo: request.repo, cursor: 0 });
+          // The folder changed since the inspection (or there was none): ask the question of its state.
+          ask({ kind: needs.state, repo: request.repo, cursor: 0 });
           return;
         }
         setError(
@@ -364,7 +367,12 @@ export function NewProjectPrompt(props: NewProjectPromptProps): ReactNode {
     setBusy(false);
     if (verdict.action === 'refuse') {
       setError(
-        (t as unknown as Translate)('layout.newProject.init.refused', { repo: request.repo }),
+        (t as unknown as Translate)(
+          verdict.kind === 'files'
+            ? 'layout.newProject.init.refused'
+            : 'layout.newProject.init.refusedEmpty',
+          { repo: request.repo },
+        ),
       );
     } else {
       ask({ kind: verdict.kind, repo: request.repo, cursor: 0 });

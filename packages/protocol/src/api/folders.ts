@@ -37,11 +37,41 @@ export const FOLDER_STATES = ['missing', 'empty', 'files', 'repo', 'inside_repo'
 export const FolderStateSchema = z.enum(FOLDER_STATES);
 export type FolderState = z.infer<typeof FolderStateSchema>;
 
-/** The `details` of the `invalid_input` an open answers when the folder needs the Producer's choice. */
+/**
+ * `projects.init.empty_mode` as the API tells it [proposta] (N332): what the daemon does with an
+ * empty or missing folder opened as a project with no `init` and no `newProject`. `ask`: it answers
+ * `needs_init`; `software`: it acts as if `newProject: true` came; `empty_repo`: it acts as if
+ * `init: 'empty_repo'` came; `refuse`: it refuses.
+ */
+export const FOLDER_EMPTY_MODES = ['ask', 'software', 'empty_repo', 'refuse'] as const;
+export const FolderEmptyModeSchema = z.enum(FOLDER_EMPTY_MODES);
+export type FolderEmptyMode = z.infer<typeof FolderEmptyModeSchema>;
+
+/**
+ * The choices that make sense for an empty or missing folder (the ones `details.choices` lists for
+ * it) [proposta]. `new_project` is the software model (`newProject: true`, the `--new-project` of
+ * `ot chat`); `empty_repo` is the `init` of the same name.
+ */
+export const EMPTY_INIT_CHOICES = ['new_project', 'empty_repo'] as const;
+
+/** Every value `details.choices` can hold: the `init` choices and `new_project`. */
+export const NEEDS_INIT_CHOICES = [...FOLDER_INIT_CHOICES, 'new_project'] as const;
+
+/** The folders a `needs_init` is about: with files, empty or not there yet. */
+export const NEEDS_INIT_STATES = ['files', 'empty', 'missing'] as const;
+export type NeedsInitState = (typeof NEEDS_INIT_STATES)[number];
+
+/**
+ * The `details` of the `invalid_input` an open answers when the folder needs the Producer's choice.
+ * `state` [proposta] says which folder it is, so a client shows the right question: `files` (the
+ * `choices` are `commit_all` and `empty_commit`) or `empty` / `missing` (`new_project` and
+ * `empty_repo`). A daemon that does not send it is the one of the first N332 steps: it was `files`.
+ */
 export const NEEDS_INIT_REASON = 'needs_init';
 export const NeedsInitDetailsSchema = z.strictObject({
   reason: z.literal(NEEDS_INIT_REASON),
-  choices: z.array(z.enum(FILES_INIT_CHOICES)),
+  choices: z.array(z.enum(NEEDS_INIT_CHOICES)),
+  state: z.enum(NEEDS_INIT_STATES).default('files'),
 });
 export type NeedsInitDetails = z.infer<typeof NeedsInitDetailsSchema>;
 
@@ -65,6 +95,11 @@ export const InspectFolderResultSchema = z.strictObject({
     .nullable(),
   /** The `projects.init.mode` in force: what the daemon does with a folder with files. */
   initMode: FolderInitModeSchema,
+  /**
+   * The `projects.init.empty_mode` in force [proposta]: what the daemon does with an empty or
+   * missing folder opened with no `init` and no `newProject`.
+   */
+  emptyMode: FolderEmptyModeSchema,
 });
 export type InspectFolderResult = z.infer<typeof InspectFolderResultSchema>;
 

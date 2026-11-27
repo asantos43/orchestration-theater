@@ -582,9 +582,11 @@ export async function runChatCommand(
       const needs = needsInitOf(error);
       if (needs === undefined) throw error;
       err(
-        t('chat.needsInit', {
+        t(needs.state === 'files' ? 'chat.needsInit' : 'chat.needsInitEmpty', {
           repo: options.repo ?? '',
-          choices: needs.choices.map((choice) => `--init ${choice}`).join(' | '),
+          choices: needs.choices
+            .map((choice) => (choice === 'new_project' ? '--new-project' : `--init ${choice}`))
+            .join(' | '),
         }),
       );
       return undefined;

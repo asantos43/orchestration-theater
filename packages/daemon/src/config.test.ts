@@ -839,9 +839,9 @@ describe('parseConfig, execution keys', () => {
     expect(() => parseConfig('integration:\n  extra: 1\n')).toThrow(/extra/);
   });
 
-  it('defaults projects.init to ask with the initial-commit message and takes the four modes (N332)', () => {
+  it('defaults projects.init to ask with the initial-commit message and takes the modes and empty_modes (N332)', () => {
     expect(parseConfig('').projects).toEqual({
-      init: { mode: 'ask', message: 'chore: initial commit' },
+      init: { mode: 'ask', empty_mode: 'ask', message: 'chore: initial commit' },
     });
     for (const mode of ['ask', 'commit_all', 'empty_commit', 'refuse']) {
       expect(parseConfig(`projects:\n  init:\n    mode: ${mode}\n`).projects.init.mode).toBe(mode);
@@ -850,6 +850,16 @@ describe('parseConfig, execution keys', () => {
       parseConfig('projects:\n  init:\n    message: "feat: start"\n').projects.init.message,
     ).toBe('feat: start');
     expect(() => parseConfig('projects:\n  init:\n    mode: always\n')).toThrow(/mode/);
+    for (const mode of ['ask', 'software', 'empty_repo', 'refuse']) {
+      expect(parseConfig(`projects:\n  init:\n    empty_mode: ${mode}\n`).projects.init).toEqual({
+        mode: 'ask',
+        empty_mode: mode,
+        message: 'chore: initial commit',
+      });
+    }
+    expect(() => parseConfig('projects:\n  init:\n    empty_mode: commit_all\n')).toThrow(
+      /empty_mode/,
+    );
     expect(() => parseConfig('projects:\n  init:\n    message: ""\n')).toThrow(/message/);
     expect(() => parseConfig('projects:\n  extra: 1\n')).toThrow(/extra/);
   });

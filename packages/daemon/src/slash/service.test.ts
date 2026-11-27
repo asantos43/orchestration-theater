@@ -172,6 +172,9 @@ async function rig(yaml = '', locale: 'en' | 'pt-BR' = 'en'): Promise<Rig> {
         if (input.repo === '/with-files' && input.init === undefined) {
           return Promise.reject(new NeedsInit('/with-files'));
         }
+        if (input.repo === '/empty-folder' && input.init === undefined) {
+          return Promise.reject(new NeedsInit('/empty-folder', 'empty'));
+        }
         if (input.repo === '/not-a-repo') {
           return Promise.reject(new InvalidInput('"/not-a-repo" is not a git repository'));
         }
@@ -569,6 +572,20 @@ describe('running a line', () => {
     ).rejects.toThrow(
       /tem arquivos e não é um repositório git[\s\S]*--init commit_all \| --init empty_commit/,
     );
+  });
+
+  it('/new project on an empty folder that needs init says so, and names the key for the software model (N332)', async () => {
+    const { service, openedInputs } = await rig();
+    const asked = service.execute('chat-1', { text: '/new project /empty-folder' });
+    await expect(asked).rejects.toThrow(/is empty or does not exist/);
+    await expect(asked).rejects.toThrow(/--init empty_repo/);
+    await expect(asked).rejects.toThrow(/projects\.init\.empty_mode/);
+    await expect(asked).rejects.not.toThrow(/new_project/);
+    expect(openedInputs).toEqual([]);
+    const pt = await rig('', 'pt-BR');
+    await expect(
+      pt.service.execute('chat-1', { text: '/new project /empty-folder' }),
+    ).rejects.toThrow(/está vazia ou não existe[\s\S]*--init empty_repo/);
   });
 
   it('/new project refuses an --init that is not one of the choices (N332)', async () => {

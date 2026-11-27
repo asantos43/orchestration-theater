@@ -32,7 +32,11 @@ export function asApiFailure(error: unknown): unknown {
   // N332: the folder needs the Producer's choice; `details` tell a client which ones, in a form it reads.
   if (error instanceof NeedsInit) {
     return new ApiFailure('invalid_input', error.message, {
-      details: { reason: error.details.reason, choices: [...error.details.choices] },
+      details: {
+        reason: error.details.reason,
+        choices: [...error.details.choices],
+        state: error.details.state,
+      },
     });
   }
   if (!(error instanceof ToolFailure)) return error;

@@ -3603,13 +3603,23 @@
               "empty_commit",
               "refuse"
             ]
+          },
+          "emptyMode": {
+            "type": "string",
+            "enum": [
+              "ask",
+              "software",
+              "empty_repo",
+              "refuse"
+            ]
           }
         },
         "required": [
           "path",
           "state",
           "git",
-          "initMode"
+          "initMode",
+          "emptyMode"
         ],
         "additionalProperties": false
       },
