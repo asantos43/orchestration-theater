@@ -1387,7 +1387,18 @@ api:
     - Sem a rota (daemon antigo), abre como antes.
     - Um `needs_init` no `open` (a pasta mudou depois da inspeção) mostra a pergunta.
     - Teclas: ↑ e ↓ em círculo, Enter escolhe, Esc volta. O overlay tem 72x12.
-  - **Pasta vazia ou inexistente (dono, 2026-11-27; em construção).** A chave nova `projects.init.empty_mode` (`ask`, padrão, `software`, `empty_repo` ou `refuse`) governa o caso, e o `init` ou o `newProject` explícitos vencem a chave. Até ela entrar, o daemon recusa essas pastas sem `init` em qualquer modo, e a TUI sempre pergunta.
+  - **Pasta vazia ou inexistente (dono, 2026-11-27; passo C, escolhas aceitas pelo dono no mesmo dia).** A chave `projects.init.empty_mode` governa a pasta vazia ou inexistente aberta sem `init` e sem `newProject`. O `init` ou o `newProject` explícitos vencem a chave.
+    - `ask` (padrão): o daemon responde `needs_init`.
+    - `software`: o daemon faz o projeto pelo modelo `software`, como o `newProject`.
+    - `empty_repo`: o daemon cria o repositório vazio e emite `project.repo_initialized`.
+    - `refuse`: o daemon recusa, com uma mensagem que cita a chave.
+
+    O `needs_init` traz `details {reason, choices, state}`:
+    - `state` vale `files`, `empty` ou `missing`, com `files` por padrão, para os clientes antigos;
+    - numa pasta com arquivos, `choices` é `['commit_all','empty_commit']`;
+    - numa pasta vazia ou inexistente, é `['new_project','empty_repo']`.
+
+    A chave usa `software` (o modelo) e o `choices` usa `new_project` (a ação do cliente: `newProject` ou `--new-project`). A rota inspect devolve também `emptyMode`. As mensagens do daemon ficam em inglês; a CLI, o `/new project` e a TUI as traduzem. O `/new project` não tem flag para o modelo `software` e cita a chave. Quando a chave decide, não há kind novo de aviso.
 - **Assistente e Executores a quente (P23, PR #236).** Sem rota nova. A classificação de "quente" passa a ser por caminho (`isHotPath`) nos três chamadores (`PUT /v1/config`, assistente e serviço de Executores): `executors.*` e `profiles.<id>.budget|local` valem na hora, e `profiles.<id>.codex_link`, as chaves fixas de `profiles`, `api.*`, `backup.*` e as demais seções esperam o reinício. Os três emitem `config.changed`; uma peça aberta mantém os limites com que abriu. A recarga fica em `config-reload.ts`; ver a seção 5.13.
 - **`KeyFeed` (P24, PR #235).** Sem rota nem evento: `input/key-feed.tsx` fecha a janela entre a abertura da TUI e a ligação do teclado da caixa de texto.
 - **Tentativas e pausa (P25, PR #241).** Rota nova `GET /v1/plays/:playId/attempts` (`open`, `limit`, `after`; erro `not_found`), com o tipo `ApiPlayAttempt` (`model` e `paused: 'actor' | 'play' | null`), o campo `paused`, **obrigatório**, em `ApiPlay` e a opção `activity: 'open' | 'none'` do cliente (padrão `open`).
