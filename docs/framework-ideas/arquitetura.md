@@ -1366,7 +1366,28 @@ api:
 
 **Entregas da onda 6 da Fase 7 (2026-11-21 [S: descrição dos PRs #238, #236, #235, #241, #237 e #239, todos na main: e1d48b2, eb75825, b4ade6b, 9c26896, f86a042 e 6a34177 [V: `git log`]]; plano em [docs/18](../18-PLANO-DA-FASE-7.md)).** Tudo abaixo é **[proposta]**; ver a pergunta 32 da seção 12.
 
-- **Criar projeto (P22, PR #238).** Sem rota nem evento novos. A tecla `N` da ação `sidebar.newProject` abre o `/new project` pela TUI, e a chave `ui.newProject.repo` (`cwd`, `git_root` ou `empty`; padrão `cwd`) escolhe o repositório. A palavra `project` fica reservada como tipo em `/new`. Desde a N329 (2026-11-26, Fase 11b), o prompt se chama Novo cenário e mostra os três tipos oficiais (Projeto, Tarefa e Chat; Tab troca); a rota `GET /v1/scenario-types` diz quais o daemon já abre (`{items: [{id, creatable}]}`), e a Tarefa aparece desligada até a Fase 9b. **Navegador de pastas e inicialização (N332, decidida pelo dono em 2026-11-26; em construção):** o Projeto abre um navegador de pastas (`ui.newProject.picker`). Numa pasta com arquivos e sem git, a chave `projects.init.mode` (`ask`, padrão, `commit_all`, `empty_commit` ou `refuse`) diz se o daemon roda `git init` com o primeiro commit dos arquivos (respeitando o `.gitignore`) ou com commit vazio. Numa pasta vazia ou inexistente, a escolha é entre o modelo `software` e um repositório vazio.
+- **Criar projeto (P22, PR #238).** Sem rota nem evento novos. A tecla `N` da ação `sidebar.newProject` abre o `/new project` pela TUI, e a chave `ui.newProject.repo` (`cwd`, `git_root` ou `empty`; padrão `cwd`) escolhe o repositório. A palavra `project` fica reservada como tipo em `/new`. Desde a N329 (2026-11-26, Fase 11b), o prompt se chama Novo cenário e mostra os três tipos oficiais (Projeto, Tarefa e Chat; Tab troca); a rota `GET /v1/scenario-types` diz quais o daemon já abre (`{items: [{id, creatable}]}`), e a Tarefa aparece desligada até a Fase 9b. **Navegador de pastas e inicialização (N332, decidida pelo dono em 2026-11-26):** o Projeto abre um navegador de pastas (`ui.newProject.picker`). Numa pasta com arquivos e sem git, a chave `projects.init.mode` (`ask`, padrão, `commit_all`, `empty_commit` ou `refuse`) diz se o daemon roda `git init` com o primeiro commit dos arquivos (respeitando o `.gitignore`) ou com commit vazio. Numa pasta vazia ou inexistente, a escolha é entre o modelo `software` e um repositório vazio. **Implementado em 2026-11-27 (PRs #403, #404 e #405; escolhas aceitas pelo dono no mesmo dia):**
+  - **Rota.** `POST /v1/folders/inspect` (`{path}`) diz o que a pasta é, sem mudar nada: `{path, state, git, initMode}`.
+    - `state` vale `missing`, `empty`, `files`, `repo` ou `inside_repo`.
+    - `git` é `{root, branch}` ou `null`.
+    - A pasta é localizada no git pela capacidade `VcsLocate` do adaptador.
+  - **Abertura.** O `open` do cenário aceita `init` (`commit_all`, `empty_commit` ou `empty_repo`).
+    - Numa pasta `files` com `ask` e sem `init`, a resposta é `invalid_input` com `details.reason: 'needs_init'`, e o cliente a lê com `needsInitOf`.
+    - A chave `projects.init.message` (padrão `chore: initial commit`) dá a mensagem do primeiro commit.
+    - O evento `project.repo_initialized` (`scenarioId`, `folder`, `mode`, `branch`, `head`) registra a inicialização.
+    - O kind `init_ignored` do `scenario.notice` avisa quando o `init` não se aplica (a pasta já é repositório).
+    - Na linha de comando: `ot chat --init <modo>` e `/new project <repo> --init <modo>`, com o `--init` no fim.
+  - **Navegador (TUI).** As chaves `ui.newProject.hidden` e `ui.newProject.favorites` estão na tabela de chaves da TUI.
+    - Teclas: Ctrl+R sobe à raiz do repositório, Ctrl+F marca favorito, Ctrl+U limpa o filtro, Ctrl+O vai do campo ao navegador, e PgUp, PgDn, Home e End navegam.
+    - O overlay tem 84x26.
+  - **Pergunta de init (TUI).** Antes de abrir, a TUI chama o inspect.
+    - Pasta `files` com `ask`: pergunta entre commit com tudo, commit vazio e cancelar.
+    - Pasta `empty` ou `missing`: pergunta entre o modelo `software`, um repositório vazio e cancelar.
+    - Com `refuse`, mostra o erro sem abrir.
+    - Sem a rota (daemon antigo), abre como antes.
+    - Um `needs_init` no `open` (a pasta mudou depois da inspeção) mostra a pergunta.
+    - Teclas: ↑ e ↓ em círculo, Enter escolhe, Esc volta. O overlay tem 72x12.
+  - **Pasta vazia ou inexistente (dono, 2026-11-27; em construção).** A chave nova `projects.init.empty_mode` (`ask`, padrão, `software`, `empty_repo` ou `refuse`) governa o caso, e o `init` ou o `newProject` explícitos vencem a chave. Até ela entrar, o daemon recusa essas pastas sem `init` em qualquer modo, e a TUI sempre pergunta.
 - **Assistente e Executores a quente (P23, PR #236).** Sem rota nova. A classificação de "quente" passa a ser por caminho (`isHotPath`) nos três chamadores (`PUT /v1/config`, assistente e serviço de Executores): `executors.*` e `profiles.<id>.budget|local` valem na hora, e `profiles.<id>.codex_link`, as chaves fixas de `profiles`, `api.*`, `backup.*` e as demais seções esperam o reinício. Os três emitem `config.changed`; uma peça aberta mantém os limites com que abriu. A recarga fica em `config-reload.ts`; ver a seção 5.13.
 - **`KeyFeed` (P24, PR #235).** Sem rota nem evento: `input/key-feed.tsx` fecha a janela entre a abertura da TUI e a ligação do teclado da caixa de texto.
 - **Tentativas e pausa (P25, PR #241).** Rota nova `GET /v1/plays/:playId/attempts` (`open`, `limit`, `after`; erro `not_found`), com o tipo `ApiPlayAttempt` (`model` e `paused: 'actor' | 'play' | null`), o campo `paused`, **obrigatório**, em `ApiPlay` e a opção `activity: 'open' | 'none'` do cliente (padrão `open`).
@@ -1576,6 +1597,8 @@ O patch fica, com a versão do Ink travada em 8.0.0: se a versão mudar, o patch
 | `ui.chat.noScenario` | `open` | `open` ou `notice` (N329): sem cenário, enviar uma mensagem abre o prompt Novo cenário e guarda o texto, que vai ao Diretor quando o cenário abrir; `notice` só avisa como abrir um; aceita pelo dono em 2026-11-26 |
 | `ui.newProject.type` | `chat` | `chat` ou `project` (N329; padrão escolhido e chave aceita pelo dono em 2026-11-26): o tipo com que o prompt Novo cenário abre |
 | `ui.newProject.picker` | `browser` | `browser` (o prompt Novo cenário › Projeto abre o navegador de pastas da TUI; `/` volta ao campo de caminho) ou `path` (só o campo); N332, decidida pelo dono em 2026-11-26 |
+| `ui.newProject.hidden` | `hide` | `hide` ou `show` (N332, aceita pelo dono em 2026-11-27): se o navegador de pastas começa mostrando as ocultas; um filtro que começa com `.` as mostra |
+| `ui.newProject.favorites` | `[]` | lista de até 64 pastas (N332, aceita pelo dono em 2026-11-27): os favoritos do navegador, marcados com Ctrl+F e gravados por `PUT /v1/config` |
 | `ui.overview.confirm` **[proposta]** | `always` | `always` (pausar e retomar pedem `y`), `off` |
 | `ui.overview.recentEvents` **[proposta]** | 8 | inteiro de 1 a 100 |
 | `ui.overview.hiddenEvents` **[proposta]** | `['session.update']` | lista de tipos de evento |
