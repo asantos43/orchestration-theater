@@ -1326,7 +1326,7 @@
       "executors": "Register Executors by API or local model and set the spending cap of each API account.",
       "review": "This is what will be written. Nothing is written before you confirm.",
       "accounts": "Add an account of a client (a subscription) and log in to it now, or continue without one: you can add accounts later in the Settings tab.",
-      "executorsTable": "One row per model: Up/Down change the row, Left/Right the column (Mark, Effort, Roles) and Space or Enter edit the cell. The / key types an Executor by API or local model; the spending cap of each API account is below the table.",
+      "executorsTable": "One row per model: Up/Down change the row, Left/Right the column (Mark, Effort, Roles) and Space edits the cell; Enter goes on to the review. The / key types an Executor by API or local model; the spending cap of each API account is below the table.",
       "executorsList": "Check the models that become Executors (Space), change the effort with Left/Right and set the spending cap of each API account. The / key types an Executor by API or local model.",
       "security": "Choose whether the assistant writes security.unenforced: warn. If not, nothing changes."
     },
@@ -1356,7 +1356,6 @@
         "position": "Position",
         "status": "Status"
       },
-      "next": "{{key}} goes on to the review",
       "needsMark": "Check the model before choosing its roles.",
       "registeredRow": "This model is already an Executor of the account: nothing to edit here.",
       "noEffort": "This model has no effort to choose.",

@@ -178,8 +178,7 @@ export function itemCount(draft: Draft, prompt: SetupPrompt | null): number {
       return (
         (draft.rows?.length ?? 0) +
         draft.executors.length +
-        (prompt.step === 'executors' ? prompt.apiProfiles.length : 0) +
-        (isTable(draft) ? 1 : 0)
+        (prompt.step === 'executors' ? prompt.apiProfiles.length : 0)
       );
     case 'review':
       return 0;
@@ -285,9 +284,7 @@ export function reordered(draft: Draft, delta: -1 | 1): Draft {
 export type ExecutorsItem =
   | { readonly kind: 'row'; readonly index: number }
   | { readonly kind: 'executor'; readonly index: number }
-  | { readonly kind: 'budget'; readonly profileId: string }
-  /** N335 [proposta]: the last item of the table, where Enter goes on (Enter edits the cells above). */
-  | { readonly kind: 'next' };
+  | { readonly kind: 'budget'; readonly profileId: string };
 
 export function executorsItem(draft: Draft, prompt: SetupPrompt | null): ExecutorsItem | undefined {
   if (draft.kind !== 'executors' || prompt?.step !== 'executors') return undefined;
@@ -296,10 +293,7 @@ export function executorsItem(draft: Draft, prompt: SetupPrompt | null): Executo
   const typed = draft.cursor - rows;
   if (typed < draft.executors.length) return { kind: 'executor', index: typed };
   const profile = prompt.apiProfiles[typed - draft.executors.length];
-  if (profile !== undefined) return { kind: 'budget', profileId: profile.profileId };
-  return isTable(draft) && typed - draft.executors.length === prompt.apiProfiles.length
-    ? { kind: 'next' }
-    : undefined;
+  return profile === undefined ? undefined : { kind: 'budget', profileId: profile.profileId };
 }
 
 export function withExecutor(draft: Draft, executor: SetupExecutorRequest): Draft {
@@ -354,7 +348,7 @@ export function reviewExecutors(plan: SetupPlan | undefined): readonly string[] 
 }
 
 /**
- * Where the cursor of the review starts [proposta]: on the first Executor with no role (what P was
+ * Where the cursor of the review starts (decided by the owner on 2026-11-27): on the first Executor with no role (what P was
  * made for in N333), or on the first one.
  */
 export function reviewStart(plan: SetupPlan | undefined): number {

@@ -233,10 +233,11 @@ export function buildPlan(input: PlanInput): PlanResult {
   }
 
   // N333/N335: the roles the Producer gave at the review. `add`: the Executor enters at the END of
-  // the list of each role named. `exact` (N335, [proposta]): it also leaves the lists of the roles
-  // not named. A list the file keeps takes an insertion to add; to take an Executor out there is no
-  // insertion, so [proposta] that list is written whole (like a role with no list in the file, which
-  // gets the list it has now, resolved, written whole too), and its insertions are dropped.
+  // the list of each role named. `exact` (N335): it also leaves the lists of the roles not named.
+  // A list the file keeps takes an insertion to add; to take an Executor out there is no insertion,
+  // so that list is written whole (like a role with no list in the file, which gets the list it has
+  // now, resolved, written whole too), and its insertions are dropped. Decided by the owner on
+  // 2026-11-27.
   const known = new Set(catalog.map((entry) => entry.id));
   const writtenWhole = new Set<RoleId>();
   const exactEmptied = new Set<RoleId>();
@@ -293,9 +294,10 @@ export function buildPlan(input: PlanInput): PlanResult {
   const frozen = new Map<RoleId, string[]>();
   for (const role of writtenWhole) frozen.set(role, [...(explicit[role] ?? lists.get(role) ?? [])]);
 
-  // A list the file cannot hold empty: `exact` took the last Executor of a role out. [proposta]
+  // A list the file cannot hold empty: `exact` took the last Executor of a role out.
   // The key is left out (or not written), so the role falls back to the list of the preset; the
-  // plan shows that list, and says so.
+  // plan shows that list, and says so with a `role_emptied` warning (decided by the owner on
+  // 2026-11-27).
   const emptied = ROLE_IDS.filter(
     (role) => exactEmptied.has(role) && (lists.get(role) ?? []).length === 0,
   );

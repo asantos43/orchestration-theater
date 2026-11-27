@@ -190,7 +190,7 @@ function doneOf(run: SetupRunRecord): SetupDoneStep[] {
 }
 
 /**
- * N335 [proposta]: the placements of an answer with each Executor named by id. A `request` is the
+ * N335: the placements of an answer with each Executor named by id. A `request` is the
  * index in `executors` of the same answer; `output.executors` is in that order, one per request.
  * The done step keeps the answer as the client sent it (a replay of it is the same answer), and the
  * plan reads the resolved form from here.

@@ -5,8 +5,8 @@ import { rowEffortChoices, type ExecutorRow } from './executor-list.js';
 /**
  * The list of efforts of a row of the table (N335, the owner on 2026-11-27): opened on the cell
  * Esforço, it shows the efforts the model accepts; ↑/↓ walk it, Enter chooses, Esc closes without
- * changing. [proposta] An effort another row of the same model already holds is shown dimmed and
- * Enter does not take it (two rows would be one Executor). This module is pure.
+ * changing. An effort another row of the same model already holds is shown dimmed and Enter does
+ * not take it (two rows would be one Executor; decided by the owner on 2026-11-27). This module is pure.
  */
 
 export interface EffortChoice {

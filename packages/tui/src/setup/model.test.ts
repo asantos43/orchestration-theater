@@ -433,19 +433,18 @@ describe('the table of the Executors (N335)', () => {
     expect(isTable({ kind: 'review' })).toBe(false);
   });
 
-  it('adds the item that goes on to the walk of the cursor, after the rows and the caps', () => {
+  it('walks the rows and the caps, and has no item that goes on after them', () => {
     const prompt: SetupPrompt = { ...EXECUTORS, step: 'executors' };
     const draft = table();
-    // 2 rows, 2 API accounts, 1 item "go on".
-    expect(itemCount(draft, prompt)).toBe(5);
+    // 2 rows, 2 API accounts: Enter goes on from any of them, so there is no last item for it.
+    expect(itemCount(draft, prompt)).toBe(4);
     expect(itemCount(table({ layout: 'list' }), prompt)).toBe(4);
     expect(executorsItem({ ...draft, cursor: 1 }, prompt)).toEqual({ kind: 'row', index: 1 });
     expect(executorsItem({ ...draft, cursor: 2 }, prompt)).toEqual({
       kind: 'budget',
       profileId: 'x/one',
     });
-    expect(executorsItem({ ...draft, cursor: 4 }, prompt)).toEqual({ kind: 'next' });
-    expect(executorsItem({ ...draft, cursor: 5 }, prompt)).toBeUndefined();
+    expect(executorsItem({ ...draft, cursor: 4 }, prompt)).toBeUndefined();
     expect(executorsItem(table({ layout: 'list', cursor: 4 }), prompt)).toBeUndefined();
   });
 

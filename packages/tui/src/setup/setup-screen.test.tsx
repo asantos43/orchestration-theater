@@ -1664,9 +1664,10 @@ describe('the setup screen: the list of Executors and the roles of the review (N
     expect(frame).toContain(
       '[x]   gpt-sol            high    author, reviewer           author#1 reviewer#1',
     );
+    // Space edits the cell and Enter goes on from any row: there is no item of the table for it.
     expect(frame).toContain('Enter goes on to the review');
-    // Enter edits the cell here, so the bar says so; Space is not offered apart.
-    expect(frame).toContain('Enter  Edit cell');
+    expect(frame).toContain('Space  Edit cell');
+    expect(frame).toContain('Enter  Continue');
     expect(frame).toContain('→  Column');
     expect(frame).not.toContain('Space  Pick');
   });
@@ -1678,23 +1679,23 @@ describe('the setup screen: the list of Executors and the roles of the review (N
     expect(frame).not.toContain('Position');
   });
 
-  it('Enter edits the cell: the mark flips, the effort and the roles come from lists, and a new Executor asks by request', async () => {
+  it('Space edits the cell: the mark flips, the effort and the roles come from lists, and a new Executor asks by request', async () => {
     const api = listing();
     const screen = await atTable(api);
     await screen.seen('Position');
-    // gpt-mini is the fourth row: Enter on the mark checks it.
+    // gpt-mini is the fourth row: Space on the mark checks it.
     await toRow(screen, 3);
-    expect(await screen.press(ENTER)).toContain('[x]   gpt-mini');
-    // Right goes to the effort: its list opens with the efforts the model takes, and Enter chooses.
+    expect(await screen.press(' ')).toContain('[x]   gpt-mini');
+    // Right goes to the effort: Space opens its list with the efforts the model takes, and Enter chooses.
     await screen.press(RIGHT);
-    const efforts = await screen.press(ENTER);
+    const efforts = await screen.press(' ');
     expect(efforts).toContain('Effort of gpt-mini');
     expect(efforts).toContain('Enter  Choose');
     await screen.press(DOWN);
     expect(await screen.press(ENTER)).toMatch(/\[x\] +gpt-mini +high/);
-    // Right goes to the roles: author is checked, and Enter takes the list.
+    // Right goes to the roles: author is checked, Space opens the list and Enter takes it.
     await screen.press(RIGHT);
-    const roles = await screen.press(ENTER);
+    const roles = await screen.press(' ');
     expect(roles).toContain('Roles of gpt-mini');
     await screen.press(DOWN);
     await screen.press(DOWN);
@@ -1702,8 +1703,7 @@ describe('the setup screen: the list of Executors and the roles of the review (N
     const cell = await screen.press(ENTER);
     expect(cell).toContain('author');
     expect(cell).toContain('author#+');
-    // Down to the last item of the table and Enter go on.
-    await screen.press(DOWN);
+    // Enter on the row goes on to the review, from any column.
     await screen.press(ENTER);
     await screen.seen('This is what will be written.');
     expect(api.submissions.at(-1)).toEqual({
@@ -1722,21 +1722,19 @@ describe('the setup screen: the list of Executors and the roles of the review (N
     await screen.seen('Position');
     await toRow(screen, 2);
     await screen.press(RIGHT);
-    await screen.press(ENTER);
+    await screen.press(' ');
     await screen.press(DOWN);
     const closed = await screen.press(ESC);
     expect(closed).not.toContain('Effort of');
     expect(closed).toMatch(/\[x\] +gpt-sol +high/);
     await screen.press(RIGHT);
-    await screen.press(ENTER);
+    await screen.press(' ');
     await screen.press(DOWN);
     await screen.press(' ');
     expect(await screen.press(ESC)).not.toContain('Roles of');
     // Enter with the same set as the one it opened with is no change either.
-    await screen.press(ENTER);
+    await screen.press(' ');
     expect(await screen.press(ENTER)).not.toContain('Roles of');
-    await screen.press(DOWN);
-    await screen.press(DOWN);
     await screen.press(ENTER);
     await screen.seen('This is what will be written.');
     expect(api.submissions.at(-1)).toEqual({
@@ -1752,7 +1750,7 @@ describe('the setup screen: the list of Executors and the roles of the review (N
     await toRow(screen, 2);
     await screen.press(RIGHT);
     await screen.press(RIGHT);
-    const list = await screen.press(ENTER);
+    const list = await screen.press(' ');
     // It opens with the roles of the Executor checked.
     expect(list).toContain('[x] author');
     expect(list).toContain('[x] reviewer');
@@ -1764,8 +1762,6 @@ describe('the setup screen: the list of Executors and the roles of the review (N
     const cell = await screen.press(ENTER);
     expect(cell).toContain('author, critic');
     expect(cell).toContain('author#1 critic#+');
-    await screen.press(DOWN);
-    await screen.press(DOWN);
     await screen.press(ENTER);
     await screen.seen('This is what will be written.');
     expect(api.submissions.at(-1)).toEqual({
@@ -1785,14 +1781,12 @@ describe('the setup screen: the list of Executors and the roles of the review (N
     await toRow(screen, 2);
     await screen.press(RIGHT);
     await screen.press(RIGHT);
-    await screen.press(ENTER);
+    await screen.press(' ');
     // Down to author (it is the only Executor in the list): take it out.
     await screen.press(DOWN);
     await screen.press(DOWN);
     await screen.press(' ');
     await screen.press(ENTER);
-    await screen.press(DOWN);
-    await screen.press(DOWN);
     await screen.press(ENTER);
     const review = await screen.seen('This is what will be written.');
     expect(review).toContain('no Executor is left in the list');
@@ -1803,15 +1797,14 @@ describe('the setup screen: the list of Executors and the roles of the review (N
     const screen = await atTable(api);
     await screen.seen('Position');
     await toRow(screen, 3);
-    await screen.press(ENTER);
+    await screen.press(' ');
     await screen.press(RIGHT);
     await screen.press(RIGHT);
-    await screen.press(ENTER);
+    await screen.press(' ');
     await screen.press(DOWN);
     await screen.press(DOWN);
     await screen.press(' ');
     await screen.press(ENTER);
-    await screen.press(DOWN);
     await screen.press(ENTER);
     await screen.seen('This is what will be written.');
     // The cursor of the review starts on the Executor with no role, or on the first one; this one has author.
@@ -1843,7 +1836,22 @@ describe('the setup screen: the list of Executors and the roles of the review (N
     expect(table).toContain('critic');
   });
 
-  it('a registered row is not edited: Enter says so', async () => {
+  it('Enter goes on to the review from a row of a model, whatever the column, and edits nothing', async () => {
+    const api = listing();
+    const screen = await atTable(api);
+    await screen.seen('Position');
+    // On the effort column of the first row: Enter does not open the list of efforts.
+    await screen.press(RIGHT);
+    const frame = await screen.press(ENTER);
+    expect(frame).not.toContain('Effort of');
+    await screen.seen('This is what will be written.');
+    expect(api.submissions.at(-1)).toEqual({
+      step: 'executors',
+      input: { executors: [], budgets: [] },
+    });
+  });
+
+  it('a registered row is not edited: Space says so', async () => {
     const api = listing();
     if (api.accounts === undefined) throw new Error('the fake has no accounts');
     const base = catalogOf;
@@ -1862,6 +1870,6 @@ describe('the setup screen: the list of Executors and the roles of the review (N
     const frame = await screen.seen('Position');
     expect(frame).toContain('[=]   claude-haiku-4-5');
     await toRow(screen, 1);
-    expect(await screen.press(ENTER)).toContain('already an Executor of the account');
+    expect(await screen.press(' ')).toContain('already an Executor of the account');
   });
 });

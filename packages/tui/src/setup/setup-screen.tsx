@@ -130,7 +130,7 @@ export interface SetupScreenProps {
    */
   readonly executorsInput?: SetupExecutorsInputMode | undefined;
   /**
-   * `ui.setup.executorsLayout` (N335) [proposta]: `table` draws the models as a table with the
+   * `ui.setup.executorsLayout` (N335): `table` draws the models as a table with the
    * effort and the roles of each one to edit; `list` keeps the one-line rows of N333. `table` by default.
    */
   readonly executorsLayout?: SetupExecutorsLayoutMode | undefined;
@@ -297,8 +297,8 @@ function relevantBar(item: UiBarItem, ctx: BarContext): boolean {
     case 'setup.skip':
       return false;
     case 'setup.toggle':
-      // N335: on a row of the table Space edits the cell, like Enter (one hint says it).
-      return step === 'detect' || (step === 'executors' && ctx.list && !ctx.onRow);
+      // N335 (the owner, 2026-11-27): on a row of the table Space edits the cell; Enter goes on.
+      return step === 'detect' || (step === 'executors' && ctx.list);
     case 'setup.details':
       return step === 'review';
     case 'setup.add':
@@ -321,7 +321,7 @@ function barText(item: UiBarItem, ctx: BarContext, openForm: boolean): UiBarItem
   // N326: with no account yet, Enter at the step opens the form instead of going on.
   if (openForm && item.id === 'setup.advance')
     return { ...item, text: { key: 'bar.setup.openForm' } };
-  if (ctx.onRow && item.id === 'setup.advance') return { ...item, text: { key: 'bar.setup.cell' } };
+  if (ctx.onRow && item.id === 'setup.toggle') return { ...item, text: { key: 'bar.setup.cell' } };
   if (ctx.onRow && item.id === 'setup.effortNext') {
     return { ...item, text: { key: 'bar.setup.column' } };
   }
@@ -886,11 +886,12 @@ export function SetupScreen(props: SetupScreenProps): ReactNode {
   };
 
   /**
-   * Sets the roles of an Executor of the plan (N333, item 4; N335) [proposta]: the review goes back
+   * Sets the roles of an Executor of the plan (N333, item 4; N335): the review goes back
    * to the step of the Executors and answers it again with the same input and an `exact` placement
    * for the Executor, which then is in exactly those roles (it leaves the others, enters the new
    * ones at the end). An earlier placement of the same Executor (by id, or by `request`) is
-   * replaced. A refusal leaves the run at the step of the Executors, and says why.
+   * replaced: at the review P overrides what the table gave the same Executor (decided by the
+   * owner on 2026-11-27). A refusal leaves the run at the step of the Executors, and says why.
    */
   const assignRoles = async (
     run: SetupRunView,
@@ -1022,7 +1023,7 @@ export function SetupScreen(props: SetupScreenProps): ReactNode {
   };
 
   /**
-   * Edits the cell of the table under the cursor (Space or Enter; N335): the mark flips, the effort
+   * Edits the cell of the table under the cursor (Space only; N335, the owner on 2026-11-27): the mark flips, the effort
    * and the roles open their lists. A row that is already an Executor of the account has nothing to
    * edit, and the roles of a row that is not checked have no Executor to belong to yet.
    */
@@ -1045,6 +1046,7 @@ export function SetupScreen(props: SetupScreenProps): ReactNode {
         return;
       }
       case 'roles':
+        // The roles of a row that is not checked are blocked (decided by the owner on 2026-11-27).
         if (!row.on) say(t('setup.executors.needsMark'), 'warn');
         else {
           const pick = rolePickStart({ kind: 'row', index }, row.model, rowRoles(run, row));
@@ -1241,15 +1243,7 @@ export function SetupScreen(props: SetupScreenProps): ReactNode {
     }
     switch (action.slice('setup.'.length)) {
       case 'advance':
-        // N335: on a row of the table Enter edits the cell; the last item ("Continuar") goes on.
-        if (
-          !isFinished(run) &&
-          executorsItem(draft, run.prompt)?.kind === 'row' &&
-          isTable(draft)
-        ) {
-          editCell(run, draft);
-          return;
-        }
+        // N335 (the owner, 2026-11-27): Enter goes on from any row of the table; Space edits the cell.
         advance(run, draft);
         return;
       case 'back':
