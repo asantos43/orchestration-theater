@@ -40,7 +40,9 @@ describe('WorkflowPackageRegistry', () => {
     expect(await empty.list()).toEqual([]);
     expect(await empty.get('a')).toBeUndefined();
     expect(file.endsWith('workflow-packages.json')).toBe(true);
-    expect(workflowPackagePaths('/data').staging).toBe('/data/workflow-packages/.staging');
+    expect(workflowPackagePaths('/data').staging).toBe(
+      join('/data', 'workflow-packages', '.staging'),
+    );
   });
 
   it('saves, replaces, lists in order and forgets', async () => {
