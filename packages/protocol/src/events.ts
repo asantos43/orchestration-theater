@@ -107,6 +107,12 @@ import {
   WorkflowBudgetExhaustedPayloadSchema,
 } from './workflow-binding-events.js';
 import {
+  WorkflowApprovalRequestedPayloadSchema,
+  WorkflowApprovalResolvedPayloadSchema,
+  WorkflowUntrustedTruncatedPayloadSchema,
+  WorkflowWriteRefusedPayloadSchema,
+} from './workflow-codehost-events.js';
+import {
   WorkflowPackageInstalledPayloadSchema,
   WorkflowPackageRemovedPayloadSchema,
   WorkflowPackageSignatureFailedPayloadSchema,
@@ -1104,6 +1110,27 @@ export const DAEMON_EVENT_DEFINITIONS = [
     schemaVersion: 1,
     payload: WorkflowBudgetExhaustedPayloadSchema,
   }),
+  // The code host steps and the approval (docs/24 §4 and §9; plan of Phase 11b, P8).
+  defineEventType({
+    type: 'workflow.approval.requested',
+    schemaVersion: 1,
+    payload: WorkflowApprovalRequestedPayloadSchema,
+  }),
+  defineEventType({
+    type: 'workflow.approval.resolved',
+    schemaVersion: 1,
+    payload: WorkflowApprovalResolvedPayloadSchema,
+  }),
+  defineEventType({
+    type: 'workflow.write.refused',
+    schemaVersion: 1,
+    payload: WorkflowWriteRefusedPayloadSchema,
+  }),
+  defineEventType({
+    type: 'workflow.untrusted.truncated',
+    schemaVersion: 1,
+    payload: WorkflowUntrustedTruncatedPayloadSchema,
+  }),
   defineEventType({
     type: 'workflow.package.installed',
     schemaVersion: 1,
@@ -1256,6 +1283,10 @@ export type SupervisionStatusRequestedPayload = DaemonEventPayloads['supervision
 export type SupervisionLimitReachedPayload = DaemonEventPayloads['supervision.limit_reached'];
 export type WorkflowBindingChangedPayload = DaemonEventPayloads['workflow.binding.changed'];
 export type WorkflowBudgetExhaustedPayload = DaemonEventPayloads['workflow.budget_exhausted'];
+export type WorkflowApprovalRequestedPayload = DaemonEventPayloads['workflow.approval.requested'];
+export type WorkflowApprovalResolvedPayload = DaemonEventPayloads['workflow.approval.resolved'];
+export type WorkflowWriteRefusedPayload = DaemonEventPayloads['workflow.write.refused'];
+export type WorkflowUntrustedTruncatedPayload = DaemonEventPayloads['workflow.untrusted.truncated'];
 export type WorkflowPackageInstalledPayload = DaemonEventPayloads['workflow.package.installed'];
 export type WorkflowPackageRemovedPayload = DaemonEventPayloads['workflow.package.removed'];
 export type WorkflowPackageSignatureFailedPayload =

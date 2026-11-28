@@ -377,7 +377,24 @@ Todos **[proposta]** quanto ao nome. Cada um entra no catálogo do protocolo e n
 - O texto que vem de fora (corpo de issue, comentário, log) chega marcado como não confiável no prompt do Ator (docs/24 §9), e o modo `mark_and_truncate` corta pelo tamanho.
 - **Aceite próprio:** um comentário sem aprovação não sai; um `kill -9` entre a aprovação e o comentário não comenta duas vezes.
 
-**Como ficou:** a preencher.
+**Como ficou** (2026-11-27, [V] com os testes locais de protocol e daemon; o `kill -9` roda sobre o build, com `vitest.chaos.config.ts`):
+
+- Os cinco passos estão em `workflows/steps/codehost/`. Eles leem as portas `CodeHost` e `IssueTracker` pelo `StepDeps.codeHost` (opcional; sem ele os passos falham com `code_host_unavailable`). Quem monta o runtime junta `CODE_HOST_STEP_RUNNERS` à lista genérica e chama `registerCodeHostEffects`; a lista padrão continua `GENERIC_STEP_RUNNERS`.
+- `fetch_issue`, `fetch_pr` e `fetch_ci_log` só leem, sem efeito no diário. A saída tem os campos tipados, para as condições das arestas, e `text` e `log`, que são o que vai ao prompt. O número vem de `params.number` ou da entrada `issue` ou `pr` da execução. O `fetch_ci_log` dá `failed` e `checks` (os nomes das rodadas que falharam) e guarda o fim do log.
+- `comment` e `label` passam por `runEffect` (`external_write`, tipos `workflow.comment` e `workflow.label`), com a chave `<run>:<nó>:<visita>`. O comentário leva no fim um marcador oculto com a chave (`<!-- otheater-effect: ... -->`), e o verificador procura por ele no tracker. O rótulo se repete sem dano, então o verificador dele sempre diz `not_done`.
+- A aprovação: o runtime guarda `approvals` no estado da execução (soma 1 quando um `approval` termina com sim), e `comment` e `label` conferem `workflows.security.require_approval` de novo. Sem aprovação o passo falha com `approval_required`, o evento `workflow.write.refused` sai e o tracker nem é chamado. O `approval` passou a emitir `workflow.approval.requested` e `workflow.approval.resolved`.
+- O texto de fora vem em `<untrusted-text source="...">`, com um aviso fixo de que é dado e não instrução. Dentro do texto, qualquer `<untrusted-text` ou `</untrusted-text` é reescrito, para ele não fechar o bloco. `mark_and_truncate` corta em caracteres (nunca no meio de um par substituto) e emite `workflow.untrusted.truncated`.
+- Chaves novas: `workflows.security.require_approval` (`[push, comment, label]`, `none` ou lista), `untrusted_text` (`mark_and_truncate`, `mark`), `untrusted_max_chars` (20000) e `workflows.codehost.comment_marker` (`on`, `off`).
+- Aceite: [V] sem aprovação o comentário não sai, nem com a definição que passou pelo validador; [V] com `kill -9` em `after_intend`, `after_execute` e `after_resolve` entre a aprovação e o comentário, o tracker fica com um comentário só e a execução termina `done` (`comment.chaos.test.ts`, processo filho e SQLite em disco); [V] os mesmos pontos em processo (`codehost.test.ts`).
+- Limite: a porta `IssueTracker` não lista comentários. A busca do comentário pelo marcador é um gancho (`findComment`) que o daemon liga; sem ele, depois de uma queda no meio do comentário o passo falha com `effect_ambiguous` (um comentário, nunca dois), e [V] isso também está testado.
+- Escolhas [proposta], que vão ao dono:
+  - o `approvals` no estado da execução (o log não se consulta por execução);
+  - o marcador oculto no comentário e o gancho `findComment` (e, como seguimento, um `listComments` na porta, no P7);
+  - o formato do bloco `<untrusted-text>` e do corte, e os nomes `text`, `log`, `url` e `head_sha` na saída;
+  - o padrão de 20000 caracteres e de `mark_and_truncate`;
+  - os eventos `workflow.approval.requested`, `workflow.approval.resolved`, `workflow.write.refused` e `workflow.untrusted.truncated` (os dois primeiros têm o nome do plano; os campos são [proposta]);
+  - as razões de falha `approval_required`, `number_missing`, `comment_body_missing`, `label_nothing_to_do` e `code_host_unavailable`;
+  - o corpo do comentário literal, sem interpolação de parâmetros.
 
 ### P9. Pacotes de workflow (N298, D5)
 
