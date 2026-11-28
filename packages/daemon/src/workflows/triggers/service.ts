@@ -78,7 +78,7 @@ export interface WorkflowTriggers {
   readonly ledger: SeenLedger;
 }
 
-/** The longest the log is read in a row of failures (used when `event_poll` is `off`). */
+/** The interval the event loop would use if `event_poll` turned `off` while it runs (never started then). */
 const IDLE_EVENT_INTERVAL_MS = 2_000;
 
 export function createWorkflowTriggers(deps: WorkflowTriggersDeps): WorkflowTriggers {
@@ -253,7 +253,9 @@ export function createWorkflowTriggers(deps: WorkflowTriggersDeps): WorkflowTrig
     ledger,
     start() {
       codeLoop.start();
-      eventLoop.start();
+      // `event_poll: off` (P12): the loop of the log does not even start, so it takes no turn every
+      // 2 s with no source. [proposta] The key is read at the start; a change takes the next start.
+      if (deps.settings().event_poll !== null) eventLoop.start();
     },
     async stop() {
       await Promise.all([codeLoop.stop(), eventLoop.stop()]);

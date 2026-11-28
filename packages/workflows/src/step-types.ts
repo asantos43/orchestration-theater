@@ -188,6 +188,11 @@ export const CODE_HOST_STEP_TYPES: readonly StepTypeSpec[] = [
     params: z.strictObject({
       target: z.enum(['issue', 'pr']),
       body: z.string().min(1).optional(),
+      /**
+       * [proposta] (P12) The id of a `run_play` node of this run: the body is the summary the play
+       * left (a later node cannot read the output of an earlier one yet). `body` wins when both are set.
+       */
+      body_from: z.string().min(1).optional(),
     }),
     output: { object: { url: 'string' } },
     role: null,
@@ -313,11 +318,56 @@ export const PLAY_STEP_TYPES: readonly StepTypeSpec[] = [
   }),
 ];
 
+/**
+ * The bridge between a generic workflow and the play of today (Phase 11b, P12; decision of the owner
+ * of 2026-11-28). [proposta] The params and the output.
+ *
+ * `run_play` opens a play through the runner that exists (the machine of `pipeline/`), with the need
+ * built from the issue, the pull request or the CI log of the run, waits for the play to reach a
+ * final state and returns what it left. The play delivers by itself (push and PR, by
+ * `delivery.mode`), so the node counts as a `push`: the definition needs an `approval` before it.
+ * It goes away when the `play` runs on this engine (P10c).
+ */
+export const BRIDGE_STEP_TYPES: readonly StepTypeSpec[] = [
+  spec({
+    id: 'run_play',
+    description:
+      'Opens a play for the issue, the pull request or the CI log, and waits for its end.',
+    params: z.strictObject({
+      /** What the need of the play is built from. */
+      from: z.enum(['issue', 'pr', 'ci_log']),
+      /** Absent: the number the trigger gave (`issue` or `pr` input of the run). */
+      number: z.number().int().positive().optional(),
+      /** What the play is asked to do with it; absent: a default by `from`. */
+      instructions: z.string().min(1).optional(),
+      /** The longest the step waits for the play; absent: until it ends. The play keeps running. */
+      timeout: Duration.optional(),
+    }),
+    output: {
+      object: {
+        ended: { enum: ['done', 'cancelled'] },
+        delivered: 'boolean',
+        branch: 'string',
+        pr_number: 'number',
+        pr_url: 'string',
+        summary: 'string',
+        play_id: 'string',
+      },
+    },
+    role: null,
+    effects: ['agent', 'workspace', 'write_code_host'],
+    // A run in the middle of a play is not a safe point (N295).
+    safePoint: false,
+    publicWrites: () => ['push'],
+  }),
+];
+
 /** The registry of step types of engine version 1. */
 export const BUILTIN_STEP_TYPES: readonly StepTypeSpec[] = [
   ...GENERIC_STEP_TYPES,
   ...CODE_HOST_STEP_TYPES,
   ...PLAY_STEP_TYPES,
+  ...BRIDGE_STEP_TYPES,
 ];
 
 /** A lookup by id; a duplicated id is an error of the caller. */
