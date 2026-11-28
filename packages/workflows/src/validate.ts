@@ -10,6 +10,7 @@ import {
   type ConditionLimits,
 } from './condition.js';
 import {
+  compareVersions,
   DURATION_PATTERN,
   isTerminal,
   normalizeEdge,
@@ -57,6 +58,8 @@ export const VALIDATION_CODES = [
   'missing_plugin',
   'missing_tool',
   'approval_missing',
+  'migration_version',
+  'migration_target',
 ] as const;
 export type ValidationCode = (typeof VALIDATION_CODES)[number];
 
@@ -313,6 +316,23 @@ export function validateWorkflow(input: unknown, options: ValidateOptions = {}):
   for (const [key, value] of Object.entries(limits)) {
     if (!(RESERVED_LIMITS as readonly string[]).includes(key) && typeof value === 'number') {
       counters[key] = value;
+    }
+  }
+
+  // The migration map (N295): the versions it names are older than this one, and every target is a
+  // node of this definition. The source nodes are checked against the old definition at migration.
+  for (const [from, map] of Object.entries(definition.migrate_from ?? {})) {
+    if (compareVersions(from, definition.version) >= 0) {
+      fail(
+        ['migrate_from', from],
+        'migration_version',
+        `${from} is not older than ${definition.version}`,
+      );
+    }
+    for (const [node, target] of Object.entries(map)) {
+      if (!nodeSet.has(target)) {
+        fail(['migrate_from', from, node], 'migration_target', `${target} is not a node`);
+      }
     }
   }
 

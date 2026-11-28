@@ -9,6 +9,7 @@ import {
   type WorkflowDefinitionRecord,
   type WorkflowSource,
 } from '@otheater/core';
+import { WorkflowRefSchema } from '@otheater/protocol';
 import {
   validateWorkflow,
   workflowHash,
@@ -16,6 +17,7 @@ import {
   type ValidationIssue,
 } from '@otheater/workflows';
 import semver from 'semver';
+import { z } from 'zod';
 import { type WorkflowsSettings, WORKFLOWS_ALL_INSTALLED } from './config.js';
 
 /**
@@ -34,12 +36,20 @@ export interface WorkflowLibraryDeps {
   /** The registries `validateWorkflow` checks against (roles, step types, installed plugins). */
   readonly validateOptions?: (() => ValidateOptions) | undefined;
   /**
-   * Whether a run that is still live was born in this version. Old versions stay while one
-   * exists. The default is conservative: any play that is not finished and whose `flowId` is the
-   * workflow counts as a live run in every version of it, because a play records an integer
-   * `flowVersion` and a definition has a semantic version. [proposta]
+   * Whether a run that is still live is in this version. Old versions stay while one exists. The
+   * default reads the snapshot of the open runs of the workflow (`snapshot.workflow`, the version
+   * the run is in now: a run that migrated (N295) no longer holds the old one). A run whose
+   * snapshot is not that of the workflow engine (a play) counts as live in every version, because
+   * a play records an integer `flowVersion` and a definition has a semantic version. [proposta]
    */
   readonly liveRuns?: ((workflowId: string, version: string) => Promise<boolean>) | undefined;
+  /**
+   * Called after a version becomes the active one (`install` that activates, and `activate`): the
+   * runtime asks the migration of the open runs there (`workflows.running_on_change`, N295).
+   * A failure in it does not undo the activation. [proposta]
+   */
+  readonly onActivated?:
+    ((workflowId: string, version: string) => void | Promise<void>) | undefined;
 }
 
 export interface InstallOptions {
@@ -93,7 +103,7 @@ export class WorkflowLibrary {
     });
     const hasActive = (await registry.active(saved.workflowId)) !== undefined;
     if (options.activate === true || (options.activate === undefined && !hasActive)) {
-      return registry.activate(saved.workflowId, saved.version);
+      return this.activate(saved.workflowId, saved.version);
     }
     return saved;
   }
@@ -111,8 +121,14 @@ export class WorkflowLibrary {
   }
 
   /** Makes a saved version the one new runs are born in. */
-  activate(workflowId: string, version: string): Promise<WorkflowDefinitionRecord> {
-    return this.#deps.store.workflowDefinitions.activate(workflowId, version);
+  async activate(workflowId: string, version: string): Promise<WorkflowDefinitionRecord> {
+    const record = await this.#deps.store.workflowDefinitions.activate(workflowId, version);
+    try {
+      await this.#deps.onActivated?.(workflowId, version);
+    } catch {
+      // The version is active; the runs that were to migrate stay where they are (`pin`).
+    }
+    return record;
   }
 
   /**
@@ -179,6 +195,10 @@ export class WorkflowLibrary {
     const probe = this.#deps.liveRuns;
     if (probe !== undefined) return probe(workflowId, version);
     const open = await this.#deps.store.plays.list({ open: true });
-    return open.some((play) => play.flowId === workflowId);
+    return open.some((play) => {
+      if (play.flowId !== workflowId) return false;
+      const run = z.object({ workflow: WorkflowRefSchema }).safeParse(play.snapshot);
+      return !run.success || run.data.workflow.version === version;
+    });
   }
 }

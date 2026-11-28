@@ -31,9 +31,18 @@ import {
  *   play saved by version 1 of the hand-written machine. There is no migration of 1.x. `reject`
  *   (default) leaves the record as it is, writes `workflow.snapshot_rejected` and warns in the
  *   chat; `cancel` cancels the play, records it and writes the same event.
+ * - `running_on_change` (P4, N295; the keys are the plan's, the name of the second mode is
+ *   [proposta]): what happens to a run that is open when a new version of its workflow is
+ *   activated. `pin` (default) leaves it in the version it was born in until it ends;
+ *   `migrate_at_safe_point` asks its migration to the new version, which happens only at a safe
+ *   point and only when the new definition maps the node the run is in (`migrate.ts`). A migration
+ *   the Producer asks for by name is allowed in both modes.
  */
 export const WORKFLOW_BUDGET_ON_EXHAUSTED_MODES = ['pause', 'stop'] as const;
 export type WorkflowBudgetOnExhausted = (typeof WORKFLOW_BUDGET_ON_EXHAUSTED_MODES)[number];
+
+export const WORKFLOW_RUNNING_ON_CHANGE_MODES = ['pin', 'migrate_at_safe_point'] as const;
+export type WorkflowRunningOnChange = (typeof WORKFLOW_RUNNING_ON_CHANGE_MODES)[number];
 
 /** The value of `workflows.allowed` that lets every installed definition be chosen. */
 export const WORKFLOWS_ALL_INSTALLED = 'all_installed';
@@ -55,6 +64,8 @@ export interface WorkflowsSettings {
   };
   /** P3: what becomes of a play saved by the hand-written machine (1.x). */
   readonly legacy_snapshot: WorkflowLegacySnapshotMode;
+  /** P4 (N295): what becomes of an open run when a new version is activated. */
+  readonly running_on_change: WorkflowRunningOnChange;
 }
 
 /** The defaults of `workflows`, for a service built without a configuration. */
@@ -64,4 +75,5 @@ export const DEFAULT_WORKFLOWS_SETTINGS: WorkflowsSettings = {
   budget: { on_exhausted: 'pause', period: 'day' },
   binding: { concurrency: 1, on_busy: 'queue' },
   legacy_snapshot: 'reject',
+  running_on_change: 'pin',
 };

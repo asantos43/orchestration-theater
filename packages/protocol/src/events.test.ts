@@ -191,6 +191,8 @@ describe('daemon event registry', () => {
       'workflow.run.finished',
       'workflow.run.refused',
       'workflow.snapshot_rejected',
+      'workflow.migrated',
+      'workflow.migration_refused',
       'workflow.notified',
       'workflow.binding.changed',
       'workflow.budget_exhausted',
