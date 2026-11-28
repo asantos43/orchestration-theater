@@ -265,6 +265,21 @@ const manifestObject = z.strictObject({
     .max(64)
     .default([])
     .describe('Event names, with no prefix: the daemon publishes them as plugin.<id>.<name>.'),
+  triggers: z
+    .array(
+      z
+        .string()
+        .max(64)
+        .regex(
+          PLUGIN_EVENT_NAME_PATTERN,
+          'must be lowercase segments of letters, digits, "_" or "-" separated by "."',
+        ),
+    )
+    .max(64)
+    .optional()
+    .describe(
+      'The events (names from "events") a workflow binding may ask for as a trigger. An event that is not listed here never starts a workflow, whatever the binding says.',
+    ),
   panel: z.array(panelBlock).max(64).default([]),
   i18n: i18n.optional(),
 });
@@ -326,6 +341,19 @@ function crossRules(manifest: z.output<typeof manifestObject>): RuleIssue[] {
       );
     } else if (`${PLUGIN_EVENT_PREFIX}${manifest.id}.${name}`.length > 128) {
       add(['events', index], `event "${name}" makes a type longer than 128 characters`);
+    }
+  });
+
+  // Phase 11b, P6 (D6): a trigger is an event of the plugin that the manifest also declares.
+  (manifest.triggers ?? []).forEach((name, index, list) => {
+    if (list.indexOf(name) !== index) {
+      add(['triggers', index], `trigger "${name}" is declared twice`);
+    }
+    if (!manifest.events.includes(name)) {
+      add(
+        ['triggers', index],
+        `trigger "${name}" is not in "events": declare the event first, then offer it as a trigger`,
+      );
     }
   });
 
