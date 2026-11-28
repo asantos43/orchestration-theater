@@ -19,6 +19,7 @@ import {
   SecretKeySchema,
   SHARED_CANCEL_MODES,
   TRUNCATE_MODES,
+  WORKFLOW_ID_PATTERN,
 } from '@otheater/core';
 import { DEFAULT_UI_REGISTRY, resolveKeymap } from '@otheater/client';
 import {
@@ -93,6 +94,12 @@ import {
 import { AnalysisConfigSchema } from './analysis/analysis-config.js';
 import { AtifConfigSchema } from './atif/atif-config.js';
 import { COLLAB_NOTES_MODES } from './collab/notes-config.js';
+import {
+  WORKFLOW_BUDGET_ON_EXHAUSTED_MODES,
+  WORKFLOW_BUDGET_PERIODS,
+  WORKFLOW_ON_BUSY,
+  WORKFLOWS_ALL_INSTALLED,
+} from './workflows/config.js';
 import {
   exportsOtlp,
   HEADER_NAME_PATTERN,
@@ -2151,6 +2158,56 @@ export const DaemonConfigSchema = z
       })
       .prefault({}),
     /**
+     * The workflow library and the bindings of the scenarios (docs/24 section 7 and 12, N296; Phase
+     * 11b, P5; the keys are described at `WorkflowsSettings`). `budget.period` is [proposta].
+     * `runtime` (P2, every key [proposta]) holds the defaults of the generic step types; a node's
+     * own `timeout` or `on_timeout` wins.
+     * - `runtime.wait_event.poll`: how often the log is read while a `wait_event` waits for its event.
+     * - `runtime.approval.timeout`: the deadline of an `approval` that names none; `off` (default)
+     *   waits for ever.
+     * - `runtime.approval.on_timeout`: `stop` (default) ends the run as cancelled when the deadline
+     *   passes; `reject` gives `approved: false` and lets the edges decide.
+     * - `runtime.call_tool.timeout`: the deadline of a `call_tool` that names none; `off` (default)
+     *   leaves it to `plugins.call_timeout`.
+     */
+    workflows: z
+      .strictObject({
+        default: z.string().regex(WORKFLOW_ID_PATTERN).default('play'),
+        allowed: z
+          .union([
+            z.literal(WORKFLOWS_ALL_INSTALLED),
+            z.array(z.string().regex(WORKFLOW_ID_PATTERN)).min(1),
+          ])
+          .default(WORKFLOWS_ALL_INSTALLED),
+        budget: z
+          .strictObject({
+            on_exhausted: z.enum(WORKFLOW_BUDGET_ON_EXHAUSTED_MODES).default('pause'),
+            period: z.enum(WORKFLOW_BUDGET_PERIODS).default('day'),
+          })
+          .prefault({}),
+        binding: z
+          .strictObject({
+            concurrency: z.int().min(1).max(100).default(1),
+            on_busy: z.enum(WORKFLOW_ON_BUSY).default('queue'),
+          })
+          .prefault({}),
+        runtime: z
+          .strictObject({
+            wait_event: z.strictObject({ poll: DurationSchema.prefault('2s') }).prefault({}),
+            approval: z
+              .strictObject({
+                timeout: OffOrDurationSchema.prefault('off'),
+                on_timeout: z.enum(WORKFLOW_APPROVAL_ON_TIMEOUT).default('stop'),
+              })
+              .prefault({}),
+            call_tool: z
+              .strictObject({ timeout: OffOrDurationSchema.prefault('off') })
+              .prefault({}),
+          })
+          .prefault({}),
+      })
+      .prefault({}),
+    /**
      * The processes of the plugins and the calls to them (architecture 5.14; Phase 9, P5). A plugin
      * is an MCP server that runs outside the daemon, one process per plugin and project (N238).
      * Every key here is [proposta]. `install` holds the keys of `ot plugin install` (P4).
@@ -2273,34 +2330,6 @@ export const DaemonConfigSchema = z
              * daemon's `node`) or of an npm program.
              */
             npm: z.string().trim().min(1).default('auto'),
-          })
-          .prefault({}),
-      })
-      .prefault({}),
-    /**
-     * The workflow engine (docs/24; plan of Phase 11b). Every key is [proposta]. `runtime` holds the
-     * defaults of the generic step types (P2): a node's own `timeout` or `on_timeout` wins.
-     * - `wait_event.poll`: how often the log is read while a `wait_event` waits for its event.
-     * - `approval.timeout`: the deadline of an `approval` that names none; `off` (default) waits for ever.
-     * - `approval.on_timeout`: `stop` (default) ends the run as cancelled when the deadline passes;
-     *   `reject` gives `approved: false` and lets the edges decide.
-     * - `call_tool.timeout`: the deadline of a `call_tool` that names none; `off` (default) leaves
-     *   it to `plugins.call_timeout`.
-     */
-    workflows: z
-      .strictObject({
-        runtime: z
-          .strictObject({
-            wait_event: z.strictObject({ poll: DurationSchema.prefault('2s') }).prefault({}),
-            approval: z
-              .strictObject({
-                timeout: OffOrDurationSchema.prefault('off'),
-                on_timeout: z.enum(WORKFLOW_APPROVAL_ON_TIMEOUT).default('stop'),
-              })
-              .prefault({}),
-            call_tool: z
-              .strictObject({ timeout: OffOrDurationSchema.prefault('off') })
-              .prefault({}),
           })
           .prefault({}),
       })

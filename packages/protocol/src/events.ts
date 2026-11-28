@@ -94,6 +94,9 @@ import {
   WorkflowStepFinishedPayloadSchema,
   WorkflowStepStartedPayloadSchema,
 } from './workflow-events.js';
+  WorkflowBindingChangedPayloadSchema,
+  WorkflowBudgetExhaustedPayloadSchema,
+} from './workflow-binding-events.js';
 import {
   TelemetryBatchRejectedPayloadSchema,
   TelemetryExportFailedPayloadSchema,
@@ -1047,6 +1050,16 @@ export const DAEMON_EVENT_DEFINITIONS = [
     schemaVersion: 1,
     payload: WorkflowNotifiedPayloadSchema,
   }),
+  defineEventType({
+    type: 'workflow.binding.changed',
+    schemaVersion: 1,
+    payload: WorkflowBindingChangedPayloadSchema,
+  }),
+  defineEventType({
+    type: 'workflow.budget_exhausted',
+    schemaVersion: 1,
+    payload: WorkflowBudgetExhaustedPayloadSchema,
+  }),
 ] as const;
 
 type DaemonEventDefinition = (typeof DAEMON_EVENT_DEFINITIONS)[number];
@@ -1176,6 +1189,8 @@ export type AtifExportedPayload = DaemonEventPayloads['atif.exported'];
 export type AtifExportFailedPayload = DaemonEventPayloads['atif.export_failed'];
 export type NotePostedPayload = DaemonEventPayloads['note.posted'];
 export type CollabLimitReachedPayload = DaemonEventPayloads['collab.limit_reached'];
+export type WorkflowBindingChangedPayload = DaemonEventPayloads['workflow.binding.changed'];
+export type WorkflowBudgetExhaustedPayload = DaemonEventPayloads['workflow.budget_exhausted'];
 export type ProfileWarningPayload = DaemonEventPayloads['profile.warning'];
 export type ProfileExecStartedPayload = DaemonEventPayloads['profile.exec.started'];
 export type ProfileExecEndedPayload = DaemonEventPayloads['profile.exec.ended'];

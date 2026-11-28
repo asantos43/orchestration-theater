@@ -53,6 +53,11 @@ export {
   describeSetupAggregatesConformance,
   sampleSetupRun,
 } from './conformance/setup-aggregates.js';
+export {
+  describeWorkflowAggregatesConformance,
+  sampleWorkflowBinding,
+  sampleWorkflowDefinition,
+} from './conformance/workflow-aggregates.js';
 export { describeAggregateTransactionsConformance } from './conformance/aggregate-transactions.js';
 export {
   describeSecretVaultConformance,
