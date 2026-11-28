@@ -112,6 +112,7 @@ import {
   WorkflowMigratedPayloadSchema,
   WorkflowMigrationRefusedPayloadSchema,
 } from './workflow-migration-events.js';
+import { WorkflowPlayCancelledPayloadSchema } from './workflow-play-events.js';
 import { WorkflowSnapshotRejectedPayloadSchema } from './workflow-snapshot-events.js';
 import {
   WorkflowBindingChangedPayloadSchema,
@@ -1142,6 +1143,11 @@ export const DAEMON_EVENT_DEFINITIONS = [
     payload: WorkflowMigrationRefusedPayloadSchema,
   }),
   defineEventType({
+    type: 'workflow.play.cancelled',
+    schemaVersion: 1,
+    payload: WorkflowPlayCancelledPayloadSchema,
+  }),
+  defineEventType({
     type: 'workflow.notified',
     schemaVersion: 1,
     payload: WorkflowNotifiedPayloadSchema,
@@ -1347,6 +1353,7 @@ export type SupervisionBroadcastPayload = DaemonEventPayloads['supervision.broad
 export type SupervisionStatusRequestedPayload = DaemonEventPayloads['supervision.status_requested'];
 export type SupervisionLimitReachedPayload = DaemonEventPayloads['supervision.limit_reached'];
 export type WorkflowMigratedPayload = DaemonEventPayloads['workflow.migrated'];
+export type WorkflowPlayCancelledPayload = DaemonEventPayloads['workflow.play.cancelled'];
 export type WorkflowMigrationRefusedPayload = DaemonEventPayloads['workflow.migration_refused'];
 export type WorkflowSnapshotRejectedPayload = DaemonEventPayloads['workflow.snapshot_rejected'];
 export type WorkflowBindingChangedPayload = DaemonEventPayloads['workflow.binding.changed'];

@@ -193,6 +193,7 @@ describe('daemon event registry', () => {
       'workflow.snapshot_rejected',
       'workflow.migrated',
       'workflow.migration_refused',
+      'workflow.play.cancelled',
       'workflow.notified',
       'workflow.binding.changed',
       'workflow.budget_exhausted',

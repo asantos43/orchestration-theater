@@ -22,6 +22,8 @@ import {
   BUILTIN_STEP_TYPES,
   compareVersions,
   DURATION_PATTERN,
+  referencedNodes,
+  resolveInterpolations,
   validateWorkflow,
   workflowHash,
   type InputType,
@@ -160,6 +162,11 @@ const RuntimeStateSchema = z.strictObject({
   approvals: z.int().min(0).default(0),
   /** A migration asked and not made yet (P4, N295): it waits for a safe point, and a restart keeps it. */
   migration: MigrationRequestSchema.nullable().default(null),
+  /**
+   * The last output of each node whose output a later node reads (`${nodes.x.field}`, P10c). Only
+   * those nodes are kept, so a long output nobody reads does not grow the snapshot. [proposta]
+   */
+  outputs: z.record(z.string(), z.json()).default({}),
 });
 type RuntimeState = z.infer<typeof RuntimeStateSchema>;
 
@@ -171,6 +178,15 @@ const SavedRunSchema = z.object({
   machine: z.record(z.string(), z.json()),
   runtime: RuntimeStateSchema,
 });
+
+/** The nodes of a definition whose output some node reads (`${nodes.x.field}`). */
+function nodesRead(workflow: ValidWorkflow): ReadonlySet<string> {
+  const names = new Set<string>();
+  for (const node of Object.values(workflow.nodes)) {
+    for (const name of referencedNodes(node.params)) names.add(name);
+  }
+  return names;
+}
 
 function toJson(value: unknown): JsonObject {
   return JSON.parse(JSON.stringify(value)) as JsonObject;
@@ -342,6 +358,7 @@ export class WorkflowRuntime {
       inFlight: null,
       approvals: 0,
       migration: null,
+      outputs: {},
     };
     const record = await this.#store.transaction(async (tx) => {
       const created = await tx.plays.create({
@@ -713,6 +730,7 @@ export class WorkflowRuntime {
       }
       const ordinal = (loaded.runtime.visits[node.id] ?? 0) + 1;
       if (run.cancel.signal.aborted) {
+        await this.#cleanUpCancelled(run, node, ordinal);
         await this.#settle(run, node.id, node.step, ordinal, {
           kind: 'cancelled',
           reason: run.cancelReason ?? 'cancelled',
@@ -752,18 +770,52 @@ export class WorkflowRuntime {
     if (runner === undefined) {
       return { kind: 'failed', reason: 'unknown_step_type', detail: `No code for ${node.step}` };
     }
-    const signal = AbortSignal.any([run.stop.signal, run.cancel.signal]);
-    const context: StepContext = {
+    const interpolated = resolveInterpolations(node.params, {
+      inputs: (loaded.snapshot.context as RunContext).inputs,
+      outputs: loaded.runtime.outputs,
+    });
+    if (!interpolated.ok) {
+      // The step ends as failed: `workflow.step.finished` carries the reason, so hooks see it.
+      this.#logger.warn(
+        { runId: run.runId, node: node.id, detail: interpolated.detail },
+        'workflow params not resolved',
+      );
+      return { kind: 'failed', reason: 'interpolation_unresolved', detail: interpolated.detail };
+    }
+    const context = this.#contextOf(run, node, ordinal, resumed, interpolated.value);
+    let result: StepResult;
+    try {
+      result = await runner.run(context);
+    } catch (error) {
+      if (run.stop.signal.aborted) return undefined;
+      this.#logger.warn({ runId: run.runId, node: node.id, err: error }, 'workflow step threw');
+      result = { kind: 'failed', reason: 'step_error', detail: situationText(error, 400) ?? '' };
+    }
+    if (run.stop.signal.aborted) return undefined;
+    if (run.cancel.signal.aborted) await this.#cleanUpCancelled(run, node, ordinal);
+    return result;
+  }
+
+  /** The context of a visit of a node: what a step gets (`params` are the ones it runs with). */
+  #contextOf(
+    run: ActiveRun,
+    node: ValidWorkflow['nodes'][string],
+    ordinal: number,
+    resumed: boolean,
+    params: StepContext['params'],
+  ): StepContext {
+    const { loaded } = run;
+    return {
       runId: run.runId,
       workflow: { id: loaded.ref.id, version: loaded.ref.version },
       scenarioId: loaded.record.scenarioId,
       node: node.id,
       step: node.step,
       ordinal,
-      key,
-      params: node.params,
+      key: `${run.runId}:${node.id}:${String(ordinal)}`,
+      params,
       inputs: (loaded.snapshot.context as RunContext).inputs,
-      signal,
+      signal: AbortSignal.any([run.stop.signal, run.cancel.signal]),
       resumed,
       memo: {
         get: (name) => loaded.runtime.memo[name],
@@ -777,16 +829,27 @@ export class WorkflowRuntime {
       approvals: loaded.runtime.approvals,
       deps: this.#deps,
     };
-    let result: StepResult;
+  }
+
+  /**
+   * The run was cancelled in this node: the step type gets to clean up what it started outside the
+   * run (`StepRunner.onCancel`, which `run_play` uses to cancel its play). What it throws is only logged.
+   */
+  async #cleanUpCancelled(
+    run: ActiveRun,
+    node: ValidWorkflow['nodes'][string],
+    ordinal: number,
+  ): Promise<void> {
+    const runner = this.#steps.get(node.step);
+    if (runner?.onCancel === undefined || run.stop.signal.aborted) return;
     try {
-      result = await runner.run(context);
+      await runner.onCancel(this.#contextOf(run, node, ordinal, true, node.params));
     } catch (error) {
-      if (run.stop.signal.aborted) return undefined;
-      this.#logger.warn({ runId: run.runId, node: node.id, err: error }, 'workflow step threw');
-      result = { kind: 'failed', reason: 'step_error', detail: situationText(error, 400) ?? '' };
+      this.#logger.warn(
+        { runId: run.runId, node: node.id, err: error },
+        'workflow step clean-up after a cancel failed',
+      );
     }
-    if (run.stop.signal.aborted) return undefined;
-    return result;
   }
 
   /** Gives the machine the end of a visit and writes the transition (state, snapshot, events) in one transaction. */
@@ -808,6 +871,7 @@ export class WorkflowRuntime {
     result: StepResult,
   ): Promise<void> {
     const { loaded } = run;
+    const readers = nodesRead(loaded.workflow);
     const cancelled = run.cancel.signal.aborted;
     const event: RunEvent = cancelled
       ? { type: 'workflow.cancel', reason: run.cancelReason ?? 'cancelled' }
@@ -840,6 +904,10 @@ export class WorkflowRuntime {
           ? 1
           : 0),
       migration: loaded.runtime.migration,
+      outputs:
+        !cancelled && result.kind === 'done' && readers.has(nodeId)
+          ? { ...loaded.runtime.outputs, [nodeId]: result.output }
+          : loaded.runtime.outputs,
     };
     const outcome = cancelled || result.kind === 'cancelled' ? 'cancelled' : result.kind;
     const reason =

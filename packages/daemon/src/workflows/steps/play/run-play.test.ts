@@ -400,6 +400,102 @@ describe('comment body_from', () => {
   });
 });
 
+describe('run_play: cancelling the run cancels the play it opened', () => {
+  async function waitingForPlay(rig: Rig, runtime: WorkflowRuntime): Promise<void> {
+    const issue = rig.tracker.seedIssue({ title: 'T' });
+    await startRun(rig, runtime, issueFlow(), { issue: issue.number });
+    await answer(rig, 'Allow');
+    await vi.waitFor(() => {
+      expect(rig.port.opened).toHaveLength(1);
+    });
+    await vi.waitFor(() => {
+      expect(rig.world.clock.pendingSleeps).toBeGreaterThan(0);
+    });
+  }
+
+  it('asks the play to cancel and writes workflow.play.cancelled', async () => {
+    const rig = makeRig();
+    const runtime = runtimeOf(rig);
+    await waitingForPlay(rig, runtime);
+    expect(await runtime.cancel('run-1', 'the Producer gave up')).toBe(true);
+    expect((await playOf(rig.world)).state).toBe('cancelled');
+    const playId = rig.port.opened[0]?.playId ?? '';
+    expect(rig.port.cancelled).toEqual([{ playId, reason: 'The run run-1 was cancelled.' }]);
+    expect(rig.port.opened[0]?.outcome?.state).toBe('CANCELLED');
+    const sent = await events(rig.world, 'workflow.play.cancelled');
+    expect(sent).toHaveLength(1);
+    expect(sent[0]?.payload).toEqual({
+      runId: 'run-1',
+      node: 'work',
+      play: playId,
+      outcome: 'cancelled',
+    });
+  });
+
+  it('says already_final when the play had ended', async () => {
+    const rig = makeRig();
+    const runtime = runtimeOf(rig);
+    await waitingForPlay(rig, runtime);
+    rig.port.finishAll();
+    await runtime.cancel('run-1');
+    const sent = await events(rig.world, 'workflow.play.cancelled');
+    // The wait is aborted before it looks at the play again: the cancel finds it ended.
+    expect(sent.map((event) => event.payload.outcome)).toEqual(['already_final']);
+    expect(rig.port.opened[0]?.outcome?.state).toBe('DONE');
+  });
+
+  it('says failed, with the reason, when the cancel cannot be sent, and the run still ends cancelled', async () => {
+    const rig = makeRig();
+    const runtime = runtimeOf(rig);
+    await waitingForPlay(rig, runtime);
+    rig.port.cancelFails = 'the runner is gone';
+    await runtime.cancel('run-1');
+    expect((await playOf(rig.world)).state).toBe('cancelled');
+    const sent = await events(rig.world, 'workflow.play.cancelled');
+    expect(sent).toHaveLength(1);
+    expect(sent[0]?.payload.outcome).toBe('failed');
+    expect(JSON.stringify(sent[0]?.payload)).toContain('the runner is gone');
+  });
+
+  it('writes nothing for a node that never opened a play', async () => {
+    const rig = makeRig();
+    const issue = rig.tracker.seedIssue({ title: 'T' });
+    const runtime = runtimeOf(rig);
+    await startRun(rig, runtime, issueFlow(), { issue: issue.number });
+    await vi.waitFor(() => {
+      expect(rig.world.asks.opened.length).toBeGreaterThan(0);
+    });
+    await runtime.cancel('run-1');
+    expect(rig.port.opened).toHaveLength(0);
+    expect(rig.port.cancelled).toHaveLength(0);
+    expect(await events(rig.world, 'workflow.play.cancelled')).toHaveLength(0);
+  });
+
+  it('does not cancel the play when only the daemon stops', async () => {
+    const rig = makeRig();
+    const runtime = runtimeOf(rig);
+    await waitingForPlay(rig, runtime);
+    await runtime.stop();
+    expect(rig.port.cancelled).toHaveLength(0);
+    expect(rig.port.opened[0]?.outcome).toBeUndefined();
+    expect(await events(rig.world, 'workflow.play.cancelled')).toHaveLength(0);
+  });
+
+  it('cancels the play of a run that a restart has not picked up yet', async () => {
+    const rig = makeRig();
+    const first = runtimeOf(rig);
+    await waitingForPlay(rig, first);
+    await first.stop();
+    const second = runtimeOf(rig);
+    expect(second.isActive('run-1')).toBe(false);
+    expect(await second.cancel('run-1')).toBe(true);
+    expect((await playOf(rig.world)).state).toBe('cancelled');
+    expect(rig.port.cancelled).toHaveLength(1);
+    const sent = await events(rig.world, 'workflow.play.cancelled');
+    expect(sent.map((event) => event.payload.outcome)).toEqual(['cancelled']);
+  });
+});
+
 describe('the late port', () => {
   it('fails clearly before the daemon binds the orchestration, and forwards after', async () => {
     const late = createLatePlayRunPort();
@@ -412,6 +508,7 @@ describe('the late port', () => {
     });
     expect(await late.port.exists('play-x')).toBe(true);
     expect(await late.port.outcome('play-x')).toBeUndefined();
+    expect(await late.port.cancel('play-x', 'r')).toBe('cancelled');
   });
 
   it('a play id derived from a key is short, stable and valid in a branch name', () => {

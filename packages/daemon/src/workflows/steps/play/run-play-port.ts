@@ -24,6 +24,13 @@ export function createPlayRunPort(deps: RunPlayPortDeps): PlayRunPort {
       const opened = await openPlayFromNeed(deps.opening, scenarioId, need, playId);
       return opened.ok ? { ok: true } : { ok: false, code: opened.code, message: opened.message };
     },
+    async cancel(playId, reason) {
+      const play = await deps.store.plays.get(playId);
+      if (play === undefined) return 'not_found';
+      if (isFinalPlayState(play.state)) return 'already_final';
+      await deps.opening.runner.send(playId, { type: 'CANCEL', reason });
+      return 'cancelled';
+    },
     async outcome(playId): Promise<PlayRunOutcome | undefined> {
       const play = await deps.store.plays.get(playId);
       if (play === undefined || !isFinalPlayState(play.state)) return undefined;

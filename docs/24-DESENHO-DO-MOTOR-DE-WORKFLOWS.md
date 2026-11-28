@@ -120,7 +120,16 @@ A definição vira uma máquina XState por um compilador do núcleo. O compilado
 - algum nó é inalcançável, ou algum nó não chega a um fim (`done`, `cancelled` ou `failed`);
 - um ciclo não tem limite declarado em `limits`;
 - uma ferramenta ou um plugin exigido não está instalado;
+- a sintaxe de uma interpolação (`interpolation_syntax`), ou uma referência a um nó que não existe, que não chega antes do nó que a lê, ou a um campo que a saída do tipo de passo não tem, ou a uma entrada não declarada (`interpolation_ref`);
 - falta aprovação antes de push ou comentário público quando `workflows.security.require_approval` exige.
+
+### As saídas de um nó nos nós seguintes (P10c) [proposta]
+
+- Um parâmetro de texto pode trazer `${nodes.<nó>.<campo>}` (a saída de um nó anterior, com o caminho dentro dela) ou `${inputs.<nome>}`; o runtime troca pelo valor logo antes de o passo rodar. `$${` escreve um `${` literal. Os nomes dos campos são os do `output` de cada tipo de passo (seção 4).
+- Um texto que é uma referência só mantém o tipo do valor (um número continua número); com texto em volta, a referência tem de ser texto, número ou booleano.
+- O validador confere a sintaxe, o nó (existe e chega antes por alguma aresta) e o campo (existe no tipo de saída do passo). Em execução, valor ausente (o nó não rodou nesta execução, ou o campo não veio) falha o passo com `interpolation_unresolved`, nunca vira texto vazio.
+- O runtime guarda, no snapshot da execução (`runtime.outputs`), só a última saída dos nós que algum parâmetro lê, então a retomada depois de uma queda mantém o que o nó seguinte precisa.
+- O `body_from` do `comment` continua valendo; `body: '${nodes.<nó>.summary}'` é o jeito novo de dizer o mesmo.
 
 A mesma validação roda em quatro lugares: na subida do daemon, na API (`validar`), na instalação de pacote e na ativação. Uma definição inválida nunca entra no registro, e uma peça nunca descobre no meio do caminho que a definição era ruim.
 
