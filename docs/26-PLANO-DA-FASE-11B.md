@@ -88,10 +88,10 @@ O `@otheater/workflows` é pacote novo do monorepo, não dependência de fora. E
 |---|---|---|---|---|
 | P0 | Plano e decisões (este documento) | nada | todos os que dependem só dele | feito (este PR) |
 | P1 | `@otheater/workflows`: schema da definição, linguagem de condição, compilador para XState, validador e hash | P0 | P7, P13 | feito (#359) |
-| P2 | Runtime do motor no daemon e tipos de passo genéricos (`call_tool`, `wait_event`, `branch`, `approval`, `notify`) | P1 | P5, P14 | a fazer |
+| P2 | Runtime do motor no daemon e tipos de passo genéricos (`call_tool`, `wait_event`, `branch`, `approval`, `notify`) | P1 | P5, P14 | feito (#413) |
 | P3 | A definição `play` 2.0: os tipos de passo da peça, a troca da máquina, o `flows.<id>` como parâmetro, o snapshot 1.x recusado | P2 | P6, P8, P9 | a fazer |
 | P4 | Versão de nascimento e migração em ponto seguro (N295), com a 2.0 → 2.1 de teste e o caos sobre workflows gerados | P3 | P10, P12 | a fazer |
-| P5 | Biblioteca e vínculos (N296): tabelas, `workflows.default` e `allowed`, estados do vínculo, prazo, orçamento por período, concorrência | P1 | P2, P14 | a fazer |
+| P5 | Biblioteca e vínculos (N296): tabelas, `workflows.default` e `allowed`, estados do vínculo, prazo, orçamento por período, concorrência | P1 | P2, P14 | feito (#412) |
 | P6 | Gatilhos: laço de sondagem mínimo (D3), eventos internos, eventos de plugin declarados (D6), filtro de autor | P5 | P3, P8, P9 | a fazer |
 | P7 | Porta `IssueTracker` (D4), adaptador GitHub, falso, conformidade; `fetchPullRequest` e `fetchCiLog` na `CodeHost` | P0 | P1, P13 | feito (#362) |
 | P8 | Tipos de passo do code host (`fetch_issue`, `fetch_pr`, `fetch_ci_log`, `comment`, `label`), aprovação antes de push e comentário, texto externo marcado | P2, P7 | P3, P6, P9 | a fazer |
@@ -100,7 +100,7 @@ O `@otheater/workflows` é pacote novo do monorepo, não dependência de fora. E
 | P11 | Editor do YAML na TUI, com o validador do P1 | P10 | P15, P16 (a parte automática) | a fazer |
 | P12 | Workflows prontos: `github-issues`, `pr-review` e `ci-fix` | P6, P8 | P10 | a fazer |
 | P13 | Mural de recados da peça (N308, opção 1): `post_note`, `read_notes` | P0 | P1, P7 | feito (#360) |
-| P14 | Supervisão do Diretor (N309): sinais, `warn` e `redirect`, o canal pela resposta MCP (D8) e os três extras | P13 | P2, P5 | a fazer |
+| P14 | Supervisão do Diretor (N309): sinais, `warn` e `redirect`, o canal pela resposta MCP (D8) e os três extras | P13 | P2, P5 | feito (#414) |
 | P15 | `ask_director` (N308, opção 2): o `blocked` que não encerra, com espera, prazo e o modo `relay` pelo canal do P14 | P14 | P3 a P12 | a fazer |
 | P16 | Aceite da fase | P1 a P15, P17, P18 | nada | a fazer |
 | P17 | Testes da TUI num terminal real com o `@microsoft/tui-test` (N320) | P1, P7, P13 | os da onda 2 | feito (este PR) |
@@ -256,7 +256,7 @@ Todos **[proposta]** quanto ao nome. Cada um entra no catálogo do protocolo e n
 - `call_tool` chama uma ferramenta MCP de plugin fora do processo (N292); `wait_event` espera um evento do log com prazo; `approval` usa o `ask_producer`; `notify` usa o canal de notificação do chat e dos plugins.
 - **Aceite próprio:** um workflow pequeno de teste roda com o `fake-agent`; `kill -9` no meio de um `call_tool` retoma sem repetir o efeito (o harness da Fase 11).
 
-**Como ficou** (2026-11-27, [V] com 39 testes locais de unidade e 4 de caos; as marcas [proposta] são escolhas do Claude, a confirmar com o dono):
+**Como ficou** (2026-11-27, [V] com 39 testes locais de unidade e 4 de caos; PR #413; as escolhas do Claude foram aceitas pelo dono em 2026-11-27):
 
 - Módulos novos em `daemon/src/workflows/`:
   - `machine.ts`: monta a máquina XState a partir do `compileWorkflow` do P1, com as guardas e as ações do compilador como `assign` puros, para usar o `transition()` puro como o `PlayRunner`;
@@ -275,7 +275,7 @@ Todos **[proposta]** quanto ao nome. Cada um entra no catálogo do protocolo e n
   - unidade: um workflow com os cinco tipos de passo roda até o fim; queda simulada em cada ponto `effects.*` retoma sem repetir a escrita (o mundo de teste tem uma escrita só);
   - caos, com `kill -9` de verdade (`workflows/call-tool.chaos.test.ts`, `vitest.chaos.config.ts`, exige `pnpm build`): um processo filho com o store SQLite em disco morre em `effects.after_intend`, `after_execute` e `after_resolve` no meio de um `call_tool`, e um segundo processo retoma; o efeito acontece uma vez só e a execução termina `done`;
   - o `fake-agent` fica de fora: ele serve ao passo `play` (P3), então o aceite usa ferramentas falsas e o plugin de teste do agregador.
-- [proposta] Limites desta etapa:
+- Limites desta etapa (ficam para os passos seguintes):
   - `max_steps`, `max_duration` e `budget_usd` ainda não são aplicados;
   - os `args` do `call_tool` não são interpolados e a chave de idempotência não é repassada ao plugin;
   - o runtime e o `registerWorkflowEffects` ainda não estão ligados à composição do daemon;
@@ -312,7 +312,7 @@ Todos **[proposta]** quanto ao nome. Cada um entra no catálogo do protocolo e n
 - O vínculo liga um cenário a um workflow. Os estados são `active`, `paused`, `stopped` e `expired`; há prazo (`until`), orçamento por período, `concurrency` e `on_busy`.
 - **Aceite próprio:** suíte de conformidade do agregado novo no store SQLite e no de memória; transições de estado do vínculo com o relógio falso.
 
-**Como ficou** (2026-11-27, [V] com os testes locais de core, sdk, adaptador SQLite, protocol e daemon; ainda sem PR):
+**Como ficou** (2026-11-27, [V] com os testes locais de core, sdk, adaptador SQLite, protocol e daemon; PR #412):
 
 - **Store (porta 0.9.0):** `store.workflowDefinitions` (biblioteca: `put`, `get`, `active`, `list`, `activate`, `remove`) e `store.workflowBindings` (`create`, `get`, `list`, `update`, `transition`, `recordSpend`, `rollPeriod`), sobre as tabelas `workflow_definitions` e `workflow_bindings` (migração `0011_workflows`). O core não importa `@otheater/workflows`; por isso o store guarda a definição como JSON opaco e só confere que `id` e `version` do documento batem com as colunas. Quem valida e calcula o hash é a biblioteca do daemon.
 - **Biblioteca (`library.ts`):** `install` valida com `validateWorkflow`, calcula `workflowHash` e salva a versão; uma versão nunca muda (mesmo hash é idempotente, outro hash é `Conflict`). `resolve` entende `*` (a versão ativa), a versão exata e `1.x`/`1.2.x` (a maior que casa). `remove` recusa a versão ativa e a versão com execução viva nela. Banco: no máximo uma versão ativa por workflow (índice único parcial).
@@ -320,7 +320,7 @@ Todos **[proposta]** quanto ao nome. Cada um entra no catálogo do protocolo e n
 - **Eventos novos:** `workflow.binding.changed` (criação e toda mudança de estado) e `workflow.budget_exhausted`. O aviso no chat sai pelo callback `onBudgetExhausted`; quem liga o canal é o P10.
 - **Chaves novas:** `workflows.default`, `workflows.allowed`, `workflows.budget.on_exhausted`, `workflows.budget.period`, `workflows.binding.concurrency`, `workflows.binding.on_busy`.
 - **Aceite próprio:** a suíte `describeWorkflowAggregatesConformance` (sdk) roda no store de memória e no SQLite (os dois drivers); a migração tem teste de subida e prova dos índices únicos parciais; as transições do vínculo (pausa, retomada, parada, prazo, orçamento, virada de período) são testadas com o relógio falso, no store e no daemon.
-- **[proposta] (para o dono):**
+- **Escolhas do Claude (decidido pelo dono em 2026-11-27):**
   - o estado do vínculo guarda o motivo (`producer`, `budget`, `deadline`);
   - o período do orçamento é uma janela fixa de 24 h, 7 d ou 30 d, contada do início do vínculo (e não o calendário), com a chave `workflows.budget.period`;
   - o gasto é gravado em qualquer estado, e o que fazer ao esgotar é do daemon, não do store;
@@ -483,7 +483,7 @@ Todos **[proposta]** quanto ao nome. Cada um entra no catálogo do protocolo e n
   - o pedido de situação faz o Ator responder pelo `submit` com um estado parcial, sem encerrar.
 - **Aceite próprio:** a parte 3 do critério de aceite, menos o `ask_director`.
 
-**Como ficou** (2026-11-27, [V] com os testes locais de protocol, core, daemon e fake-agent; ainda sem PR):
+**Como ficou** (2026-11-27, [V] com os testes locais de protocol, core, daemon e fake-agent; PR #414):
 
 - **Sinais (`supervision/signals.ts`):** o `SignalDetector` vê só o que o daemon já tem (eventos da tentativa, `expectedFiles` da demanda, o roteiro e o tempo gasto) e dispara `outside_demand`, `contract_changed`, `test_loop` (N falhas seguidas do mesmo teste) e `budget_fraction`. Cada sinal vira o evento `supervision.signal` e é dedupado por tentativa e chave.
 - **Canal (`supervision/channel.ts`):** os avisos ficam na fila da demanda, persistem no blackboard (`supervision/<demanda>`, chave em `core/src/blackboard-keys.ts`) e sobrevivem ao resume. O MCP (`mcp/server.ts`, opção `notices`) acrescenta o aviso, marcado `[Director supervision, ...]`, na resposta da próxima ferramenta do Ator (menos o `submit`). Se o Ator termina sem recebê-lo, grava `supervision.warning` com `delivered: false`.
@@ -493,7 +493,7 @@ Todos **[proposta]** quanto ao nome. Cada um entra no catálogo do protocolo e n
 - **Chaves novas:** `supervision.mode` (`warn` padrão, `off`, `log`, `redirect`), `.delivery` (`tool_reply` padrão, `next_turn`, `relaunch`), `.triggers.outside_demand`, `.contract_changed`, `.test_loop` (3), `.budget_fraction` (0.8), `.max_warnings_per_demand` (3), `.director_budget` (0.1), `.broadcast` e `.status_request` (`on`).
 - **Aceite próprio:** `orchestration/supervision-e2e.test.ts` (6 testes, fake-agent com `#actor-supervise` e Diretor falso): a edição fora da demanda gera o sinal e o aviso chega na resposta MCP seguinte; o `redirect` relança com o aviso; cada limite gera `supervision.limit_reached`; a nota entre dois Atores chega pelo quadro de notas (P13). Os módulos têm testes próprios (`signals`, `channel`, `director-call`, `service`, `mcp/server`, `config`).
 - **Não coberto por e2e (só por teste de unidade):** `contract_changed`, `broadcast` e `request_status`. [N] Não foi verificado que o `submit` com `state: 'status'` de um Ator real (Claude Code, Codex, OpenCode) deixa a tentativa viva.
-- **[proposta] (para o dono):**
+- **Escolhas do Claude (decidido pelo dono em 2026-11-27):**
   - `off` não faz nada; `log` só grava o sinal (as ferramentas ficam ocultas); `warn` chama o Diretor; `redirect_actor` só existe no modo `redirect`;
   - `next_turn` só vale a partir do turno seguinte ao da fila; com `relaunch` ou modo `redirect`, o aviso vira redirecionamento;
   - a cota de chamadas é `max(1, floor(director_budget x passos))` (0 desliga as chamadas);
