@@ -124,6 +124,13 @@ import { IdeasConfigSchema } from './ideas/settings.js';
 import { PUBLIC_WRITES } from '@otheater/workflows';
 import { WORKFLOW_APPROVAL_ON_TIMEOUT } from './workflows/runtime-config.js';
 import {
+  SSH_PUBLIC_KEY_PATTERN,
+  WORKFLOW_PACKAGE_ACTIVATE_MODES,
+  WORKFLOW_PACKAGE_SIGNATURE_MODES,
+  WORKFLOW_PACKAGE_SOURCES,
+  WORKFLOW_PACKAGE_UNSIGNED_MODES,
+} from './workflows/packages/config.js';
+import {
   REQUIRE_APPROVAL_NONE,
   WORKFLOW_COMMENT_MARKER_MODES,
   WORKFLOW_UNTRUSTED_TEXT_MODES,
@@ -2215,6 +2222,15 @@ export const DaemonConfigSchema = z
      *   passes; `reject` gives `approved: false` and lets the edges decide.
      * - `runtime.call_tool.timeout`: the deadline of a `call_tool` that names none; `off` (default)
      *   leaves it to `plugins.call_timeout`.
+     * `packages` (P9, N298, D5; `sources`, `signature`, `trusted_keys` and `unsigned` are the plan's,
+     * the rest is [proposta]; the keys are described in `workflows/packages/config.ts`):
+     * - `packages.sources`: `file`, `git` or a list of both (default both).
+     * - `packages.signature`: `verify_if_present` (default), `require` or `off`.
+     * - `packages.trusted_keys`: the public keys (`ssh-ed25519 AAAA...`) whose signatures verify.
+     * - `packages.unsigned`: `confirm` (default) or `reject` for a package that is not verified.
+     * - `packages.activate`: `when_none` (default), `always` or `never`.
+     * - `packages.fetch_timeout`, `packages.verify_timeout`, `packages.max_workflows` and
+     *   `packages.ssh_keygen` (`auto`, or the path of the program).
      */
     workflows: z
       .strictObject({
@@ -2249,6 +2265,25 @@ export const DaemonConfigSchema = z
             call_tool: z
               .strictObject({ timeout: OffOrDurationSchema.prefault('off') })
               .prefault({}),
+          })
+          .prefault({}),
+        packages: z
+          .strictObject({
+            sources: z
+              .union([
+                z.enum(WORKFLOW_PACKAGE_SOURCES).transform((one) => [one]),
+                z.array(z.enum(WORKFLOW_PACKAGE_SOURCES)).min(1),
+              ])
+              .transform((list) => [...new Set(list)])
+              .default(['file', 'git']),
+            signature: z.enum(WORKFLOW_PACKAGE_SIGNATURE_MODES).default('verify_if_present'),
+            trusted_keys: z.array(z.string().regex(SSH_PUBLIC_KEY_PATTERN)).max(64).default([]),
+            unsigned: z.enum(WORKFLOW_PACKAGE_UNSIGNED_MODES).default('confirm'),
+            activate: z.enum(WORKFLOW_PACKAGE_ACTIVATE_MODES).default('when_none'),
+            fetch_timeout: DurationSchema.prefault('2m'),
+            verify_timeout: DurationSchema.prefault('15s'),
+            max_workflows: z.int().min(1).max(500).default(50),
+            ssh_keygen: z.string().min(1).default('auto'),
           })
           .prefault({}),
         /**
