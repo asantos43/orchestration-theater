@@ -21,5 +21,6 @@ export {
   issueOf,
   type GithubIssueTrackerOptions,
 } from './issue-tracker.js';
+export { GithubRepoReader, type GithubPullSummary } from './repo-reader.js';
 export { classifyPushFailure, classifyToolFailure } from './failure.js';
 export { ToolRunner, type ToolResult, type ToolRunnerOptions } from './runner.js';
