@@ -97,14 +97,15 @@ O `@otheater/workflows` é pacote novo do monorepo, não dependência de fora. E
 | P8 | Tipos de passo do code host (`fetch_issue`, `fetch_pr`, `fetch_ci_log`, `comment`, `label`), aprovação antes de push e comentário, texto externo marcado | P2, P7 | P3, P6, P9 | feito (#416) |
 | P9 | Pacotes de workflow (N298): arquivo ou git com ref fixa, permissões na instalação, SSHSIG e chaves confiáveis (D5) | P1, P5 | P3, P6, P8 | feito (#417) |
 | P10a | Os gatilhos do P6 e o motor na composição do daemon e os leitores GitHub de PR, colaborador e CI (a troca da máquina passou ao P10c) | P3, P6, P8 | nada | feito (#423) |
-| P10c | A peça pela `play.yaml`: o `PlayStageHost` no runtime, as cinco diferenças do P3, o snapshot e a retomada da peça, e o `playMachine` sai (critério 4); a parte da N295 que vale só para a peça | P4, P12 | nada | a fazer |
+| P10c | A peça pela `play.yaml`: o `PlayStageHost` no runtime, as cinco diferenças do P3, o snapshot e a retomada da peça, e o `playMachine` sai (critério 4); a parte da N295 que vale só para a peça | P4, P12 | nada | parcial (a troca passou ao P10d) |
+| P10d | A troca da máquina reescrita por estágio (opção A do dono): um redutor por estágio, o driver da peça sobre o runtime, um `Model` novo e a suíte da máquina substituída por uma equivalente; o `playMachine` sai; o caos I1 a I8 sobre a `play` 2.0, o I3 e o I6; os desvios do docs/24 §11 que dependem da peça | P10b, P10c | nada | a fazer |
 | P10b | API e CLI: validar, simular com o `fake-agent`, salvar, ativar, desativar, diff, listar, instalar (`ot flow ...`) | P4, P5, P9, P10a | P12, P10c | a fazer |
 | P11 | Editor do YAML na TUI, com o validador do P1 | P10b | P15, P16 (a parte automática) | a fazer |
 | P12 | Workflows prontos: `github-issues`, `pr-review` e `ci-fix` | P6, P8, P10a | P4, P10b | a fazer |
 | P13 | Mural de recados da peça (N308, opção 1): `post_note`, `read_notes` | P0 | P1, P7 | feito (#360) |
 | P14 | Supervisão do Diretor (N309): sinais, `warn` e `redirect`, o canal pela resposta MCP (D8) e os três extras | P13 | P2, P5 | feito (#414) |
 | P15 | `ask_director` (N308, opção 2): o `blocked` que não encerra, com espera, prazo e o modo `relay` pelo canal do P14 | P14 | P3 a P12 | feito (#420) |
-| P16 | Aceite da fase | P1 a P15 (com P10a, P10b e P10c), P17, P18 | nada | a fazer |
+| P16 | Aceite da fase | P1 a P15 (com P10a, P10b, P10c e P10d), P17, P18 | nada | a fazer |
 | P17 | Testes da TUI num terminal real com o `@microsoft/tui-test` (N320) | P1, P7, P13 | os da onda 2 | feito (este PR) |
 | P18a | Nova detecção dos clientes (N321, itens 2 e 5): sem reiniciar o daemon, a cada abertura do assistente e ao criar uma conta; no Windows, o `Path` do registro; o motivo de cada cliente não achado na API | P7 | os da onda 2 | feito (#367) |
 | P18b | O assistente resolve na tela (N321, itens 1 e 4): as teclas I, R e A, o motivo na tela e as mensagens sem comandos `ot` | P18a | os da onda 2 | feito (#371) |
@@ -114,7 +115,7 @@ Ondas **[proposta, forma decidida na D9]**:
 - onda 1, logo depois do merge deste plano: **P1, P7 e P13**, em paralelo (três agentes);
 - onda 2: **P2, P5 e P14**, e o **P17** (N320, acrescentado em 2026-11-25), que mexe só nos testes da TUI e na CI;
 - onda 3: **P3, P8 e P9**, e depois **P6** e **P15**, assim que uma vaga abrir;
-- onda 4 (reordenada pelo dono em 2026-11-28, com a divisão do P10): primeiro o **P10a**, sozinho; depois **P4 e P12**, em paralelo; por fim o **P10b** e o **P10c** (a troca da máquina, acrescentada pelo dono em 2026-11-28);
+- onda 4 (reordenada pelo dono em 2026-11-28, com a divisão do P10): primeiro o **P10a**, sozinho; depois **P4 e P12**, em paralelo; por fim o **P10b** e o **P10c** (a troca da máquina, acrescentada pelo dono em 2026-11-28), e depois deles o **P10d** (a troca reescrita por estágio, dono, 2026-11-28);
 - onda 5: **P11** e **P16**.
 
 O P3 é o passo de maior risco, porque troca o núcleo mais testado. Ele corre sozinho na suíte completa: enquanto ele roda os e2e, os outros dois agentes da onda só rodam os testes do próprio pacote.
@@ -566,6 +567,10 @@ Depois, o P4 e o P12 correm em paralelo. O **P10b** vem por último, com o resto
 - **Desvios do docs/24 (seção 11) que dependem da peça: ficam pendentes** (`ci-fix` na mesma branch, `pr-review` só com o Crítico, a aprovação depois do trabalho, `Fixes #N`), todos atrás da troca da máquina. Não comecei esta parte: o roteiro a pede só com 1 a 3 verdes, e o item 1 não está.
 - **Docs tocados:** docs/24 (a seção 5 ganha a interpolação e dois códigos de validação) e docs/27 (a observação sobre as saídas de um nó). A linha do P10c na tabela **não** foi mexida.
 - **Perguntas ao dono (resumo):** (1) A, B ou C para a troca da máquina; (2) aceitar a sintaxe `${nodes...}` e `$${`; (3) aceitar o gancho `onCancel` e o evento `workflow.play.cancelled`; (4) trocar o `body_from` dos workflows prontos pela interpolação; (5) como completar I3 e I6 e o caos da 2.0 (junto com a troca).
+- **Decisões do dono (2026-11-28, por múltipla escolha):**
+  - a troca da máquina segue pela **opção A, reescrever por estágio**, num passo próprio, o **P10d**, depois do P10b e antes do P16. O critério 4 passa a ser "os mesmos casos, com novo alvo": a suíte da máquina e o `Model` são substituídos por equivalentes. O caos I1 a I8 sobre a `play` 2.0, o I3, o I6 e os desvios do docs/24 §11 que dependem da peça vão junto;
+  - as escolhas [proposta] deste bloco foram aceitas ("Todas acima"): a sintaxe `${nodes...}` e `$${`, o gancho `onCancel` com o `PlayRunPort.cancel` e o evento `workflow.play.cancelled`, e a troca do `body_from` dos workflows prontos pela interpolação (num passo seguinte);
+  - o que foi feito aqui vai à main agora, como passo parcial.
 
 ### P11. Editor do YAML na TUI
 
