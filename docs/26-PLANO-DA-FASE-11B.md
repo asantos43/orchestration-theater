@@ -96,14 +96,15 @@ O `@otheater/workflows` é pacote novo do monorepo, não dependência de fora. E
 | P7 | Porta `IssueTracker` (D4), adaptador GitHub, falso, conformidade; `fetchPullRequest` e `fetchCiLog` na `CodeHost` | P0 | P1, P13 | feito (#362) |
 | P8 | Tipos de passo do code host (`fetch_issue`, `fetch_pr`, `fetch_ci_log`, `comment`, `label`), aprovação antes de push e comentário, texto externo marcado | P2, P7 | P3, P6, P9 | feito (#416) |
 | P9 | Pacotes de workflow (N298): arquivo ou git com ref fixa, permissões na instalação, SSHSIG e chaves confiáveis (D5) | P1, P5 | P3, P6, P8 | feito (#417) |
-| P10a | A peça pela `play.yaml` (o `playMachine` sai), os gatilhos do P6 na composição do daemon e os adaptadores GitHub de PR, colaborador e CI | P3, P6, P8 | nada | a fazer |
-| P10b | API e CLI: validar, simular com o `fake-agent`, salvar, ativar, desativar, diff, listar, instalar (`ot flow ...`) | P4, P5, P9, P10a | P12 | a fazer |
+| P10a | Os gatilhos do P6 e o motor na composição do daemon e os leitores GitHub de PR, colaborador e CI (a troca da máquina passou ao P10c) | P3, P6, P8 | nada | feito (#423) |
+| P10c | A peça pela `play.yaml`: o `PlayStageHost` no runtime, as cinco diferenças do P3, o snapshot e a retomada da peça, e o `playMachine` sai (critério 4); a parte da N295 que vale só para a peça | P4, P12 | nada | a fazer |
+| P10b | API e CLI: validar, simular com o `fake-agent`, salvar, ativar, desativar, diff, listar, instalar (`ot flow ...`) | P4, P5, P9, P10a | P12, P10c | a fazer |
 | P11 | Editor do YAML na TUI, com o validador do P1 | P10b | P15, P16 (a parte automática) | a fazer |
 | P12 | Workflows prontos: `github-issues`, `pr-review` e `ci-fix` | P6, P8, P10a | P4, P10b | a fazer |
 | P13 | Mural de recados da peça (N308, opção 1): `post_note`, `read_notes` | P0 | P1, P7 | feito (#360) |
 | P14 | Supervisão do Diretor (N309): sinais, `warn` e `redirect`, o canal pela resposta MCP (D8) e os três extras | P13 | P2, P5 | feito (#414) |
 | P15 | `ask_director` (N308, opção 2): o `blocked` que não encerra, com espera, prazo e o modo `relay` pelo canal do P14 | P14 | P3 a P12 | feito (#420) |
-| P16 | Aceite da fase | P1 a P15, P17, P18 | nada | a fazer |
+| P16 | Aceite da fase | P1 a P15 (com P10a, P10b e P10c), P17, P18 | nada | a fazer |
 | P17 | Testes da TUI num terminal real com o `@microsoft/tui-test` (N320) | P1, P7, P13 | os da onda 2 | feito (este PR) |
 | P18a | Nova detecção dos clientes (N321, itens 2 e 5): sem reiniciar o daemon, a cada abertura do assistente e ao criar uma conta; no Windows, o `Path` do registro; o motivo de cada cliente não achado na API | P7 | os da onda 2 | feito (#367) |
 | P18b | O assistente resolve na tela (N321, itens 1 e 4): as teclas I, R e A, o motivo na tela e as mensagens sem comandos `ot` | P18a | os da onda 2 | feito (#371) |
@@ -113,7 +114,7 @@ Ondas **[proposta, forma decidida na D9]**:
 - onda 1, logo depois do merge deste plano: **P1, P7 e P13**, em paralelo (três agentes);
 - onda 2: **P2, P5 e P14**, e o **P17** (N320, acrescentado em 2026-11-25), que mexe só nos testes da TUI e na CI;
 - onda 3: **P3, P8 e P9**, e depois **P6** e **P15**, assim que uma vaga abrir;
-- onda 4 (reordenada pelo dono em 2026-11-28, com a divisão do P10): primeiro o **P10a**, sozinho; depois **P4 e P12**, em paralelo; por fim o **P10b**;
+- onda 4 (reordenada pelo dono em 2026-11-28, com a divisão do P10): primeiro o **P10a**, sozinho; depois **P4 e P12**, em paralelo; por fim o **P10b** e o **P10c** (a troca da máquina, acrescentada pelo dono em 2026-11-28);
 - onda 5: **P11** e **P16**.
 
 O P3 é o passo de maior risco, porque troca o núcleo mais testado. Ele corre sozinho na suíte completa: enquanto ele roda os e2e, os outros dois agentes da onda só rodam os testes do próprio pacote.
@@ -483,7 +484,11 @@ Depois, o P4 e o P12 correm em paralelo. O **P10b** vem por último, com o resto
   - a troca da máquina da peça pela definição: ligar o `PlayStageHost` e o `createPlayStepRunners` ao runtime, a peça passar a rodar pela `play.yaml` e o `playMachine` escrito à mão sair; o critério 4 continua valendo (a suíte da máquina e os e2e da peça passam sem mudar o que conferem);
   - o desativar de uma versão na biblioteca, para um pacote com versão ativa poder sair (`ot flow` e a rota).
 
-**Como ficou (P10a)** (2026-11-28, branch `fase11b/p10a-play-pela-definicao`; [V] com os testes locais de `codehost-github` e `daemon`; sem rede, sem cliente real; as rotas, a CLI e o desativar são do P10b):
+**Como ficou (P10a)** (2026-11-28, PR #423; [V] com os testes locais de `codehost-github` e `daemon`; sem rede, sem cliente real; as rotas, a CLI e o desativar são do P10b; as escolhas do Claude foram aceitas pelo dono em 2026-11-28):
+- **Decisões do dono (2026-11-28, por múltipla escolha):**
+  - a troca da máquina (o desvio abaixo) segue por **ponte, e a troca depois**. O P12 cria o tipo de passo `run_play`, que abre uma peça pelo `PlayRunner` atual, e o P4 aplica a N295 ao motor genérico. A troca virou o passo **P10c**, sozinho, depois do P4 e do P12 e antes do P16, ainda com o critério 4. A D2 (N311) continua valendo: a máquina sai, só que no P10c;
+  - as escolhas [proposta] deste bloco foram aceitas como estão ("Aceitar todas");
+  - com `event_poll: off`, o laço de eventos nem começa; a correção vai no P12, que toca os gatilhos.
 - **Os leitores do code host para os gatilhos** (`adapters/codehost-github/src/repo-reader.ts`): `GithubRepoReader`, com `listOpen({repo, since, limit})` para o `PullRequestLister` e `isCollaborator({repo, login})` para o `CollaboratorCheck`, sobre o mesmo `gh api` do adaptador (mesmas opções, mesmo lançador, mesmo token do cofre). O `CiReader` é o próprio `CodeHost` composto (`fetchCiLog`), então não ganhou classe. [V] testados contra o `fake-gh` (4 testes novos; os 66 do pacote passam).
   - [proposta] Uma classe à parte, fora da porta `CodeHost` (0.2.0), para não mudar a porta. Mudar a porta fica com o dono.
   - [proposta] Colaborador é quem tem `admin` ou `write`; `read` fica de fora, porque num repositório público todo mundo o tem.
