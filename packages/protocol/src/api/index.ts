@@ -32,5 +32,6 @@ export * from './analysis.js';
 export * from './telemetry.js';
 export * from './health.js';
 export * from './updates.js';
+export * from './workflows.js';
 export * from './registry.js';
 export * from './catalog.js';

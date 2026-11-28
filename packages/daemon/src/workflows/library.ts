@@ -50,6 +50,9 @@ export interface WorkflowLibraryDeps {
    */
   readonly onActivated?:
     ((workflowId: string, version: string) => void | Promise<void>) | undefined;
+  /** Called after the active version is turned off (`deactivate`); a failure in it is ignored. [proposta] */
+  readonly onDeactivated?:
+    ((workflowId: string, version: string) => void | Promise<void>) | undefined;
 }
 
 export interface InstallOptions {
@@ -132,6 +135,30 @@ export class WorkflowLibrary {
   }
 
   /**
+   * Turns the active version off (P10b, [proposta]): the workflow is left with none, so a binding
+   * of range `*` finds nothing to start and a package whose version was the active one can leave.
+   * The runs that are open keep the version they are in (a run resolves its own version). The
+   * version stays saved, and activating it again is the way back. A version that is not the active
+   * one changes nothing. `onDeactivated` (when given) is told after, and its failure is ignored.
+   */
+  async deactivate(workflowId: string, version: string): Promise<WorkflowDefinitionRecord> {
+    const registry = this.#deps.store.workflowDefinitions;
+    const before = await registry.get(workflowId, version);
+    if (before === undefined) {
+      throw new NotFound(`the workflow ${workflowId} has no version ${version}`);
+    }
+    const record = await registry.deactivate(workflowId, version);
+    if (before.state === 'active') {
+      try {
+        await this.#deps.onDeactivated?.(workflowId, version);
+      } catch {
+        // The version is off; nothing to undo.
+      }
+    }
+    return record;
+  }
+
+  /**
    * Deletes a saved version. The active version is kept (`Conflict`), and so is any version while
    * a live run is born in it (`Conflict`): old versions stay while a run uses them.
    */
@@ -143,7 +170,7 @@ export class WorkflowLibrary {
     }
     if (record.state === 'active') {
       throw new Conflict(
-        `${workflowId}@${version} is the active version; activate another one first`,
+        `${workflowId}@${version} is the active version; activate another one first or deactivate it`,
       );
     }
     if (await this.#hasLiveRuns(workflowId, version)) {

@@ -263,6 +263,22 @@ export const ScenarioDirectorSwitchNoticeSchema = z.strictObject({
   kind: z.literal('director_switch'),
 });
 
+/**
+ * The `workflow_budget` kind of the chat notice (Phase 11b, P10b, [proposta]): the budget of a
+ * binding of the scenario ran out and `workflows.budget.on_exhausted` paused or stopped it. The
+ * same facts as `workflow.budget_exhausted`, for the Producer; amounts in USD.
+ */
+export const ScenarioWorkflowBudgetNoticeSchema = z.strictObject({
+  scenarioId,
+  kind: z.literal('workflow_budget'),
+  bindingId: z.string().min(1),
+  workflowId: z.string().min(1),
+  action: z.enum(['pause', 'stop']),
+  budgetUsd: z.number().positive(),
+  spentUsd: z.number().min(0),
+  period: z.enum(['day', 'week', 'month']),
+});
+
 export const ScenarioSystemMessagePayloadSchema = z.discriminatedUnion('kind', [
   ScenarioRecoveryNoticeSchema,
   ScenarioHandoffNoticeSchema,
@@ -270,6 +286,7 @@ export const ScenarioSystemMessagePayloadSchema = z.discriminatedUnion('kind', [
   ScenarioResetWaitNoticeSchema,
   ScenarioDirectorFailoverNoticeSchema,
   ScenarioDirectorSwitchNoticeSchema,
+  ScenarioWorkflowBudgetNoticeSchema,
 ]);
 
 /** What a `play.notice` tells (P16b, [proposta]): a situation of the play the daemon used to only log. */

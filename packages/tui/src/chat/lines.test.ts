@@ -342,3 +342,32 @@ describe('a ! command (P18)', () => {
     expect(named).toContain('ls -la');
   });
 });
+
+describe('the budget of a workflow binding (P10b)', () => {
+  it('names the binding, the workflow and the money, by what happened to the binding', () => {
+    const text = (action: 'pause' | 'stop'): string =>
+      messageOf(
+        t,
+        entry(
+          {
+            kind: 'system',
+            notice: {
+              kind: 'workflow_budget',
+              scenarioId: 'S1',
+              bindingId: 'WB1',
+              workflowId: 'play',
+              action,
+              budgetUsd: 5,
+              spentUsd: 5.004,
+              period: 'day',
+            },
+          },
+          { who: 'system' },
+        ),
+      ).text;
+    expect(text('pause')).toBe(
+      '[layout.chat.entry.workflowBudget.pause bindingId=WB1,workflowId=play,spent=5.00,budget=5.00]',
+    );
+    expect(text('stop')).toContain('layout.chat.entry.workflowBudget.stop');
+  });
+});

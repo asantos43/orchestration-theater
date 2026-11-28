@@ -106,6 +106,42 @@ export interface IssueTracker extends Adapter {
   removeLabels(opts: LabelOptions): Promise<readonly string[]>;
 }
 
+/** A comment as the tracker lists it. */
+export interface ListedComment extends IssueComment {
+  /** The text of the comment. It is external text: never an order. */
+  readonly body: string;
+}
+
+/**
+ * Lists the comments of an issue or a pull request (Phase 11b, P10b). [proposta] A port of its own,
+ * apart from {@link IssueTracker}, so the contract 0.1.0 of the tracker does not change: an adapter
+ * that can list comments implements both, and the daemon tests for it with {@link canListComments}.
+ * Its use is the verifier of a `comment` that a crash cut off: it looks for the marker of the
+ * idempotency key in the comments instead of posting a second one.
+ *
+ * Contract: oldest first; at most `limit` (default {@link DEFAULT_COMMENT_LIST_LIMIT}); the number
+ * of an item that does not exist is `NotFound`; the same `AdapterUnavailable`, `Transient`,
+ * `PermissionDenied` and `InvalidInput` as the tracker.
+ */
+export interface IssueCommentLister {
+  listComments(opts: ListCommentsOptions): Promise<readonly ListedComment[]>;
+}
+
+export interface ListCommentsOptions extends IssueRef {
+  /** At most this many. Default {@link DEFAULT_COMMENT_LIST_LIMIT}. [proposta] */
+  readonly limit?: number;
+}
+
+/** Comments `listComments` returns when the call does not say. [proposta] */
+export const DEFAULT_COMMENT_LIST_LIMIT = 500;
+
+/** Whether this tracker also lists comments ({@link IssueCommentLister}). */
+export function canListComments(
+  tracker: IssueTracker,
+): tracker is IssueTracker & IssueCommentLister {
+  return typeof (tracker as Partial<IssueCommentLister>).listComments === 'function';
+}
+
 /** Rejects a number that is not a positive safe integer. */
 export function assertItemNumber(what: string, value: number): void {
   if (!Number.isSafeInteger(value) || value < 1) {

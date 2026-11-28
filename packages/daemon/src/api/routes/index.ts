@@ -32,6 +32,7 @@ import { registerTelemetryRoutes } from './telemetry.js';
 import { registerTrajectoryRoutes } from './trajectories.js';
 import { registerUpdateCommands, registerUpdateRoutes } from './updates.js';
 import { registerUsageRoutes } from './usage.js';
+import { registerWorkflowCommands, registerWorkflowRoutes } from './workflows.js';
 
 export type { CommandRouteDeps, ReadRouteDeps } from './deps.js';
 
@@ -62,6 +63,7 @@ export function registerReadRoutes(handlers: ApiHandlers, deps: ReadRouteDeps): 
   registerTelemetryRoutes(handlers, deps);
   registerPluginRoutes(handlers, deps);
   registerUpdateRoutes(handlers, deps);
+  registerWorkflowRoutes(handlers, deps);
 }
 
 /**
@@ -91,4 +93,5 @@ export function registerCommandRoutes(handlers: ApiHandlers, deps: CommandRouteD
   registerDirectCommands(register, deps);
   registerPluginCommands(register, deps);
   registerUpdateCommands(register, deps);
+  registerWorkflowCommands(register, deps);
 }

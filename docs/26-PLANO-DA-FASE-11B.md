@@ -98,8 +98,8 @@ O `@otheater/workflows` é pacote novo do monorepo, não dependência de fora. E
 | P9 | Pacotes de workflow (N298): arquivo ou git com ref fixa, permissões na instalação, SSHSIG e chaves confiáveis (D5) | P1, P5 | P3, P6, P8 | feito (#417) |
 | P10a | Os gatilhos do P6 e o motor na composição do daemon e os leitores GitHub de PR, colaborador e CI (a troca da máquina passou ao P10c) | P3, P6, P8 | nada | feito (#423) |
 | P10c | A peça pela `play.yaml`: o `PlayStageHost` no runtime, as cinco diferenças do P3, o snapshot e a retomada da peça, e o `playMachine` sai (critério 4); a parte da N295 que vale só para a peça | P4, P12 | nada | parcial (a troca passou ao P10d) |
-| P10d | A troca da máquina reescrita por estágio (opção A do dono): um redutor por estágio, o driver da peça sobre o runtime, um `Model` novo e a suíte da máquina substituída por uma equivalente; o `playMachine` sai; o caos I1 a I8 sobre a `play` 2.0, o I3 e o I6; os desvios do docs/24 §11 que dependem da peça | P10b, P10c | nada | a fazer |
-| P10b | API e CLI: validar, simular com o `fake-agent`, salvar, ativar, desativar, diff, listar, instalar (`ot flow ...`) | P4, P5, P9, P10a | P12, P10c | a fazer |
+| P10d | A troca da máquina reescrita por estágio (opção A do dono): um redutor por estágio, o driver da peça sobre o runtime, um `Model` novo e a suíte da máquina substituída por uma equivalente; o `playMachine` sai; o caos I1 a I8 sobre a `play` 2.0, o I3 e o I6; os desvios do docs/24 §11 que dependem da peça; o `simulate` rodando o `fake-agent` e a triagem pelo Diretor no `github-issues` (decisões do dono sobre o P10b) | P10b, P10c | nada | a fazer |
+| P10b | API e CLI: validar, simular com o `fake-agent`, salvar, ativar, desativar, diff, listar, instalar (`ot flow ...`) | P4, P5, P9, P10a | P12, P10c | feito |
 | P11 | Editor do YAML na TUI, com o validador do P1 | P10b | P15, P16 (a parte automática) | a fazer |
 | P12 | Workflows prontos: `github-issues`, `pr-review` e `ci-fix` | P6, P8, P10a | P4, P10b | feito (#425) |
 | P13 | Mural de recados da peça (N308, opção 1): `post_note`, `read_notes` | P0 | P1, P7 | feito (#360) |
@@ -540,6 +540,40 @@ Depois, o P4 e o P12 correm em paralelo. O **P10b** vem por último, com o resto
   - o `PlayRunner` é dirigido por evento (`send(playId, evento)`, com a caixa de saída transacional e o `resumeAll` por snapshot do XState), e o `WorkflowRuntime` é dirigido por passo; trocar um pelo outro muda o formato do snapshot e do ponto de retomada, que o caos da Fase 11 (I1 a I8) confere. As cinco transições que a máquina tem e a definição não tem (`CRITIQUING -> PLANNING`, `DECIDING -> PLANNING`, `DELIVERING -> SCRIPTING`, `PLANNING -> AWAITING_PRODUCER`, `REVIEWING_SCRIPT -> INTEGRATING`) pedem saídas novas nos tipos de passo, e o roteiro manda parar e relatar quando o critério 4 não puder ser cumprido de algum jeito, em vez de decidir sozinho;
   - os dois motores convivem sem conflito: o `PlayRunner.resumeAll` pula o que não é `flowId: 'play'` e o `WorkflowRuntime.resumeAll` pula o snapshot que não passa em `SavedRunSchema`; o `workflows.legacy_snapshot`, o `assertPlayFlowLinked`, os ganchos do P14 e o `ask_director` do P15 continuam como estavam.
 - **Fica para o P10b (e a troca da máquina, a decidir):** a troca da máquina (exige decidir as cinco diferenças e a forma do snapshot da peça), as rotas e o `ot flow`, o desativar de uma versão, a exposição da biblioteca e dos vínculos no `DaemonHandle`, a instalação da `play` embutida na biblioteca na subida (hoje o teste a instala à mão), o localizador de comentários e o canal do chat para `onBudgetExhausted` (a composição o deixa sem destino).
+
+**Como ficou (P10b)** (2026-11-28; [V] com os testes locais de `core`, `codehost-github`, `protocol`, `client`, `daemon` e `tui`, com o `fake-gh`, o `fake-agent` e o relógio falso; sem rede, sem cliente real; não mexi no que é do P10c):
+- **As rotas** (`daemon/src/api/routes/workflows.ts`, registradas em `protocol/src/api/workflows.ts` e em `docs/reference/api-routes.json`): `validate`, `simulate`, `save`, `activate`, `deactivate`, `diff`, `list` (versões), `install` (e a lista e a remoção de pacotes), `bindings` (criar, listar, pausar, retomar, parar) e `runs`. O `client` ganhou 17 métodos. [V] testes de rota com o motor montado como o daemon o monta.
+- **A CLI** (`daemon/src/commands/flow.ts`): `ot flow validate|simulate|save|activate|deactivate|diff|list|install|bind|pause|resume|stop`, com ajuda (`ot help flow`) e catálogos `en` e `pt-BR`. Os erros da API saem com o código e os `issues`. Guia de uso na seção 7 do `docs/27`. [V] 30 testes de `flow.test.ts` contra o daemon de teste (sem rede): o `main()` só cobre o uso, a ausência de daemon e a ajuda; o resto chama `runFlowCommand` com um cliente montado no rig, porque o `main()` não aceita um cliente injetado.
+- **Na biblioteca e na composição:**
+  - o desativar de uma versão (`deactivate`), com o evento e sem versão ativa depois;
+  - `running_on_change` (`pin` ou `migrate_at_safe_point`) e `onActivated`: a ativação com peça em curso segue a N295 e a resposta diz o modo; a migração que falha vira `daemon.notice` (`workflow_migration_failed`);
+  - `require_approval` chega aos validadores;
+  - a biblioteca e os vínculos no `DaemonHandle`;
+  - a `play` embutida é instalada na subida, se faltar;
+  - `onBudgetExhausted` tem o canal do chat (tipo novo `workflow_budget` em `scenario.system_message`, mostrado na TUI) e o evento do protocolo;
+  - o localizador de comentários é uma porta à parte (`workflows/comment-finder.ts`), com o verificador de `comment` resolvendo o efeito cortado por queda em vez de `effect_ambiguous`.
+- **Chaves de configuração novas:** `workflows.simulate.max_steps` (padrão 200) e `workflows.simulate.on_limit` (`truncate`, o padrão, ou `fail`).
+- **[proposta] (perguntas ao dono; nada aqui decide o `docs/13`):**
+  1. `simulate` é um passeio seco pelo grafo, sem rodar o `fake-agent`: os executores dos passos da peça só ligam no P10c. Troca por rodar o `fake-agent` quando o P10c ligar.
+  2. O localizador é uma porta separada (`IssueCommentLister`), fora do `IssueTracker`, para não mudar a porta.
+  3. `deactivate` deixa o workflow sem versão ativa (em vez de reativar a anterior).
+  4. A triagem `ask_director` fica fora do `github-issues` [N]: ela é uma ferramenta do Ator, não um tipo de passo, e o yaml pronto não muda (`ready-yaml.ts` continua igual ao `.yaml`).
+  5. A instalação de pacote é em duas fases (prévia, depois `approvedHash`); se o pacote mudou entre as duas, a resposta é 409 `conflict`. Foi acrescentada a remoção de pacote.
+  6. `bind` copia os gatilhos da definição no daemon; `triggers: []` quer dizer nenhum.
+  7. A resposta de `activate` traz o `runningOnChange`.
+  8. Rotas a mais do que o plano listava: ler uma versão, listar pacotes e remover pacote.
+  9. O localizador lê até 1000 comentários; uma conversa maior sem marca faz o verificador responder `ambiguous`.
+  10. O aviso do chat é o tipo `workflow_budget` em `scenario.system_message`.
+  11. O `daemon.notice` ganhou o tipo `workflow_migration_failed`.
+  12. A `play` embutida é instalada na subida, se faltar (não sobrescreve).
+  13. O instalador é composto com `process.env` e `process.cwd()`.
+  14. As mensagens das rotas estão em inglês (como as outras); as da CLI, nos catálogos.
+  15. As chaves `workflows.simulate.max_steps` e `workflows.simulate.on_limit`, acima, e os padrões.
+  16. A forma da CLI: `list <o quê>`; `activate <id> <versão>` ou `<id>@<versão>`; `simulate <arquivo | id[@versão]>`; `install` em duas chamadas com `--approve <hash>`; simulação truncada sai com 0 e recusa com 1; as opções novas (`--workflow`, `--state`, `--input`, `--outputs`, `--fail`, `--activate`, `--approve`, `--range`, `--params`, `--triggers`, `--budget`, `--period`, `--concurrency`, `--on-busy`); `--until` só com dígitos vira número (época em ms); reaproveita `chat.noDaemon` e `chat.connectFailed`.
+- **Fica de fora:** a troca da máquina da peça (P10c), a triagem do Diretor no `github-issues` [N] e a tela da TUI (P11). [N] Nada foi exercitado com GitHub, modelo ou cliente reais.
+- **Decisões do dono (2026-11-28, por múltipla escolha):**
+  - as 16 escolhas [proposta] acima foram aceitas ("Aceitar todas");
+  - o `simulate` rodando o `fake-agent` (em vez do passeio seco) e a triagem pelo Diretor no `github-issues` passam ao **P10d**.
 
 **Como ficou (P10c)** (2026-11-28; [V] com tsc, lint e prettier nos arquivos tocados e os testes locais de `workflows`, `protocol` e `daemon`; sem rede e sem cliente real; **a troca da máquina NÃO foi feita**, por causa do critério 4, e o passo ficou parcial):
 - **Troca da `playMachine` pela `play.yaml`: parada e relatada, como o roteiro manda.** O critério 4 (a suíte da máquina e os e2e da peça passam sem mudar o que conferem) não pode ser cumprido por uma troca direta. Os motivos [V], lendo o código:

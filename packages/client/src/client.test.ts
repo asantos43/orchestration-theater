@@ -449,6 +449,60 @@ describe('orders (P15)', () => {
   });
 });
 
+describe('workflows (P10b)', () => {
+  it('sends each call to its route with the params, the query, the body and the key as the daemon reads them', async () => {
+    // The daemon answers 404 to all of them: what matters here is what was sent.
+    const started = await daemon({
+      handler: () => ({ status: 404, json: apiError('not_found', 'nothing here') }),
+    });
+    const client = clientOf(started);
+    const run = async (call: Promise<unknown>): Promise<void> => {
+      const error = await call.catch((caught: unknown) => caught);
+      expect(error).toBeInstanceOf(ApiRequestError);
+    };
+    const document = { yaml: 'id: x' };
+    await run(client.validateWorkflow(document));
+    await run(client.simulateWorkflow({ ...document, fail: ['review'] }));
+    await run(client.saveWorkflow({ ...document, activate: true }, { idempotencyKey: 'k-1' }));
+    await run(client.listWorkflows({ workflowId: 'play', state: 'active' }));
+    await run(client.getWorkflowVersion('play', '1.0.0'));
+    await run(client.activateWorkflow('play', '1.0.0'));
+    await run(client.deactivateWorkflow('play', '1.0.0'));
+    await run(client.diffWorkflow('play', '1.0.0', '1.1.0'));
+    await run(client.installWorkflowPackage({ origin: './pack' }));
+    await run(client.listWorkflowPackages());
+    await run(client.removeWorkflowPackage('pack'));
+    await run(client.listWorkflowBindings({ scenarioId: 'S1' }));
+    await run(client.bindWorkflow({ scenarioId: 'S1', workflowId: 'play', triggers: [] }));
+    await run(client.pauseWorkflowBinding('WB1'));
+    await run(client.resumeWorkflowBinding('WB1'));
+    await run(client.stopWorkflowBinding('WB1'));
+    await run(client.listWorkflowRuns({ status: 'open' }));
+    const sent = started.requests.map((request) => `${request.method} ${request.target}`);
+    expect(sent).toEqual([
+      'POST /v1/workflows/validate',
+      'POST /v1/workflows/simulate',
+      'POST /v1/workflows',
+      'GET /v1/workflows?workflowId=play&state=active',
+      'GET /v1/workflows/play/versions/1.0.0',
+      'POST /v1/workflows/play/versions/1.0.0/activate',
+      'POST /v1/workflows/play/versions/1.0.0/deactivate',
+      'GET /v1/workflows/play/diff?from=1.0.0&to=1.1.0',
+      'POST /v1/workflow-packages/install',
+      'GET /v1/workflow-packages',
+      'DELETE /v1/workflow-packages/pack',
+      'GET /v1/workflow-bindings?scenarioId=S1',
+      'POST /v1/workflow-bindings',
+      'POST /v1/workflow-bindings/WB1/pause',
+      'POST /v1/workflow-bindings/WB1/resume',
+      'POST /v1/workflow-bindings/WB1/stop',
+      'GET /v1/workflow-runs?status=open',
+    ]);
+    expect(JSON.parse(started.requests[2]?.body ?? '{}')).toEqual({ ...document, activate: true });
+    expect(started.requests[2]?.headers['idempotency-key']).toBe('k-1');
+  });
+});
+
 describe('errors', () => {
   it('an error answer of the API is an ApiRequestError with code, status and details', async () => {
     const started = await daemon({

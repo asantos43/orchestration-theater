@@ -31,6 +31,16 @@ describe('the workflows block of the configuration', () => {
     });
   });
 
+  it('takes the simulate keys and refuses a bad limit or mode', () => {
+    expect(parseConfig('').workflows.simulate).toEqual({ max_steps: 200, on_limit: 'truncate' });
+    expect(
+      parseConfig('workflows:\n  simulate:\n    max_steps: 50\n    on_limit: fail\n').workflows
+        .simulate,
+    ).toEqual({ max_steps: 50, on_limit: 'fail' });
+    expect(() => parseConfig('workflows:\n  simulate:\n    max_steps: 0\n')).toThrow();
+    expect(() => parseConfig('workflows:\n  simulate:\n    on_limit: ignore\n')).toThrow();
+  });
+
   it('allowed takes all_installed or a non-empty list of workflow ids', () => {
     expect(parseConfig('workflows:\n  allowed: all_installed\n').workflows.allowed).toBe(
       'all_installed',

@@ -239,7 +239,7 @@ export class WorkflowPackageInstaller {
 
   /**
    * Removes a package: the workflow versions it brought, and its registry entry. Nothing is removed
-   * when one of its versions is still the active one (`Conflict`: activate another first); a
+   * when one of its versions is still the active one (`Conflict`: activate another first, or `library.deactivate` it); a
    * version that a live run still uses (`Conflict` from the library) stops the removal there, and
    * what was removed before it stays removed.
    */
@@ -254,7 +254,7 @@ export class WorkflowPackageInstaller {
       const active = records.filter((record) => record.state === 'active');
       if (active.length > 0) {
         throw new Conflict(
-          `${active.map((record) => ref({ id: record.workflowId, version: record.version })).join(', ')} is the active version of its workflow; activate another version first`,
+          `${active.map((record) => ref({ id: record.workflowId, version: record.version })).join(', ')} is the active version of its workflow; activate another version first or deactivate it`,
         );
       }
       const removed: string[] = [];

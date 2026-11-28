@@ -83,7 +83,20 @@
     "unknownVaultAction": "Unknown action \"{{action}}\" for \"ot vault\". Use status or use.",
     "missingVaultMode": "Missing vault for \"ot vault use\". Use keyring, encrypted-file or auto.",
     "unknownVaultMode": "Unknown vault \"{{mode}}\" for \"ot vault use\". Use keyring, encrypted-file or auto.",
-    "profileUnknownClient": "\"ot profile add\": unknown client \"{{client}}\"; the clients are {{known}}."
+    "profileUnknownClient": "\"ot profile add\": unknown client \"{{client}}\"; the clients are {{known}}.",
+    "missingFlowAction": "Missing action for \"ot flow\". Use validate, simulate, save, activate, deactivate, diff, list, install, bind, pause, resume or stop.",
+    "unknownFlowAction": "Unknown action \"{{action}}\" for \"ot flow\". Use validate, simulate, save, activate, deactivate, diff, list, install, bind, pause, resume or stop.",
+    "flowArguments": "Wrong arguments for \"ot flow {{action}}\". Use: ot flow {{action}} {{shape}}",
+    "flowBadOption": "Option --{{option}}: {{reason}}",
+    "flowReason": {
+      "present": "a value is needed",
+      "json": "not valid JSON ({{detail}})",
+      "object": "a JSON object is needed",
+      "list": "a JSON list of objects is needed",
+      "positive": "a positive number is needed",
+      "integer": "a positive whole number is needed",
+      "choice": "use one of: {{detail}}"
+    }
   },
   "daemon": {
     "running": "OTheater daemon running (pid {{pid}}), data in {{dataDir}}. Press Ctrl+C to stop.",
@@ -224,6 +237,10 @@
     "ideaGroupOptions": "Type: approve | edit <new need> | keep <ids in order> | refuse [reason].",
     "ideaGroupBad": "That is not one of the options. Type: approve, edit <new need>, keep <ids> or refuse [reason].",
     "system": {
+      "workflowBudget": {
+        "pause": "System: the budget of the binding {{bindingId}} ({{workflowId}}) ran out: {{spent}} of {{budget}} USD this {{period}}. The binding is paused until the next period; you may resume it.",
+        "stop": "System: the budget of the binding {{bindingId}} ({{workflowId}}) ran out: {{spent}} of {{budget}} USD this {{period}}. The binding was stopped."
+      },
       "handoff": "System: attempt {{attemptId}} passed the baton from {{from}} to {{to}} ({{cause}}); the work goes on from the saved state.",
       "selectionWait": "System: the {{role}} waits for an Executor that is not of the same {{what}} as the work ({{crossCheck}}); nothing else is available: {{on}}. It goes on by itself when one is.",
       "resetWait": "System: attempt {{attemptId}} waits for {{what}} of {{executor}} to come back, until {{until}}; it resumes the same conversation by itself.",
@@ -289,6 +306,61 @@
   },
   "errors": {
     "prefix": "Error: {{message}}"
+  },
+  "flow": {
+    "issue": "{{path}}: {{message}}{{at}}",
+    "atLine": " (line {{line}})",
+    "warning": "Warning: {{text}}",
+    "readFailed": "Cannot read {{path}}: {{reason}}",
+    "refused": "The daemon refused ({{code}}): {{message}}",
+    "none": "none",
+    "validate": {
+      "ok": "Valid: {{id}} {{version}} (hash {{hash}}).",
+      "invalid": "Not valid: {{count}} problem(s)."
+    },
+    "simulate": {
+      "refused": "Nothing to simulate ({{reason}}): {{detail}}",
+      "head": "Simulation of {{id}} {{version}}: {{status}}, ended at {{ended}}.",
+      "step": "{{n}}. {{node}} ({{step}}) -> {{to}} via {{via}}",
+      "effects": "     would do: {{effects}}",
+      "truncated": "The walk stopped at workflows.simulate.max_steps; the rest was not simulated."
+    },
+    "saved": "Saved {{id}} {{version}} ({{state}}).",
+    "activated": "Activated {{id}} {{version}}. Runs in progress: {{mode}}.",
+    "mode": {
+      "pin": "stay on the version they were born in",
+      "migrate_at_safe_point": "move to the new version at a safe point"
+    },
+    "deactivated": "Deactivated {{id}} {{version}}. The workflow has no active version now.",
+    "diff": {
+      "same": "{{id}}: {{from}} and {{to}} are the same.",
+      "head": "{{id}}: {{from}} -> {{to}}, {{count}} change(s).",
+      "change": "  {{change}} {{area}} {{key}}",
+      "before": "      before: {{value}}",
+      "after": "      after: {{value}}"
+    },
+    "install": {
+      "package": "Package {{id}} {{version}}: {{count}} workflow(s), hash {{hash}}.",
+      "permissions": "Permissions: {{list}}",
+      "newPermissions": "New permissions: {{list}}",
+      "signature": "Signature: {{state}} ({{detail}})",
+      "refused": "Refused ({{reason}}): {{detail}}",
+      "confirm": "Needs your confirmation: {{list}}",
+      "approve": "To install it as shown, run the command again with --approve {{hash}}",
+      "done": "Package {{id}} {{version}}: {{status}}.",
+      "workflow": "  {{id}} {{version}} ({{state}})"
+    },
+    "bound": "Binding {{id}}: {{workflowId}} {{range}} in scenario {{scenarioId}} ({{count}} trigger(s), {{state}}).",
+    "bindingNow": "Binding {{id}} is {{state}}.",
+    "noBudget": "no budget",
+    "budget": "budget {{budget}} per {{period}}, spent {{spent}}",
+    "list": {
+      "none": "Nothing to list.",
+      "version": "{{id}} {{version}} [{{state}}] ({{source}})",
+      "binding": "{{id}} [{{state}}] {{workflowId}} {{range}} in {{scenarioId}}; {{budget}}",
+      "run": "{{runId}} [{{status}}] {{workflowId}} {{version}} in {{scenarioId}}: {{state}}, {{steps}} step(s)",
+      "package": "{{id}} {{version}}: {{workflows}} (signature: {{signature}})"
+    }
   },
   "profile": {
     "daemonRunning": "The daemon is running on this data directory. Stop it before changing profiles (the live control of a running daemon is not built yet).",
@@ -952,6 +1024,130 @@
             "summary": "list: also expired and revoked orders"
           }
         }
+      },
+      "flow": {
+        "summary": "Workflows: check, simulate, save, turn on, bind to a scenario",
+        "description": "The workflows of the running daemon: check a definition, walk it with no executor, save and activate versions, compare them, install a package, bind a workflow to a scenario and stop, pause or resume that binding (the daemon must be running).",
+        "usage": "ot flow <action> [arguments] [options]",
+        "actions": {
+          "validate": {
+            "summary": "Check a definition (YAML or JSON) without saving it",
+            "args": "<file>"
+          },
+          "simulate": {
+            "summary": "Walk a definition or a saved version with no executor",
+            "args": "<file | id[@version]>"
+          },
+          "save": {
+            "summary": "Save a definition as a new version",
+            "args": "<file> [--activate]"
+          },
+          "activate": {
+            "summary": "Make a saved version the one new runs are born in",
+            "args": "<id> <version>"
+          },
+          "deactivate": {
+            "summary": "Leave a workflow with no active version",
+            "args": "<id> <version>"
+          },
+          "diff": {
+            "summary": "Compare two saved versions",
+            "args": "<id> <from> <to>"
+          },
+          "list": {
+            "summary": "List the versions, the bindings, the runs or the packages",
+            "args": "[workflows | bindings | runs | packages]"
+          },
+          "install": {
+            "summary": "Show a package, then install it with --approve",
+            "args": "<origin> [--approve <hash>]"
+          },
+          "bind": {
+            "summary": "Bind a workflow to a scenario",
+            "args": "<scenario> <workflow>"
+          },
+          "pause": {
+            "summary": "Pause a binding (no new run is born)",
+            "args": "<binding>"
+          },
+          "resume": {
+            "summary": "Resume a paused binding",
+            "args": "<binding>"
+          },
+          "stop": {
+            "summary": "Stop a binding for good",
+            "args": "<binding>"
+          }
+        },
+        "options": {
+          "workflow": {
+            "summary": "list: only this workflow",
+            "value": "<id>"
+          },
+          "scenario": {
+            "summary": "list: only this scenario",
+            "value": "<id>"
+          },
+          "state": {
+            "summary": "list: the state (versions: active, inactive; bindings: active, paused, stopped, expired; runs: open, finished)",
+            "value": "<state>"
+          },
+          "input": {
+            "summary": "simulate: the inputs, a JSON object",
+            "value": "<json>"
+          },
+          "outputs": {
+            "summary": "simulate: what nodes answer, a JSON object by node",
+            "value": "<json>"
+          },
+          "fail": {
+            "summary": "simulate: make this node fail (repeat it for more nodes)",
+            "value": "<node>"
+          },
+          "activate": {
+            "summary": "save: also make the new version the active one"
+          },
+          "approve": {
+            "summary": "install: the hash of the package you saw, to install it",
+            "value": "<hash>"
+          },
+          "range": {
+            "summary": "bind: the versions it follows (default: workflows.binding.version_range)",
+            "value": "<range>"
+          },
+          "params": {
+            "summary": "bind: the inputs it fixes, a JSON object",
+            "value": "<json>"
+          },
+          "triggers": {
+            "summary": "bind: the triggers, a JSON list (default: those of the definition; [] for none)",
+            "value": "<json>"
+          },
+          "until": {
+            "summary": "bind: the end of the binding, a duration (7d), a date in ms or none",
+            "value": "<when>"
+          },
+          "budget": {
+            "summary": "bind: the spending cap of a period, in USD",
+            "value": "<usd>"
+          },
+          "period": {
+            "summary": "bind: day, week or month",
+            "value": "<period>"
+          },
+          "concurrency": {
+            "summary": "bind: runs at the same time",
+            "value": "<n>"
+          },
+          "on-busy": {
+            "summary": "bind: queue, skip or replace when it is at the limit",
+            "value": "<mode>"
+          },
+          "json": {
+            "summary": "Print JSON instead of text"
+          }
+        },
+        "notes": "simulate never runs an Executor: it follows the edges with the outputs you give and stops at workflows.simulate.max_steps. A definition can be YAML or JSON. install shows the package, its permissions and its signature first; only the same hash with --approve installs it, and a changed package asks again."
       },
       "plugin": {
         "summary": "Install and manage plugins",

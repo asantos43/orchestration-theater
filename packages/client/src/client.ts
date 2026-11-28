@@ -329,6 +329,190 @@ export class ApiClient {
     });
   }
 
+  // ---- workflows (Phase 11b, P10b) ----
+
+  /** `POST /v1/workflows/validate`: checks a definition; the answer is 200 with the issues when it is not valid. */
+  validateWorkflow(
+    body: RouteBody<typeof API_ROUTES.validateWorkflow>,
+    options: CallControl = {},
+  ): Promise<RouteResponse<typeof API_ROUTES.validateWorkflow>> {
+    return this.call(API_ROUTES.validateWorkflow, { body, ...options });
+  }
+
+  /** `POST /v1/workflows/simulate`: walks a definition without running a step. */
+  simulateWorkflow(
+    body: RouteBody<typeof API_ROUTES.simulateWorkflow>,
+    options: CallControl = {},
+  ): Promise<RouteResponse<typeof API_ROUTES.simulateWorkflow>> {
+    return this.call(API_ROUTES.simulateWorkflow, { body, ...options });
+  }
+
+  /** `POST /v1/workflows`: validates and saves a version of the library. */
+  saveWorkflow(
+    body: RouteBody<typeof API_ROUTES.saveWorkflow>,
+    options: CommandControl = {},
+  ): Promise<RouteResponse<typeof API_ROUTES.saveWorkflow>> {
+    return this.call(API_ROUTES.saveWorkflow, {
+      body,
+      ...commandHeaders(options),
+      ...callControlOf(options),
+    });
+  }
+
+  /** `GET /v1/workflows`: the versions of the library. */
+  listWorkflows(
+    query: RouteQuery<typeof API_ROUTES.listWorkflows> = {},
+    options: CallControl = {},
+  ): Promise<RouteResponse<typeof API_ROUTES.listWorkflows>> {
+    return this.call(API_ROUTES.listWorkflows, { query, ...options });
+  }
+
+  /** `GET /v1/workflows/:workflowId/versions/:version`: one version with its definition. */
+  getWorkflowVersion(
+    workflowId: string,
+    version: string,
+    options: CallControl = {},
+  ): Promise<RouteResponse<typeof API_ROUTES.getWorkflowVersion>> {
+    return this.call(API_ROUTES.getWorkflowVersion, {
+      params: { workflowId, version },
+      ...options,
+    });
+  }
+
+  /** `POST /v1/workflows/:workflowId/versions/:version/activate`. */
+  activateWorkflow(
+    workflowId: string,
+    version: string,
+    options: CommandControl = {},
+  ): Promise<RouteResponse<typeof API_ROUTES.activateWorkflow>> {
+    return this.call(API_ROUTES.activateWorkflow, {
+      params: { workflowId, version },
+      ...commandHeaders(options),
+      ...callControlOf(options),
+    });
+  }
+
+  /** `POST /v1/workflows/:workflowId/versions/:version/deactivate`. */
+  deactivateWorkflow(
+    workflowId: string,
+    version: string,
+    options: CommandControl = {},
+  ): Promise<RouteResponse<typeof API_ROUTES.deactivateWorkflow>> {
+    return this.call(API_ROUTES.deactivateWorkflow, {
+      params: { workflowId, version },
+      ...commandHeaders(options),
+      ...callControlOf(options),
+    });
+  }
+
+  /** `GET /v1/workflows/:workflowId/diff`: what changed between two saved versions. */
+  diffWorkflow(
+    workflowId: string,
+    from: string,
+    to: string,
+    options: CallControl = {},
+  ): Promise<RouteResponse<typeof API_ROUTES.diffWorkflow>> {
+    return this.call(API_ROUTES.diffWorkflow, {
+      params: { workflowId },
+      query: { from, to },
+      ...options,
+    });
+  }
+
+  /**
+   * `POST /v1/workflow-packages/install`: without `approvedHash` it only previews; with the hash of
+   * the preview it installs.
+   */
+  installWorkflowPackage(
+    body: RouteBody<typeof API_ROUTES.installWorkflowPackage>,
+    options: CallControl = {},
+  ): Promise<RouteResponse<typeof API_ROUTES.installWorkflowPackage>> {
+    return this.call(API_ROUTES.installWorkflowPackage, { body, ...options });
+  }
+
+  /** `GET /v1/workflow-packages`. */
+  listWorkflowPackages(
+    options: CallControl = {},
+  ): Promise<RouteResponse<typeof API_ROUTES.listWorkflowPackages>> {
+    return this.call(API_ROUTES.listWorkflowPackages, options);
+  }
+
+  /** `DELETE /v1/workflow-packages/:packageId`. */
+  removeWorkflowPackage(
+    packageId: string,
+    options: CommandControl = {},
+  ): Promise<RouteResponse<typeof API_ROUTES.removeWorkflowPackage>> {
+    return this.call(API_ROUTES.removeWorkflowPackage, {
+      params: { packageId },
+      ...commandHeaders(options),
+      ...callControlOf(options),
+    });
+  }
+
+  /** `GET /v1/workflow-bindings`. */
+  listWorkflowBindings(
+    query: RouteQuery<typeof API_ROUTES.listWorkflowBindings> = {},
+    options: CallControl = {},
+  ): Promise<RouteResponse<typeof API_ROUTES.listWorkflowBindings>> {
+    return this.call(API_ROUTES.listWorkflowBindings, { query, ...options });
+  }
+
+  /** `POST /v1/workflow-bindings`: binds a scenario to a workflow; without `triggers` it takes the definition's. */
+  bindWorkflow(
+    body: RouteBody<typeof API_ROUTES.bindWorkflow>,
+    options: CommandControl = {},
+  ): Promise<RouteResponse<typeof API_ROUTES.bindWorkflow>> {
+    return this.call(API_ROUTES.bindWorkflow, {
+      body,
+      ...commandHeaders(options),
+      ...callControlOf(options),
+    });
+  }
+
+  /** `POST /v1/workflow-bindings/:bindingId/pause`. */
+  pauseWorkflowBinding(
+    bindingId: string,
+    options: CommandControl = {},
+  ): Promise<RouteResponse<typeof API_ROUTES.pauseWorkflowBinding>> {
+    return this.call(API_ROUTES.pauseWorkflowBinding, {
+      params: { bindingId },
+      ...commandHeaders(options),
+      ...callControlOf(options),
+    });
+  }
+
+  /** `POST /v1/workflow-bindings/:bindingId/resume`. */
+  resumeWorkflowBinding(
+    bindingId: string,
+    options: CommandControl = {},
+  ): Promise<RouteResponse<typeof API_ROUTES.resumeWorkflowBinding>> {
+    return this.call(API_ROUTES.resumeWorkflowBinding, {
+      params: { bindingId },
+      ...commandHeaders(options),
+      ...callControlOf(options),
+    });
+  }
+
+  /** `POST /v1/workflow-bindings/:bindingId/stop`. */
+  stopWorkflowBinding(
+    bindingId: string,
+    options: CommandControl = {},
+  ): Promise<RouteResponse<typeof API_ROUTES.stopWorkflowBinding>> {
+    return this.call(API_ROUTES.stopWorkflowBinding, {
+      params: { bindingId },
+      ...commandHeaders(options),
+      ...callControlOf(options),
+    });
+  }
+
+  /** `GET /v1/workflow-runs`: the runs of workflows, with the version each is in and was born in. */
+  listWorkflowRuns(
+    query: RouteQuery<typeof API_ROUTES.listWorkflowRuns> = {},
+    options: CallControl = {},
+  ): Promise<RouteResponse<typeof API_ROUTES.listWorkflowRuns>> {
+    return this.call(API_ROUTES.listWorkflowRuns, { query, ...options });
+  }
+
   /**
    * The handshake: asks `GET /v1/status` and checks what comes back. A different `daemonId` from
    * the one the client was told is a {@link DaemonIdMismatchError} (N168), and an API version

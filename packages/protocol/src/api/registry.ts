@@ -28,6 +28,7 @@ import { TRAJECTORY_ROUTES } from './trajectories.js';
 import { USAGE_ROUTES } from './usage.js';
 import { HEALTH_ROUTES } from './health.js';
 import { UPDATE_ROUTES } from './updates.js';
+import { WORKFLOW_ROUTES } from './workflows.js';
 
 /**
  * Every route of the daemon API, keyed by `id`. A resource keeps its routes in its own file of
@@ -63,6 +64,7 @@ export const API_ROUTES = {
   ...ANALYSIS_ROUTES,
   ...TELEMETRY_ROUTES,
   ...UPDATE_ROUTES,
+  ...WORKFLOW_ROUTES,
   ...HEALTH_ROUTES,
 } as const;
 

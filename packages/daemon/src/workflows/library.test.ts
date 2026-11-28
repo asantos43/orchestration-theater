@@ -225,6 +225,53 @@ describe('the activation and the live runs by version (N295)', () => {
   });
 });
 
+describe('WorkflowLibrary.deactivate (P10b)', () => {
+  it('leaves the workflow with no active version and lets the version be removed', async () => {
+    const told: string[] = [];
+    const store = newStore();
+    const library = newLibrary(store, DEFAULT_WORKFLOWS_SETTINGS, {
+      onDeactivated: (workflowId, version) => {
+        told.push(`${workflowId}@${version}`);
+      },
+    });
+    await library.install(play('1.0.0'), { source: 'user' });
+    const off = await library.deactivate('play', '1.0.0');
+    expect(off).toMatchObject({ state: 'inactive' });
+    expect(await library.active('play')).toBeUndefined();
+    expect(await library.resolve('play', '*')).toBeUndefined();
+    // An exact version still resolves: a run keeps the version it is in.
+    expect(await library.resolve('play', '1.0.0')).toMatchObject({ version: '1.0.0' });
+    expect(told).toEqual(['play@1.0.0']);
+    await library.remove('play', '1.0.0');
+  });
+
+  it('changes nothing for a version that is not the active one, and an unknown one is not found', async () => {
+    const told: string[] = [];
+    const library = newLibrary(newStore(), DEFAULT_WORKFLOWS_SETTINGS, {
+      onDeactivated: () => {
+        told.push('x');
+      },
+    });
+    await library.install(play('1.0.0'), { source: 'user' });
+    await library.install(play('1.1.0'), { source: 'user', activate: false });
+    await library.deactivate('play', '1.1.0');
+    expect(await library.active('play')).toMatchObject({ version: '1.0.0' });
+    expect(told).toEqual([]);
+    await expect(library.deactivate('play', '9.9.9')).rejects.toBeInstanceOf(NotFound);
+  });
+
+  it('keeps the deactivation when the hook fails, and activating again is the way back', async () => {
+    const library = newLibrary(newStore(), DEFAULT_WORKFLOWS_SETTINGS, {
+      onDeactivated: () => Promise.reject(new Error('boom')),
+    });
+    await library.install(play('1.0.0'), { source: 'user' });
+    await library.deactivate('play', '1.0.0');
+    expect(await library.active('play')).toBeUndefined();
+    await library.activate('play', '1.0.0');
+    expect(await library.active('play')).toMatchObject({ version: '1.0.0' });
+  });
+});
+
 describe('workflows.default and workflows.allowed', () => {
   it('defaults to play and lets every installed workflow be chosen', () => {
     const library = newLibrary(newStore());

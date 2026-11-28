@@ -89,6 +89,13 @@ function noticeText(t: Translate, notice: ScenarioSystemMessagePayload): string 
           .join(' / '),
         source: t(`${ROOT}.directorSwitch.${notice.override ? 'override' : 'default'}`),
       });
+    case 'workflow_budget':
+      return t(`${ROOT}.workflowBudget.${notice.action}`, {
+        bindingId: notice.bindingId,
+        workflowId: notice.workflowId,
+        spent: notice.spentUsd.toFixed(2),
+        budget: notice.budgetUsd.toFixed(2),
+      });
     case 'recovery':
       return t(`${ROOT}.recovery`, {
         resumed: notice.resumed.length,

@@ -26,6 +26,23 @@ import type { PlaySpansService } from '../../telemetry/play-spans.js';
 import type { TelemetryStatusService } from '../../telemetry/status.js';
 import type { TrajectoryService } from '../../trajectory/service.js';
 import type { UsageService } from '../../usage/index.js';
+import type { ValidateOptions } from '@otheater/workflows';
+import type { WorkflowsSettings } from '../../workflows/config.js';
+import type { WorkflowBindings } from '../../workflows/bindings.js';
+import type { WorkflowLibrary } from '../../workflows/library.js';
+import type { WorkflowPackageInstaller } from '../../workflows/packages/index.js';
+
+/** What the routes of the workflows act on; the daemon builds it from the composition. */
+export interface WorkflowRouteServices {
+  readonly library: WorkflowLibrary;
+  readonly bindings: WorkflowBindings;
+  /** Absent when the daemon composes no installer: the package routes answer 503. */
+  readonly packages?: WorkflowPackageInstaller | undefined;
+  /** What the validator checks against, read at every call (`workflows.security.require_approval`...). */
+  readonly validateOptions: () => ValidateOptions;
+  /** `workflows`, read live. */
+  readonly settings: () => WorkflowsSettings;
+}
 
 /**
  * What the handlers of the REST routes read (P5 of docs/17). Each route file takes this and
@@ -71,6 +88,8 @@ export interface ReadRouteDeps {
   readonly plugins?: PluginPanelService | undefined;
   /** The search for updates (P7 of Phase 10); absent: its routes answer 503 `unavailable`. */
   readonly updates?: UpdateChecker | undefined;
+  /** The workflow engine (P10b of Phase 11b); absent: its routes answer 503 `unavailable`. */
+  readonly workflows?: WorkflowRouteServices | undefined;
 }
 
 /**
@@ -125,4 +144,6 @@ export interface CommandRouteDeps {
   readonly updates?: UpdateChecker | undefined;
   /** The apply of the version that is ready (P8 of Phase 10); absent: its route answers 503. */
   readonly updateApply?: ApplyCoordinator | undefined;
+  /** The workflow engine (P10b of Phase 11b); absent: its routes answer 503 `unavailable`. */
+  readonly workflows?: WorkflowRouteServices | undefined;
 }

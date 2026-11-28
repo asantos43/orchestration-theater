@@ -119,6 +119,22 @@ export class TableWorkflowDefinitionRegistry implements WorkflowDefinitionRegist
     return next;
   }
 
+  async deactivate(workflowId: string, version: string): Promise<WorkflowDefinitionRecord> {
+    const target = mustExist(
+      await this.table.get({ workflowId, version }),
+      'Workflow definition',
+      `${workflowId}@${version}`,
+    );
+    if (target.state !== 'active') return target;
+    const next: WorkflowDefinitionRecord = {
+      ...target,
+      state: 'inactive',
+      updatedAt: this.clock.now(),
+    };
+    await this.table.replace(next);
+    return next;
+  }
+
   async remove(workflowId: string, version: string): Promise<void> {
     const found = mustExist(
       await this.table.get({ workflowId, version }),

@@ -318,3 +318,34 @@ describe('renderShellFinished, the ! command (N43, N187)', () => {
     );
   });
 });
+
+describe('renderSystemMessage, the budget of a workflow binding (P10b)', () => {
+  const BUDGET: ScenarioSystemMessagePayload = {
+    scenarioId: 's1',
+    kind: 'workflow_budget',
+    bindingId: 'WB1',
+    workflowId: 'play',
+    action: 'pause',
+    budgetUsd: 5,
+    spentUsd: 5.004,
+    period: 'week',
+  };
+
+  it('says what ran out and what happened to the binding, in English', async () => {
+    const t = await createTranslator('en');
+    const [paused] = renderSystemMessage(t, BUDGET);
+    expect(paused).toContain('the budget of the binding WB1 (play) ran out: 5.00 of 5.00 USD');
+    expect(paused).toContain('paused');
+    const [stopped] = renderSystemMessage(t, { ...BUDGET, action: 'stop' });
+    expect(stopped).toContain('was stopped');
+  });
+
+  it('says it in Brazilian Portuguese', async () => {
+    const t = await createTranslator('pt-BR');
+    const [paused] = renderSystemMessage(t, BUDGET);
+    expect(paused).toContain('o orçamento da ligação WB1 (play) acabou');
+    expect(paused).toContain('pausada');
+    const [stopped] = renderSystemMessage(t, { ...BUDGET, action: 'stop' });
+    expect(stopped).toContain('foi parada');
+  });
+});

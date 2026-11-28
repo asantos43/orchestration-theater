@@ -118,6 +118,10 @@ export interface WorkflowDefinitionListFilter {
  * - `activate` makes a version the active one and turns the previous active version of the
  *   workflow `inactive`, in one step (`NotFound` for an unknown version). Activating the active
  *   version changes nothing.
+ * - `deactivate` turns the active version `inactive`, so the workflow has none (P10b, [proposta]):
+ *   a library with no active version resolves nothing new, and a package can leave. `NotFound` for
+ *   an unknown version; on a version that is not the active one it changes nothing. `activatedAt`
+ *   stays as it was.
  * - `remove` deletes an `inactive` version (`NotFound` for an unknown one, `Conflict` for the
  *   active one). The library, not the store, checks that no live run is born in it.
  */
@@ -127,6 +131,7 @@ export interface WorkflowDefinitionRegistry {
   active(workflowId: string): Promise<WorkflowDefinitionRecord | undefined>;
   list(filter?: WorkflowDefinitionListFilter): Promise<readonly WorkflowDefinitionRecord[]>;
   activate(workflowId: string, version: string): Promise<WorkflowDefinitionRecord>;
+  deactivate(workflowId: string, version: string): Promise<WorkflowDefinitionRecord>;
   remove(workflowId: string, version: string): Promise<void>;
 }
 

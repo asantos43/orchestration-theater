@@ -121,6 +121,34 @@ export function describeWorkflowAggregatesConformance(
       await expectCode(store.workflowDefinitions.activate('nope', '1.0.0'), 'NOT_FOUND');
     });
 
+    it('deactivate leaves the workflow with no active version', async () => {
+      const { store, clock } = harness();
+      await store.workflowDefinitions.put(sampleWorkflowDefinition());
+      await store.workflowDefinitions.put(
+        sampleWorkflowDefinition({ version: '1.1.0', hash: hashOf('b') }),
+      );
+      const one = await store.workflowDefinitions.activate('play', '1.0.0');
+      // A version that is not the active one: nothing changes.
+      const idle = await store.workflowDefinitions.get('play', '1.1.0');
+      expect(await store.workflowDefinitions.deactivate('play', '1.1.0')).toEqual(idle);
+      expect(await store.workflowDefinitions.active('play')).toEqual(one);
+
+      await advanceClock(harness(), 1000);
+      const off = await store.workflowDefinitions.deactivate('play', '1.0.0');
+      expect(off).toMatchObject({
+        state: 'inactive',
+        activatedAt: one.activatedAt,
+        updatedAt: clock.now(),
+      });
+      expect(await store.workflowDefinitions.active('play')).toBeUndefined();
+      // The inactive version can now be removed, and one can be activated again.
+      await store.workflowDefinitions.remove('play', '1.0.0');
+      expect(await store.workflowDefinitions.activate('play', '1.1.0')).toMatchObject({
+        state: 'active',
+      });
+      await expectCode(store.workflowDefinitions.deactivate('play', '9.9.9'), 'NOT_FOUND');
+    });
+
     it('each workflow has its own active version', async () => {
       const { store } = harness();
       await store.workflowDefinitions.put(sampleWorkflowDefinition());

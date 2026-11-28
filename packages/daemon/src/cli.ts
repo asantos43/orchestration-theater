@@ -63,6 +63,7 @@ import { spawnDetachedDaemon, type DaemonSpawn } from './service/ensure-daemon.j
 import { isAdaptersAction, runAdaptersCommand, type AdaptersSeam } from './commands/adapters.js';
 import { isManagedClient } from './adapters/manager.js';
 import { runInitCommand } from './commands/init.js';
+import { isFlowAction, runFlowCommand, type FlowOptions } from './commands/flow.js';
 import { isVaultAction, isVaultMode, runVaultCommand } from './commands/vault.js';
 import { execRunner } from './service/command-runner.js';
 import { createServiceManager } from './service/index.js';
@@ -168,6 +169,7 @@ export const COMMANDS = [
   'init',
   'adapters',
   'vault',
+  'flow',
 ] as const;
 type Command = (typeof COMMANDS)[number];
 
@@ -512,6 +514,18 @@ export async function main(argv: readonly string[], given: CliDeps): Promise<num
         if (extra.length > 0) return usageError(t('usage.tooManyArguments', { command }));
         return await runVaultCommand(context, action, { json: false, mode });
       }
+      case 'flow': {
+        const [action, ...args] = rest;
+        if (action === undefined) return usageError(t('usage.missingFlowAction'));
+        if (!isFlowAction(action)) return usageError(t('usage.unknownFlowAction', { action }));
+        return await runFlowCommand(
+          context,
+          { signal: deps.signal },
+          action,
+          args,
+          flowOptions(values),
+        );
+      }
       case 'tui': {
         if (rest.length > 0) return usageError(t('usage.tooManyArguments', { command }));
         if (deps.interactive !== true) return usageError(t('usage.tuiNeedsTerminal'));
@@ -641,10 +655,47 @@ export const CLI_OPTIONS = {
   'purge-data': { type: 'boolean' },
   // The option of `ot init`.
   'no-tui': { type: 'boolean' },
+  // The options of `ot flow` (`scenario`, `until`, `json` are shared).
+  workflow: { type: 'string' },
+  state: { type: 'string' },
+  input: { type: 'string' },
+  outputs: { type: 'string' },
+  fail: { type: 'string', multiple: true },
+  activate: { type: 'boolean' },
+  approve: { type: 'string' },
+  range: { type: 'string' },
+  params: { type: 'string' },
+  triggers: { type: 'string' },
+  budget: { type: 'string' },
+  period: { type: 'string' },
+  concurrency: { type: 'string' },
+  'on-busy': { type: 'string' },
 } as const satisfies Record<string, ParseArgsOptionDescriptor>;
 
 function parseCliArgs(argv: readonly string[]) {
   return parseArgs({ args: [...argv], options: CLI_OPTIONS, allowPositionals: true, strict: true });
+}
+
+function flowOptions(values: ParsedValues): FlowOptions {
+  return {
+    json: values.json === true,
+    workflow: values.workflow,
+    scenario: values.scenario,
+    state: values.state,
+    input: values.input,
+    outputs: values.outputs,
+    fail: values.fail ?? [],
+    activate: values.activate === true,
+    approve: values.approve,
+    range: values.range,
+    params: values.params,
+    triggers: values.triggers,
+    until: values.until,
+    budget: values.budget,
+    period: values.period,
+    concurrency: values.concurrency,
+    onBusy: values['on-busy'],
+  };
 }
 
 function analysisOptions(values: ParsedValues): AnalysisOptions {

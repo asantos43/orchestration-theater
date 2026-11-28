@@ -27,6 +27,7 @@ import {
   type ScenarioSelectionWaitNotice,
   type ScenarioRecoveryNotice,
   type ScenarioSystemMessagePayload,
+  type ScenarioWorkflowBudgetNotice,
   type ShellCommandFinishedPayload,
   type ShellCommandStartedPayload,
 } from '@otheater/protocol';
@@ -129,6 +130,7 @@ export function renderSystemMessage(t: TFunction, notice: ScenarioSystemMessageP
   if (notice.kind === 'reset_wait') return renderResetWaitMessage(t, notice);
   if (notice.kind === 'director_failover') return renderDirectorFailoverMessage(t, notice);
   if (notice.kind === 'director_switch') return renderDirectorSwitchMessage(t, notice);
+  if (notice.kind === 'workflow_budget') return renderWorkflowBudgetMessage(t, notice);
   return renderRecoveryMessage(t, notice);
 }
 
@@ -259,6 +261,22 @@ function renderDirectorSwitchMessage(t: TFunction, notice: ScenarioDirectorSwitc
       what: directorWhat(notice.toExecutor, notice.model, notice.effort),
       source: t(`chat.system.directorSwitch.source.${notice.override ? 'override' : 'default'}`),
       waited: notice.waited ? t('chat.system.directorSwitch.waited') : '',
+    }),
+  ];
+}
+
+/**
+ * The `workflow_budget` kind (Phase 11b, P10b, [proposta]): one line that says the budget of a
+ * binding ran out and whether the binding was paused (the Producer may resume it) or stopped.
+ */
+function renderWorkflowBudgetMessage(t: TFunction, notice: ScenarioWorkflowBudgetNotice): string[] {
+  return [
+    t(`chat.system.workflowBudget.${notice.action}`, {
+      bindingId: notice.bindingId,
+      workflowId: notice.workflowId,
+      spent: notice.spentUsd.toFixed(2),
+      budget: notice.budgetUsd.toFixed(2),
+      period: notice.period,
     }),
   ];
 }
@@ -523,7 +541,7 @@ async function runIdeaCommand(
 }
 
 /** Connects to the daemon of the data folder, or says why not (and returns `undefined`). */
-async function connectLocal(
+export async function connectLocal(
   context: CommandContext,
   signal: AbortSignal | undefined,
 ): Promise<ConnectedDaemon | undefined> {

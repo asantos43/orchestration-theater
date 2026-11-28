@@ -490,6 +490,10 @@
           "rate_limit": "rate limit of {{profiles}}",
           "unavailable": "{{profiles}} unavailable"
         },
+        "workflowBudget": {
+          "pause": "The budget of the binding {{bindingId}} ({{workflowId}}) ran out ({{spent}} of {{budget}} USD): paused.",
+          "stop": "The budget of the binding {{bindingId}} ({{workflowId}}) ran out ({{spent}} of {{budget}} USD): stopped."
+        },
         "handoff": "Attempt {{attemptId}} passed from {{from}} to {{to}} ({{cause}}).",
         "selectionWait": "The role {{role}} waits for an Executor: {{on}}. Next look at {{until}}.",
         "resetWait": "Attempt {{attemptId}} waits for {{executor}} until {{until}}.",

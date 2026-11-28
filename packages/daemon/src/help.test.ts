@@ -7,6 +7,7 @@ import { SERVICE_ACTIONS } from './commands/service.js';
 import { VAULT_ACTIONS } from './commands/vault.js';
 import { TRAJECTORY_ACTIONS } from './atif/command.js';
 import { DIRECTIVE_ACTIONS } from './directives/command.js';
+import { FLOW_ACTIONS } from './commands/flow.js';
 import { EXECUTOR_ACTIONS } from './executors/command.js';
 import { PLUGIN_ACTIONS } from './plugins/command.js';
 import { PROFILE_ACTIONS } from './profiles/command.js';
@@ -32,6 +33,7 @@ const PARSER_ACTIONS: Readonly<Record<string, readonly string[]>> = {
   service: SERVICE_ACTIONS,
   adapters: ADAPTERS_ACTIONS,
   vault: VAULT_ACTIONS,
+  flow: FLOW_ACTIONS,
   trajectory: TRAJECTORY_ACTIONS,
   api: ['rotate-token'],
 };

@@ -128,6 +128,10 @@ const detail = z.string().min(1).max(512).nullable();
  *   of an update, the profile shims, or `.<addon>.<pid>.<hex>.tmp` of an extracted native addon) could
  *   not be removed (`subject`: the file name; `detail`: why). The write or the start goes on; the file
  *   stays, and the next cleaning tries again (by the `temporaries` key of the config).
+ * - `workflow_migration_failed` (Phase 11b, P10b; [proposta]): a version of a workflow was activated,
+ *   but asking the migration of its open runs failed (`workflows.running_on_change: migrate_at_safe_point`;
+ *   `subject`: the workflow and the version; `detail`: why). The activation stands, and the runs stay
+ *   where they are (as with `pin`); `activate` again asks it again.
  */
 export const DAEMON_NOTICE_KINDS = [
   'vault_locked',
@@ -172,6 +176,7 @@ export const DAEMON_NOTICE_KINDS = [
   'code_host_unavailable',
   'issue_tracker_unavailable',
   'temporary_cleanup_failed',
+  'workflow_migration_failed',
 ] as const;
 export type DaemonNoticeKind = (typeof DAEMON_NOTICE_KINDS)[number];
 
