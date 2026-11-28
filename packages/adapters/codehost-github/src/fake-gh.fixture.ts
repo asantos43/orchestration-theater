@@ -180,6 +180,7 @@ function api() {
   let match;
   if (method === 'GET' && rest === 'issues') return listIssues();
   if (method === 'GET' && (match = /^issues\\/(\\d+)$/.exec(rest))) return out(issueJson(item(match[1])));
+  if (method === 'GET' && (match = /^issues\\/(\\d+)\\/comments$/.exec(rest))) return listComments(match[1]);
   if (method === 'POST' && (match = /^issues\\/(\\d+)\\/comments$/.exec(rest))) return comment(match[1]);
   if (method === 'POST' && (match = /^issues\\/(\\d+)\\/labels$/.exec(rest))) return addLabels(match[1]);
   if (method === 'DELETE' && (match = /^issues\\/(\\d+)\\/labels\\/(.+)$/.exec(rest))) {
@@ -259,6 +260,17 @@ function listIssues() {
     .filter((i) => f.creator === undefined || (i.user && i.user.login === f.creator))
     .filter((i) => since === undefined || Date.parse(i.updated_at) >= since)
     .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at) || b.number - a.number);
+  out(all.slice((page - 1) * perPage, page * perPage));
+}
+
+function listComments(number) {
+  const found = item(number);
+  const f = fields();
+  const page = Number(f.page || 1);
+  const perPage = Number(f.per_page || 30);
+  const all = load('comments.json')
+    .filter((c) => c.number === found.value.number)
+    .map((c) => ({ id: c.id, html_url: c.html_url, created_at: c.created_at, body: c.body }));
   out(all.slice((page - 1) * perPage, page * perPage));
 }
 

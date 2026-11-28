@@ -44,6 +44,14 @@ export type WorkflowBudgetOnExhausted = (typeof WORKFLOW_BUDGET_ON_EXHAUSTED_MOD
 export const WORKFLOW_RUNNING_ON_CHANGE_MODES = ['pin', 'migrate_at_safe_point'] as const;
 export type WorkflowRunningOnChange = (typeof WORKFLOW_RUNNING_ON_CHANGE_MODES)[number];
 
+/**
+ * `workflows.simulate.on_limit` (P10b, [proposta]): what `ot flow simulate` does when the walk
+ * reaches `workflows.simulate.max_steps`. `truncate` (default) ends it there and says so; `fail`
+ * makes it an error.
+ */
+export const WORKFLOW_SIMULATE_ON_LIMIT = ['truncate', 'fail'] as const;
+export type WorkflowSimulateOnLimit = (typeof WORKFLOW_SIMULATE_ON_LIMIT)[number];
+
 /** The value of `workflows.allowed` that lets every installed definition be chosen. */
 export const WORKFLOWS_ALL_INSTALLED = 'all_installed';
 
@@ -66,6 +74,11 @@ export interface WorkflowsSettings {
   readonly legacy_snapshot: WorkflowLegacySnapshotMode;
   /** P4 (N295): what becomes of an open run when a new version is activated. */
   readonly running_on_change: WorkflowRunningOnChange;
+  /** P10b: the walk of `ot flow simulate`. */
+  readonly simulate: {
+    readonly max_steps: number;
+    readonly on_limit: WorkflowSimulateOnLimit;
+  };
 }
 
 /** The defaults of `workflows`, for a service built without a configuration. */
@@ -76,4 +89,5 @@ export const DEFAULT_WORKFLOWS_SETTINGS: WorkflowsSettings = {
   binding: { concurrency: 1, on_busy: 'queue' },
   legacy_snapshot: 'reject',
   running_on_change: 'pin',
+  simulate: { max_steps: 200, on_limit: 'truncate' },
 };

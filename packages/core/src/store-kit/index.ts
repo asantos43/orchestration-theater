@@ -178,7 +178,7 @@ export const AGGREGATE_WRITE_METHODS: Readonly<Record<AggregateName, readonly st
   usage: ['record', 'update'],
   wakeups: ['create', 'update'],
   setupRuns: ['create', 'update'],
-  workflowDefinitions: ['put', 'activate', 'remove'],
+  workflowDefinitions: ['put', 'activate', 'deactivate', 'remove'],
   workflowBindings: ['create', 'update', 'transition', 'recordSpend', 'rollPeriod'],
 };
 

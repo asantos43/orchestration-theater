@@ -1309,6 +1309,10 @@ export type ScenarioDirectorSwitchNotice = Extract<
   ScenarioSystemMessagePayload,
   { kind: 'director_switch' }
 >;
+export type ScenarioWorkflowBudgetNotice = Extract<
+  ScenarioSystemMessagePayload,
+  { kind: 'workflow_budget' }
+>;
 export type ScenarioSelectionWaitNotice = Extract<
   ScenarioSystemMessagePayload,
   { kind: 'selection_wait' }

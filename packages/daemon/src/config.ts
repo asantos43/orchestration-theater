@@ -109,6 +109,7 @@ import {
   WORKFLOW_BUDGET_PERIODS,
   WORKFLOW_ON_BUSY,
   WORKFLOW_RUNNING_ON_CHANGE_MODES,
+  WORKFLOW_SIMULATE_ON_LIMIT,
   WORKFLOWS_ALL_INSTALLED,
 } from './workflows/config.js';
 import {
@@ -2250,6 +2251,9 @@ export const DaemonConfigSchema = z
      * `running_on_change` (P4, N295, [proposta] the name of the second mode): `pin` (default) keeps a
      * run in the version it was born in; `migrate_at_safe_point` asks the migration of the open runs
      * when a new version is activated; see `WorkflowsSettings`.
+     * `simulate` (P10b, [proposta]; `max_steps` is the plan's): the walk of `ot flow simulate`.
+     * `max_steps` (default 200) is how many nodes a simulation visits at most; `on_limit`:
+     * `truncate` (default) ends it there and says so, `fail` makes the limit an error.
      * `runtime` (P2, every key [proposta]) holds the defaults of the generic step types; a node's
      * own `timeout` or `on_timeout` wins.
      * - `runtime.wait_event.poll`: how often the log is read while a `wait_event` waits for its event.
@@ -2301,6 +2305,12 @@ export const DaemonConfigSchema = z
           .prefault({}),
         legacy_snapshot: z.enum(WORKFLOW_LEGACY_SNAPSHOT_MODES).default('reject'),
         running_on_change: z.enum(WORKFLOW_RUNNING_ON_CHANGE_MODES).default('pin'),
+        simulate: z
+          .strictObject({
+            max_steps: z.int().min(1).max(100_000).default(200),
+            on_limit: z.enum(WORKFLOW_SIMULATE_ON_LIMIT).default('truncate'),
+          })
+          .prefault({}),
         runtime: z
           .strictObject({
             wait_event: z.strictObject({ poll: DurationSchema.prefault('2s') }).prefault({}),

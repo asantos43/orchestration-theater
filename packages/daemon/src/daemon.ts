@@ -40,6 +40,9 @@ import { AtifAutoExport } from './atif/atif-follower.js';
 import { AtifExporter } from './atif/atif-exporter.js';
 import { TrajectoryService } from './trajectory/service.js';
 import { registerCommandRoutes, registerReadRoutes } from './api/routes/index.js';
+import type { WorkflowRouteServices } from './api/routes/workflows.js';
+import type { WorkflowBindings } from './workflows/bindings.js';
+import type { WorkflowLibrary } from './workflows/library.js';
 import { createTranslator, detectSystemLocale, resolveLocale } from './i18n.js';
 import { SlashCatalog, SlashCommandService } from './slash/index.js';
 import { SetupService } from './setup/index.js';
@@ -150,7 +153,7 @@ import { armFaults, disarmFaults } from './chaos/crash-points.js';
 import { faultPlanPath, resolveFaultPlan } from './chaos/faults.js';
 import type { DiskGuard } from './disk/index.js';
 import { reconcileBeforeResume, type RecoveryReport } from './recovery/reconcile.js';
-import { composeWorkflows } from './workflows/compose.js';
+import { composeWorkflows, installBuiltinPlay } from './workflows/compose.js';
 import { installReadyWorkflows } from './workflows/definitions/ready-workflows.js';
 import { createPlayRunPort } from './workflows/steps/play/run-play-port.js';
 import { BackupScheduler, type ActivityProbe } from './recovery/schedule.js';
@@ -348,6 +351,13 @@ export interface DaemonHandle {
    * read the Director's replies, answer its questions. `undefined` when the execution is off.
    */
   readonly producer: ProducerChannel | undefined;
+  /**
+   * The library of workflow definitions (Phase 11b, P10b): install, activate, deactivate. `undefined`
+   * when the daemon has no code host or no issue tracker (the engine is not composed).
+   */
+  readonly workflowLibrary: WorkflowLibrary | undefined;
+  /** The bindings of workflows to scenarios (Phase 11b, P10b); `undefined` as `workflowLibrary`. */
+  readonly workflowBindings: WorkflowBindings | undefined;
   /** The orders (architecture 5.17): what is in force, the drafts and the rules. */
   readonly directives: DirectiveService;
   /** The quota of the profiles (architecture 5.6): signals, readings, state and freshness. */
@@ -963,10 +973,15 @@ async function run(input: RunInput): Promise<DaemonHandle> {
           issueTracker: composition.issueTracker,
           pullRequests: composition.triggerPorts.pullRequests,
           collaborators: composition.triggerPorts.collaborators,
+          packageEnv: { env: process.env, cwd: process.cwd() },
         });
   // Phase 11b, P12: `github-issues`, `pr-review` and `ci-fix` go into the library (idempotent); a
-  // binding names them, and nothing runs before the Producer binds one.
-  if (workflows !== undefined) await installReadyWorkflows(workflows.library);
+  // binding names them, and nothing runs before the Producer binds one. P10b: the built-in `play`
+  // goes in too when it is absent (it only becomes active when the workflow has no active version).
+  if (workflows !== undefined) {
+    await installReadyWorkflows(workflows.library);
+    await installBuiltinPlay(workflows.library);
+  }
   const recoveryStartedAt = clock.now();
   // Before anything is resumed: the orphans, the sessions, the worktrees and the effects (5.21).
   const recovery = await reconcileBeforeResume({
@@ -1707,9 +1722,22 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     layer3: () => composition.sandbox !== undefined,
   });
 
+  // Phase 11b, P10b: what the routes of the workflows act on (absent: they answer 503).
+  const workflowRouteServices: WorkflowRouteServices | undefined =
+    workflows === undefined
+      ? undefined
+      : {
+          library: workflows.library,
+          bindings: workflows.bindings,
+          packages: workflows.packages,
+          validateOptions: workflows.validateOptions,
+          settings: () => config.workflows,
+        };
+
   // P5 (Phase 6): the read routes of the REST API. They need the services above, so they are
   // registered here and not where `getStatus` is; a read before this point answers 404.
   registerReadRoutes(api.handlers, {
+    workflows: workflowRouteServices,
     store,
     vcs: composition.vcs,
     slash,
@@ -1776,6 +1804,7 @@ async function run(input: RunInput): Promise<DaemonHandle> {
   // P6 (Phase 6): the commands of the REST API, on the same services. They wait for `gate` (the
   // reconciliation of the start-up) before they run, which the server does for every command.
   registerCommandRoutes(api.handlers, {
+    workflows: workflowRouteServices,
     store,
     clock,
     logger,
@@ -1836,6 +1865,8 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     mcp,
     telemetryUrl: telemetry?.receiver.url,
     producer: orchestration?.channel,
+    workflowLibrary: workflows?.library,
+    workflowBindings: workflows?.bindings,
     analysis: analysisService,
     profiles,
     directives,

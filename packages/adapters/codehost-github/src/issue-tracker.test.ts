@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { isOTheaterError } from '@otheater/core';
+import { canListComments, isOTheaterError } from '@otheater/core';
 import { disposeTestGitIsolation } from '@otheater/sdk';
 import { afterAll, afterEach, describe, expect, it } from 'vitest';
 import { GITHUB_ISSUE_TRACKER_ADAPTER, issueOf, parseRuns, pullDetails } from './index.js';
@@ -184,6 +184,41 @@ describe('GithubIssueTracker against a fake gh', () => {
       expect(deletes[0]).toContain(
         `repos/{owner}/{repo}/issues/${String(number)}/labels/needs%20review%2Fui`,
       );
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it(
+    'listComments returns the comments of an issue and of a pull request, oldest first, with the body',
+    async () => {
+      rig = await makeGithubRig();
+      const number = await rig.seedIssue({ title: 'x' });
+      const pull = await rig.seedPullRequest();
+      await rig.issueTracker.commentOnIssue({ repo: rig.repo, number, body: 'first' });
+      await rig.issueTracker.commentOnIssue({ repo: rig.repo, number, body: 'second <!-- k -->' });
+      await rig.issueTracker.commentOnPullRequest({ repo: rig.repo, number: pull, body: 'other' });
+      const comments = await rig.issueTracker.listComments({ repo: rig.repo, number });
+      expect(comments.map((comment) => comment.body)).toEqual(['first', 'second <!-- k -->']);
+      expect(comments[0]?.url).toContain('#issuecomment-');
+      expect(
+        (await rig.issueTracker.listComments({ repo: rig.repo, number: pull })).map((c) => c.body),
+      ).toEqual(['other']);
+      expect(canListComments(rig.issueTracker)).toBe(true);
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it(
+    'listComments of a number that does not exist is NotFound, and a bad limit is InvalidInput',
+    async () => {
+      rig = await makeGithubRig();
+      await expect(
+        rig.issueTracker.listComments({ repo: rig.repo, number: 999 }),
+      ).rejects.toMatchObject({ code: 'NOT_FOUND' });
+      const number = await rig.seedIssue({ title: 'x' });
+      await expect(
+        rig.issueTracker.listComments({ repo: rig.repo, number, limit: 0 }),
+      ).rejects.toMatchObject({ code: 'INVALID_INPUT' });
     },
     TEST_TIMEOUT_MS,
   );

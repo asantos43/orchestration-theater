@@ -540,6 +540,37 @@ Depois, o P4 e o P12 correm em paralelo. O **P10b** vem por último, com o resto
   - os dois motores convivem sem conflito: o `PlayRunner.resumeAll` pula o que não é `flowId: 'play'` e o `WorkflowRuntime.resumeAll` pula o snapshot que não passa em `SavedRunSchema`; o `workflows.legacy_snapshot`, o `assertPlayFlowLinked`, os ganchos do P14 e o `ask_director` do P15 continuam como estavam.
 - **Fica para o P10b (e a troca da máquina, a decidir):** a troca da máquina (exige decidir as cinco diferenças e a forma do snapshot da peça), as rotas e o `ot flow`, o desativar de uma versão, a exposição da biblioteca e dos vínculos no `DaemonHandle`, a instalação da `play` embutida na biblioteca na subida (hoje o teste a instala à mão), o localizador de comentários e o canal do chat para `onBudgetExhausted` (a composição o deixa sem destino).
 
+**Como ficou (P10b)** (2026-11-28; [V] com os testes locais de `core`, `codehost-github`, `protocol`, `client`, `daemon` e `tui`, com o `fake-gh`, o `fake-agent` e o relógio falso; sem rede, sem cliente real; não mexi no que é do P10c):
+- **As rotas** (`daemon/src/api/routes/workflows.ts`, registradas em `protocol/src/api/workflows.ts` e em `docs/reference/api-routes.json`): `validate`, `simulate`, `save`, `activate`, `deactivate`, `diff`, `list` (versões), `install` (e a lista e a remoção de pacotes), `bindings` (criar, listar, pausar, retomar, parar) e `runs`. O `client` ganhou 17 métodos. [V] testes de rota com o motor montado como o daemon o monta.
+- **A CLI** (`daemon/src/commands/flow.ts`): `ot flow validate|simulate|save|activate|deactivate|diff|list|install|bind|pause|resume|stop`, com ajuda (`ot help flow`) e catálogos `en` e `pt-BR`. Os erros da API saem com o código e os `issues`. Guia de uso na seção 7 do `docs/27`. [V] 30 testes de `flow.test.ts` contra o daemon de teste (sem rede): o `main()` só cobre o uso, a ausência de daemon e a ajuda; o resto chama `runFlowCommand` com um cliente montado no rig, porque o `main()` não aceita um cliente injetado.
+- **Na biblioteca e na composição:**
+  - o desativar de uma versão (`deactivate`), com o evento e sem versão ativa depois;
+  - `running_on_change` (`pin` ou `migrate_at_safe_point`) e `onActivated`: a ativação com peça em curso segue a N295 e a resposta diz o modo; a migração que falha vira `daemon.notice` (`workflow_migration_failed`);
+  - `require_approval` chega aos validadores;
+  - a biblioteca e os vínculos no `DaemonHandle`;
+  - a `play` embutida é instalada na subida, se faltar;
+  - `onBudgetExhausted` tem o canal do chat (tipo novo `workflow_budget` em `scenario.system_message`, mostrado na TUI) e o evento do protocolo;
+  - o localizador de comentários é uma porta à parte (`workflows/comment-finder.ts`), com o verificador de `comment` resolvendo o efeito cortado por queda em vez de `effect_ambiguous`.
+- **Chaves de configuração novas:** `workflows.simulate.max_steps` (padrão 200) e `workflows.simulate.on_limit` (`truncate`, o padrão, ou `fail`).
+- **[proposta] (perguntas ao dono; nada aqui decide o `docs/13`):**
+  1. `simulate` é um passeio seco pelo grafo, sem rodar o `fake-agent`: os executores dos passos da peça só ligam no P10c. Troca por rodar o `fake-agent` quando o P10c ligar.
+  2. O localizador é uma porta separada (`IssueCommentLister`), fora do `IssueTracker`, para não mudar a porta.
+  3. `deactivate` deixa o workflow sem versão ativa (em vez de reativar a anterior).
+  4. A triagem `ask_director` fica fora do `github-issues` [N]: ela é uma ferramenta do Ator, não um tipo de passo, e o yaml pronto não muda (`ready-yaml.ts` continua igual ao `.yaml`).
+  5. A instalação de pacote é em duas fases (prévia, depois `approvedHash`); se o pacote mudou entre as duas, a resposta é 409 `conflict`. Foi acrescentada a remoção de pacote.
+  6. `bind` copia os gatilhos da definição no daemon; `triggers: []` quer dizer nenhum.
+  7. A resposta de `activate` traz o `runningOnChange`.
+  8. Rotas a mais do que o plano listava: ler uma versão, listar pacotes e remover pacote.
+  9. O localizador lê até 1000 comentários; uma conversa maior sem marca faz o verificador responder `ambiguous`.
+  10. O aviso do chat é o tipo `workflow_budget` em `scenario.system_message`.
+  11. O `daemon.notice` ganhou o tipo `workflow_migration_failed`.
+  12. A `play` embutida é instalada na subida, se faltar (não sobrescreve).
+  13. O instalador é composto com `process.env` e `process.cwd()`.
+  14. As mensagens das rotas estão em inglês (como as outras); as da CLI, nos catálogos.
+  15. As chaves `workflows.simulate.max_steps` e `workflows.simulate.on_limit`, acima, e os padrões.
+  16. A forma da CLI: `list <o quê>`; `activate <id> <versão>` ou `<id>@<versão>`; `simulate <arquivo | id[@versão]>`; `install` em duas chamadas com `--approve <hash>`; simulação truncada sai com 0 e recusa com 1; as opções novas (`--workflow`, `--state`, `--input`, `--outputs`, `--fail`, `--activate`, `--approve`, `--range`, `--params`, `--triggers`, `--budget`, `--period`, `--concurrency`, `--on-busy`); `--until` só com dígitos vira número (época em ms); reaproveita `chat.noDaemon` e `chat.connectFailed`.
+- **Fica de fora:** a troca da máquina da peça (P10c), a triagem do Diretor no `github-issues` [N] e a tela da TUI (P11). [N] Nada foi exercitado com GitHub, modelo ou cliente reais.
+
 ### P11. Editor do YAML na TUI
 
 **Arquivos:** `tui/src/` (uma tela nova de workflows e o editor), os catálogos `en` e `pt-BR`.

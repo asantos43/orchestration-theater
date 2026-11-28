@@ -83,7 +83,20 @@
     "unknownVaultAction": "Ação desconhecida \"{{action}}\" para \"ot vault\". Use status ou use.",
     "missingVaultMode": "Falta o cofre de \"ot vault use\". Use keyring, encrypted-file ou auto.",
     "unknownVaultMode": "Cofre desconhecido \"{{mode}}\" para \"ot vault use\". Use keyring, encrypted-file ou auto.",
-    "profileUnknownClient": "\"ot profile add\": cliente desconhecido \"{{client}}\"; os clientes são {{known}}."
+    "profileUnknownClient": "\"ot profile add\": cliente desconhecido \"{{client}}\"; os clientes são {{known}}.",
+    "missingFlowAction": "Falta a ação de \"ot flow\". Use validate, simulate, save, activate, deactivate, diff, list, install, bind, pause, resume ou stop.",
+    "unknownFlowAction": "Ação \"{{action}}\" desconhecida para \"ot flow\". Use validate, simulate, save, activate, deactivate, diff, list, install, bind, pause, resume ou stop.",
+    "flowArguments": "Argumentos errados para \"ot flow {{action}}\". Use: ot flow {{action}} {{shape}}",
+    "flowBadOption": "Opção --{{option}}: {{reason}}",
+    "flowReason": {
+      "present": "falta um valor",
+      "json": "não é JSON válido ({{detail}})",
+      "object": "é preciso um objeto JSON",
+      "list": "é preciso uma lista JSON de objetos",
+      "positive": "é preciso um número positivo",
+      "integer": "é preciso um número inteiro positivo",
+      "choice": "use um destes: {{detail}}"
+    }
   },
   "daemon": {
     "running": "Daemon do OTheater em execução (pid {{pid}}), dados em {{dataDir}}. Pressione Ctrl+C para parar.",
@@ -224,6 +237,10 @@
     "ideaGroupOptions": "Digite: approve | edit <nova necessidade> | keep <ids na ordem> | refuse [motivo].",
     "ideaGroupBad": "Essa não é uma das opções. Digite: approve, edit <nova necessidade>, keep <ids> ou refuse [motivo].",
     "system": {
+      "workflowBudget": {
+        "pause": "Sistema: o orçamento da ligação {{bindingId}} ({{workflowId}}) acabou: {{spent}} de {{budget}} USD neste período ({{period}}). A ligação fica pausada até o próximo período; você pode retomá-la.",
+        "stop": "Sistema: o orçamento da ligação {{bindingId}} ({{workflowId}}) acabou: {{spent}} de {{budget}} USD neste período ({{period}}). A ligação foi parada."
+      },
       "handoff": "Sistema: a tentativa {{attemptId}} passou o bastão de {{from}} para {{to}} ({{cause}}); o trabalho continua do estado guardado.",
       "selectionWait": "Sistema: o {{role}} espera um Executor que não seja do mesmo {{what}} do trabalho ({{crossCheck}}); não há outro disponível: {{on}}. Segue sozinho quando houver.",
       "resetWait": "Sistema: a tentativa {{attemptId}} espera {{what}} de {{executor}} voltar, até {{until}}; ela retoma a mesma conversa sozinha.",
@@ -289,6 +306,61 @@
   },
   "errors": {
     "prefix": "Erro: {{message}}"
+  },
+  "flow": {
+    "issue": "{{path}}: {{message}}{{at}}",
+    "atLine": " (linha {{line}})",
+    "warning": "Aviso: {{text}}",
+    "readFailed": "Não consegui ler {{path}}: {{reason}}",
+    "refused": "O daemon recusou ({{code}}): {{message}}",
+    "none": "nenhuma",
+    "validate": {
+      "ok": "Válido: {{id}} {{version}} (hash {{hash}}).",
+      "invalid": "Inválido: {{count}} problema(s)."
+    },
+    "simulate": {
+      "refused": "Nada a simular ({{reason}}): {{detail}}",
+      "head": "Simulação de {{id}} {{version}}: {{status}}, terminou em {{ended}}.",
+      "step": "{{n}}. {{node}} ({{step}}) -> {{to}} por {{via}}",
+      "effects": "     faria: {{effects}}",
+      "truncated": "O passeio parou em workflows.simulate.max_steps; o resto não foi simulado."
+    },
+    "saved": "Salvo {{id}} {{version}} ({{state}}).",
+    "activated": "Ativado {{id}} {{version}}. Execuções em andamento: {{mode}}.",
+    "mode": {
+      "pin": "ficam na versão em que nasceram",
+      "migrate_at_safe_point": "passam para a nova versão num ponto seguro"
+    },
+    "deactivated": "Desativado {{id}} {{version}}. O workflow está sem versão ativa agora.",
+    "diff": {
+      "same": "{{id}}: {{from}} e {{to}} são iguais.",
+      "head": "{{id}}: {{from}} -> {{to}}, {{count}} mudança(s).",
+      "change": "  {{change}} {{area}} {{key}}",
+      "before": "      antes: {{value}}",
+      "after": "      depois: {{value}}"
+    },
+    "install": {
+      "package": "Pacote {{id}} {{version}}: {{count}} workflow(s), hash {{hash}}.",
+      "permissions": "Permissões: {{list}}",
+      "newPermissions": "Permissões novas: {{list}}",
+      "signature": "Assinatura: {{state}} ({{detail}})",
+      "refused": "Recusado ({{reason}}): {{detail}}",
+      "confirm": "Precisa da sua confirmação: {{list}}",
+      "approve": "Para instalar como mostrado, rode o comando de novo com --approve {{hash}}",
+      "done": "Pacote {{id}} {{version}}: {{status}}.",
+      "workflow": "  {{id}} {{version}} ({{state}})"
+    },
+    "bound": "Ligação {{id}}: {{workflowId}} {{range}} no cenário {{scenarioId}} ({{count}} gatilho(s), {{state}}).",
+    "bindingNow": "A ligação {{id}} está {{state}}.",
+    "noBudget": "sem orçamento",
+    "budget": "orçamento {{budget}} por {{period}}, gasto {{spent}}",
+    "list": {
+      "none": "Nada a listar.",
+      "version": "{{id}} {{version}} [{{state}}] ({{source}})",
+      "binding": "{{id}} [{{state}}] {{workflowId}} {{range}} em {{scenarioId}}; {{budget}}",
+      "run": "{{runId}} [{{status}}] {{workflowId}} {{version}} em {{scenarioId}}: {{state}}, {{steps}} passo(s)",
+      "package": "{{id}} {{version}}: {{workflows}} (assinatura: {{signature}})"
+    }
   },
   "profile": {
     "daemonRunning": "O daemon está rodando neste diretório de dados. Pare-o antes de mexer nos perfis (o controle ao vivo de um daemon em execução ainda não existe).",
@@ -952,6 +1024,130 @@
             "summary": "list: inclui as ordens expiradas e revogadas"
           }
         }
+      },
+      "flow": {
+        "summary": "Workflows: conferir, simular, salvar, ativar, ligar a um cenário",
+        "description": "Os workflows do daemon em execução: conferir uma definição, percorrê-la sem executor, salvar e ativar versões, compará-las, instalar um pacote, ligar um workflow a um cenário e parar, pausar ou retomar essa ligação (o daemon precisa estar em execução).",
+        "usage": "ot flow <ação> [argumentos] [opções]",
+        "actions": {
+          "validate": {
+            "summary": "Confere uma definição (YAML ou JSON) sem salvar",
+            "args": "<arquivo>"
+          },
+          "simulate": {
+            "summary": "Percorre uma definição ou uma versão salva sem executor",
+            "args": "<arquivo | id[@versão]>"
+          },
+          "save": {
+            "summary": "Salva uma definição como nova versão",
+            "args": "<arquivo> [--activate]"
+          },
+          "activate": {
+            "summary": "Faz de uma versão salva aquela em que nascem as novas execuções",
+            "args": "<id> <versão>"
+          },
+          "deactivate": {
+            "summary": "Deixa um workflow sem versão ativa",
+            "args": "<id> <versão>"
+          },
+          "diff": {
+            "summary": "Compara duas versões salvas",
+            "args": "<id> <de> <para>"
+          },
+          "list": {
+            "summary": "Lista as versões, as ligações, as execuções ou os pacotes",
+            "args": "[workflows | bindings | runs | packages]"
+          },
+          "install": {
+            "summary": "Mostra um pacote e o instala com --approve",
+            "args": "<origem> [--approve <hash>]"
+          },
+          "bind": {
+            "summary": "Liga um workflow a um cenário",
+            "args": "<cenário> <workflow>"
+          },
+          "pause": {
+            "summary": "Pausa uma ligação (nenhuma execução nova nasce)",
+            "args": "<ligação>"
+          },
+          "resume": {
+            "summary": "Retoma uma ligação pausada",
+            "args": "<ligação>"
+          },
+          "stop": {
+            "summary": "Para uma ligação de vez",
+            "args": "<ligação>"
+          }
+        },
+        "options": {
+          "workflow": {
+            "summary": "list: só este workflow",
+            "value": "<id>"
+          },
+          "scenario": {
+            "summary": "list: só este cenário",
+            "value": "<id>"
+          },
+          "state": {
+            "summary": "list: o estado (versões: active, inactive; ligações: active, paused, stopped, expired; execuções: open, finished)",
+            "value": "<estado>"
+          },
+          "input": {
+            "summary": "simulate: as entradas, um objeto JSON",
+            "value": "<json>"
+          },
+          "outputs": {
+            "summary": "simulate: o que os nós respondem, um objeto JSON por nó",
+            "value": "<json>"
+          },
+          "fail": {
+            "summary": "simulate: faz este nó falhar (repita para mais nós)",
+            "value": "<nó>"
+          },
+          "activate": {
+            "summary": "save: também faz da nova versão a ativa"
+          },
+          "approve": {
+            "summary": "install: o hash do pacote que você viu, para instalá-lo",
+            "value": "<hash>"
+          },
+          "range": {
+            "summary": "bind: as versões que ela segue (padrão: workflows.binding.version_range)",
+            "value": "<faixa>"
+          },
+          "params": {
+            "summary": "bind: as entradas que ela fixa, um objeto JSON",
+            "value": "<json>"
+          },
+          "triggers": {
+            "summary": "bind: os gatilhos, uma lista JSON (padrão: os da definição; [] para nenhum)",
+            "value": "<json>"
+          },
+          "until": {
+            "summary": "bind: o fim da ligação, uma duração (7d), uma data em ms ou none",
+            "value": "<quando>"
+          },
+          "budget": {
+            "summary": "bind: o teto de gasto de um período, em USD",
+            "value": "<usd>"
+          },
+          "period": {
+            "summary": "bind: day, week ou month",
+            "value": "<período>"
+          },
+          "concurrency": {
+            "summary": "bind: execuções ao mesmo tempo",
+            "value": "<n>"
+          },
+          "on-busy": {
+            "summary": "bind: queue, skip ou replace quando está no limite",
+            "value": "<modo>"
+          },
+          "json": {
+            "summary": "Imprime JSON em vez de texto"
+          }
+        },
+        "notes": "simulate nunca roda um Executor: segue as arestas com as saídas que você der e para em workflows.simulate.max_steps. Uma definição pode ser YAML ou JSON. install mostra antes o pacote, as permissões e a assinatura; só o mesmo hash com --approve instala, e um pacote que mudou pergunta de novo."
       },
       "plugin": {
         "summary": "Instala e gerencia plugins",

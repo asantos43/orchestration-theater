@@ -91,9 +91,30 @@ Uma `run_play` abre uma peça pelo executor atual (`PlayRunner`) e espera por um
 - `ready-workflows.e2e.test.ts`: o motor montado como o daemon o monta (`composeWorkflows`), com o code host, o rastreador de issues e a lista de PRs falsos, a pergunta ao Produtor falsa, a peça falsa e o relógio falso. Para cada workflow: depois de `pass()`, a execução pergunta e **nada** é escrito (nenhuma peça, nenhum comentário); com `Allow`, a peça abre, termina e o comentário sai; com `Deny`, nada sai; um autor de fora da lista não inicia nada e gera `workflow.trigger.skipped`. Um teste à parte prova que um `label` só sai depois da aprovação.
 - Não foi feita rodada real com o Claude Code, o Codex ou o OpenCode: a peça é falsa nos testes. **[N]** O comportamento com um modelo real, e com o GitHub de verdade, fica para o roteiro do dono.
 
-## 7. O que ainda não existe
+## 7. Operar pela CLI: `ot flow` (P10b)
 
-- **Ligar pela CLI e pela API** (`ot flow bind`): é o P10b. Hoje o vínculo se faz pelo código (`WorkflowBindings.create`).
+O `ot flow` fala com o daemon pela API local (as mesmas rotas `/api/workflows/...`, catalogadas em `docs/reference/api-routes.json`). Sem daemon, ele diz que não há daemon e sai com 1. `--json` imprime a resposta crua. Ativar ou desativar **não reinicia o daemon**.
+
+| Comando | O que faz |
+|---|---|
+| `ot flow validate <arquivo.yaml>` | Valida a definição (esquema, referências, gatilhos) sem gravar. Sai com 1 se houver erro. |
+| `ot flow simulate <arquivo \| id[@versão]> [--scenario ID] [--state JSON] [--input JSON] [--outputs JSON] [--fail NÓ]...` | Passeia pelo grafo **sem executar nada** (nenhum Executor, nenhum efeito) e lista cada passo e o que ele faria. Para em `workflows.simulate.max_steps`. |
+| `ot flow save <arquivo.yaml> [--activate]` | Grava uma versão na biblioteca (imutável; o mesmo conteúdo com o mesmo número é aceito, outro conteúdo é conflito). |
+| `ot flow activate <id> <versão>` ou `<id>@<versão>` | Torna a versão a ativa. O que acontece com as execuções em andamento depende de `workflows.running_on_change` (`pin` ou `migrate_at_safe_point`) e a resposta diz qual. |
+| `ot flow deactivate <id> <versão>` | A versão sai de ativa; o workflow fica **sem versão ativa** até outra ser ativada. Serve para um pacote com versão ativa poder sair. |
+| `ot flow diff <id> <de> <para>` | Compara duas versões (nós, arestas, gatilhos, parâmetros). |
+| `ot flow list <workflows \| bindings \| runs \| packages> [--workflow ID] [--scenario ID] [--state ESTADO]` | Lista, seguindo a paginação. |
+| `ot flow install <origem> [--approve HASH]` | Instalação em duas chamadas: a primeira só mostra o pacote (assinatura, permissões, o que muda) e o hash; a segunda, com `--approve <hash>`, instala. Se o pacote mudou entre as duas, a resposta é conflito. |
+| `ot flow bind <cenário> <workflow> [--range 1.x] [--params JSON] [--triggers JSON] [--budget N --period day\|week\|month] [--concurrency N] [--on-busy queue\|skip\|replace] [--until 7d]` | Liga o workflow a um cenário. Sem `--triggers`, o daemon copia os gatilhos da definição; `--triggers '[]'` não liga nenhum (`--triggers` é uma lista JSON de objetos). |
+| `ot flow pause <ligação>` / `resume <ligação>` / `stop <ligação>` | Pausa, retoma ou encerra a ligação. |
+
+Códigos de saída: 0 em sucesso (uma simulação truncada também é 0, com o aviso), 1 em recusa ou erro (definição inválida, daemon recusou, instalação recusada), 2 em uso errado.
+
+A ajuda completa, com todas as opções, sai de `ot help flow`.
+
+## 8. O que ainda não existe
+
+- **Ligar pela CLI e pela API** passou a existir no P10b (seção 7). Falta a tela da TUI (P11).
 - **A triagem pelo Diretor** do `github-issues` (docs/24, seção 11, item 2): o `ask_director` existe (P15), mas a definição pronta não o usa; a decisão de corrigir ou pedir informação fica com o Produtor, na aprovação. **[proposta]**
 - **PR com `Fixes #N`:** quem monta o texto do PR é a entrega da peça, que ainda não sabe da issue.
 - **`ci-fix` na mesma branch** e **`pr-review` só com o Crítico:** pedem a troca da máquina e um modo de a peça parar antes do push (P10c).

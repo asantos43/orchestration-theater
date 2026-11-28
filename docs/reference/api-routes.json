@@ -15402,6 +15402,60 @@
                       "kind"
                     ],
                     "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "scenarioId": {
+                        "$ref": "#/$defs/__schema3"
+                      },
+                      "kind": {
+                        "type": "string",
+                        "const": "workflow_budget"
+                      },
+                      "bindingId": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "workflowId": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "action": {
+                        "type": "string",
+                        "enum": [
+                          "pause",
+                          "stop"
+                        ]
+                      },
+                      "budgetUsd": {
+                        "type": "number",
+                        "exclusiveMinimum": 0
+                      },
+                      "spentUsd": {
+                        "type": "number",
+                        "minimum": 0
+                      },
+                      "period": {
+                        "type": "string",
+                        "enum": [
+                          "day",
+                          "week",
+                          "month"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "scenarioId",
+                      "kind",
+                      "bindingId",
+                      "workflowId",
+                      "action",
+                      "budgetUsd",
+                      "spentUsd",
+                      "period"
+                    ],
+                    "additionalProperties": false
                   }
                 ]
               }
@@ -28198,6 +28252,3828 @@
             "type": "integer",
             "minimum": 0,
             "maximum": 9007199254740991
+          }
+        }
+      }
+    },
+    {
+      "id": "listWorkflowBindings",
+      "method": "GET",
+      "path": "/v1/workflow-bindings",
+      "kind": "json",
+      "summary": "The bindings of scenarios to workflows, oldest first; filter by scenario, workflow and state",
+      "pathParams": [],
+      "response": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "pattern": "^WB[1-9][0-9]*$"
+                },
+                "seq": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9007199254740991
+                },
+                "scenarioId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256
+                },
+                "workflowId": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+                },
+                "versionRange": {
+                  "type": "string",
+                  "pattern": "^(\\*|(0|[1-9]\\d*)\\.x|(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.x|(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(-[0-9A-Za-z.-]+)?)$"
+                },
+                "params": {
+                  "$ref": "#/$defs/__schema0"
+                },
+                "triggers": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/__schema0"
+                  }
+                },
+                "state": {
+                  "type": "string",
+                  "enum": [
+                    "active",
+                    "paused",
+                    "stopped",
+                    "expired"
+                  ]
+                },
+                "stateReason": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "enum": [
+                        "producer",
+                        "budget",
+                        "deadline"
+                      ]
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "until": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/__schema2"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "budgetUsd": {
+                  "anyOf": [
+                    {
+                      "type": "number",
+                      "exclusiveMinimum": 0
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "budgetPeriod": {
+                  "type": "string",
+                  "enum": [
+                    "day",
+                    "week",
+                    "month"
+                  ]
+                },
+                "spentUsd": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "periodStartedAt": {
+                  "$ref": "#/$defs/__schema2"
+                },
+                "concurrency": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 100
+                },
+                "onBusy": {
+                  "type": "string",
+                  "enum": [
+                    "queue",
+                    "skip",
+                    "replace"
+                  ]
+                },
+                "createdAt": {
+                  "$ref": "#/$defs/__schema2"
+                },
+                "updatedAt": {
+                  "$ref": "#/$defs/__schema2"
+                },
+                "stateChangedAt": {
+                  "$ref": "#/$defs/__schema2"
+                }
+              },
+              "required": [
+                "id",
+                "seq",
+                "scenarioId",
+                "workflowId",
+                "versionRange",
+                "params",
+                "triggers",
+                "state",
+                "stateReason",
+                "until",
+                "budgetUsd",
+                "budgetPeriod",
+                "spentUsd",
+                "periodStartedAt",
+                "concurrency",
+                "onBusy",
+                "createdAt",
+                "updatedAt",
+                "stateChangedAt"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "nextCursor": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor"
+        ],
+        "additionalProperties": false,
+        "$defs": {
+          "__schema0": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "$ref": "#/$defs/__schema1"
+            }
+          },
+          "__schema1": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/__schema1"
+                }
+              },
+              {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "$ref": "#/$defs/__schema1"
+                }
+              }
+            ]
+          },
+          "__schema2": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        }
+      },
+      "errors": {
+        "400": [
+          "invalid_input"
+        ],
+        "401": [
+          "unauthorized"
+        ],
+        "403": [
+          "forbidden"
+        ],
+        "500": [
+          "internal"
+        ]
+      },
+      "query": {
+        "type": "object",
+        "properties": {
+          "after": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "limit": {
+            "default": 50,
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 200
+          },
+          "scenarioId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "workflowId": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "active",
+              "paused",
+              "stopped",
+              "expired"
+            ]
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "id": "bindWorkflow",
+      "method": "POST",
+      "path": "/v1/workflow-bindings",
+      "kind": "json",
+      "summary": "Binds a scenario to a workflow (`workflows.allowed` applies); without `triggers` it takes those of the definition; what is left out takes the value of `workflows.binding` and `workflows.budget`",
+      "pathParams": [],
+      "response": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^WB[1-9][0-9]*$"
+          },
+          "seq": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "scenarioId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "workflowId": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+          },
+          "versionRange": {
+            "type": "string",
+            "pattern": "^(\\*|(0|[1-9]\\d*)\\.x|(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.x|(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(-[0-9A-Za-z.-]+)?)$"
+          },
+          "params": {
+            "$ref": "#/$defs/__schema0"
+          },
+          "triggers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/__schema0"
+            }
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "active",
+              "paused",
+              "stopped",
+              "expired"
+            ]
+          },
+          "stateReason": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "producer",
+                  "budget",
+                  "deadline"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "until": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/__schema2"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "budgetUsd": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMinimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "budgetPeriod": {
+            "type": "string",
+            "enum": [
+              "day",
+              "week",
+              "month"
+            ]
+          },
+          "spentUsd": {
+            "type": "number",
+            "minimum": 0
+          },
+          "periodStartedAt": {
+            "$ref": "#/$defs/__schema2"
+          },
+          "concurrency": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "onBusy": {
+            "type": "string",
+            "enum": [
+              "queue",
+              "skip",
+              "replace"
+            ]
+          },
+          "createdAt": {
+            "$ref": "#/$defs/__schema2"
+          },
+          "updatedAt": {
+            "$ref": "#/$defs/__schema2"
+          },
+          "stateChangedAt": {
+            "$ref": "#/$defs/__schema2"
+          }
+        },
+        "required": [
+          "id",
+          "seq",
+          "scenarioId",
+          "workflowId",
+          "versionRange",
+          "params",
+          "triggers",
+          "state",
+          "stateReason",
+          "until",
+          "budgetUsd",
+          "budgetPeriod",
+          "spentUsd",
+          "periodStartedAt",
+          "concurrency",
+          "onBusy",
+          "createdAt",
+          "updatedAt",
+          "stateChangedAt"
+        ],
+        "additionalProperties": false,
+        "$defs": {
+          "__schema0": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "$ref": "#/$defs/__schema1"
+            }
+          },
+          "__schema1": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/__schema1"
+                }
+              },
+              {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "$ref": "#/$defs/__schema1"
+                }
+              }
+            ]
+          },
+          "__schema2": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        }
+      },
+      "errors": {
+        "400": [
+          "invalid_input"
+        ],
+        "401": [
+          "unauthorized"
+        ],
+        "403": [
+          "forbidden"
+        ],
+        "404": [
+          "not_found"
+        ],
+        "409": [
+          "conflict"
+        ],
+        "500": [
+          "internal"
+        ],
+        "503": [
+          "unavailable"
+        ]
+      },
+      "headers": {
+        "type": "object",
+        "properties": {
+          "idempotency-key": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255,
+            "pattern": "^[\\x21-\\x7e]+$"
+          }
+        },
+        "additionalProperties": {}
+      },
+      "body": {
+        "type": "object",
+        "properties": {
+          "scenarioId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "workflowId": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+          },
+          "versionRange": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "params": {
+            "$ref": "#/$defs/__schema0"
+          },
+          "triggers": {
+            "maxItems": 50,
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/__schema0"
+            }
+          },
+          "until": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 32
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "budgetUsd": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMinimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "budgetPeriod": {
+            "type": "string",
+            "enum": [
+              "day",
+              "week",
+              "month"
+            ]
+          },
+          "concurrency": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "onBusy": {
+            "type": "string",
+            "enum": [
+              "queue",
+              "skip",
+              "replace"
+            ]
+          }
+        },
+        "required": [
+          "scenarioId",
+          "workflowId"
+        ],
+        "additionalProperties": false,
+        "$defs": {
+          "__schema0": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "$ref": "#/$defs/__schema1"
+            }
+          },
+          "__schema1": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/__schema1"
+                }
+              },
+              {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "$ref": "#/$defs/__schema1"
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "pauseWorkflowBinding",
+      "method": "POST",
+      "path": "/v1/workflow-bindings/:bindingId/pause",
+      "kind": "json",
+      "summary": "Pauses a binding: its triggers stop firing until it is resumed",
+      "pathParams": [
+        "bindingId"
+      ],
+      "response": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^WB[1-9][0-9]*$"
+          },
+          "seq": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "scenarioId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "workflowId": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+          },
+          "versionRange": {
+            "type": "string",
+            "pattern": "^(\\*|(0|[1-9]\\d*)\\.x|(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.x|(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(-[0-9A-Za-z.-]+)?)$"
+          },
+          "params": {
+            "$ref": "#/$defs/__schema0"
+          },
+          "triggers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/__schema0"
+            }
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "active",
+              "paused",
+              "stopped",
+              "expired"
+            ]
+          },
+          "stateReason": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "producer",
+                  "budget",
+                  "deadline"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "until": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/__schema2"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "budgetUsd": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMinimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "budgetPeriod": {
+            "type": "string",
+            "enum": [
+              "day",
+              "week",
+              "month"
+            ]
+          },
+          "spentUsd": {
+            "type": "number",
+            "minimum": 0
+          },
+          "periodStartedAt": {
+            "$ref": "#/$defs/__schema2"
+          },
+          "concurrency": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "onBusy": {
+            "type": "string",
+            "enum": [
+              "queue",
+              "skip",
+              "replace"
+            ]
+          },
+          "createdAt": {
+            "$ref": "#/$defs/__schema2"
+          },
+          "updatedAt": {
+            "$ref": "#/$defs/__schema2"
+          },
+          "stateChangedAt": {
+            "$ref": "#/$defs/__schema2"
+          }
+        },
+        "required": [
+          "id",
+          "seq",
+          "scenarioId",
+          "workflowId",
+          "versionRange",
+          "params",
+          "triggers",
+          "state",
+          "stateReason",
+          "until",
+          "budgetUsd",
+          "budgetPeriod",
+          "spentUsd",
+          "periodStartedAt",
+          "concurrency",
+          "onBusy",
+          "createdAt",
+          "updatedAt",
+          "stateChangedAt"
+        ],
+        "additionalProperties": false,
+        "$defs": {
+          "__schema0": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "$ref": "#/$defs/__schema1"
+            }
+          },
+          "__schema1": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/__schema1"
+                }
+              },
+              {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "$ref": "#/$defs/__schema1"
+                }
+              }
+            ]
+          },
+          "__schema2": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        }
+      },
+      "errors": {
+        "400": [
+          "invalid_input"
+        ],
+        "401": [
+          "unauthorized"
+        ],
+        "403": [
+          "forbidden"
+        ],
+        "404": [
+          "not_found"
+        ],
+        "409": [
+          "conflict"
+        ],
+        "500": [
+          "internal"
+        ],
+        "503": [
+          "unavailable"
+        ]
+      },
+      "params": {
+        "type": "object",
+        "properties": {
+          "bindingId": {
+            "type": "string",
+            "pattern": "^WB[1-9][0-9]*$"
+          }
+        },
+        "required": [
+          "bindingId"
+        ],
+        "additionalProperties": false
+      },
+      "headers": {
+        "type": "object",
+        "properties": {
+          "idempotency-key": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255,
+            "pattern": "^[\\x21-\\x7e]+$"
+          }
+        },
+        "additionalProperties": {}
+      }
+    },
+    {
+      "id": "resumeWorkflowBinding",
+      "method": "POST",
+      "path": "/v1/workflow-bindings/:bindingId/resume",
+      "kind": "json",
+      "summary": "Resumes a paused binding; 409 `conflict` past its deadline or with no budget left",
+      "pathParams": [
+        "bindingId"
+      ],
+      "response": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^WB[1-9][0-9]*$"
+          },
+          "seq": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "scenarioId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "workflowId": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+          },
+          "versionRange": {
+            "type": "string",
+            "pattern": "^(\\*|(0|[1-9]\\d*)\\.x|(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.x|(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(-[0-9A-Za-z.-]+)?)$"
+          },
+          "params": {
+            "$ref": "#/$defs/__schema0"
+          },
+          "triggers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/__schema0"
+            }
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "active",
+              "paused",
+              "stopped",
+              "expired"
+            ]
+          },
+          "stateReason": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "producer",
+                  "budget",
+                  "deadline"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "until": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/__schema2"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "budgetUsd": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMinimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "budgetPeriod": {
+            "type": "string",
+            "enum": [
+              "day",
+              "week",
+              "month"
+            ]
+          },
+          "spentUsd": {
+            "type": "number",
+            "minimum": 0
+          },
+          "periodStartedAt": {
+            "$ref": "#/$defs/__schema2"
+          },
+          "concurrency": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "onBusy": {
+            "type": "string",
+            "enum": [
+              "queue",
+              "skip",
+              "replace"
+            ]
+          },
+          "createdAt": {
+            "$ref": "#/$defs/__schema2"
+          },
+          "updatedAt": {
+            "$ref": "#/$defs/__schema2"
+          },
+          "stateChangedAt": {
+            "$ref": "#/$defs/__schema2"
+          }
+        },
+        "required": [
+          "id",
+          "seq",
+          "scenarioId",
+          "workflowId",
+          "versionRange",
+          "params",
+          "triggers",
+          "state",
+          "stateReason",
+          "until",
+          "budgetUsd",
+          "budgetPeriod",
+          "spentUsd",
+          "periodStartedAt",
+          "concurrency",
+          "onBusy",
+          "createdAt",
+          "updatedAt",
+          "stateChangedAt"
+        ],
+        "additionalProperties": false,
+        "$defs": {
+          "__schema0": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "$ref": "#/$defs/__schema1"
+            }
+          },
+          "__schema1": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/__schema1"
+                }
+              },
+              {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "$ref": "#/$defs/__schema1"
+                }
+              }
+            ]
+          },
+          "__schema2": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        }
+      },
+      "errors": {
+        "400": [
+          "invalid_input"
+        ],
+        "401": [
+          "unauthorized"
+        ],
+        "403": [
+          "forbidden"
+        ],
+        "404": [
+          "not_found"
+        ],
+        "409": [
+          "conflict"
+        ],
+        "500": [
+          "internal"
+        ],
+        "503": [
+          "unavailable"
+        ]
+      },
+      "params": {
+        "type": "object",
+        "properties": {
+          "bindingId": {
+            "type": "string",
+            "pattern": "^WB[1-9][0-9]*$"
+          }
+        },
+        "required": [
+          "bindingId"
+        ],
+        "additionalProperties": false
+      },
+      "headers": {
+        "type": "object",
+        "properties": {
+          "idempotency-key": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255,
+            "pattern": "^[\\x21-\\x7e]+$"
+          }
+        },
+        "additionalProperties": {}
+      }
+    },
+    {
+      "id": "stopWorkflowBinding",
+      "method": "POST",
+      "path": "/v1/workflow-bindings/:bindingId/stop",
+      "kind": "json",
+      "summary": "Ends a binding for good; the runs it started go on",
+      "pathParams": [
+        "bindingId"
+      ],
+      "response": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^WB[1-9][0-9]*$"
+          },
+          "seq": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "scenarioId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "workflowId": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+          },
+          "versionRange": {
+            "type": "string",
+            "pattern": "^(\\*|(0|[1-9]\\d*)\\.x|(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.x|(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(-[0-9A-Za-z.-]+)?)$"
+          },
+          "params": {
+            "$ref": "#/$defs/__schema0"
+          },
+          "triggers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/__schema0"
+            }
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "active",
+              "paused",
+              "stopped",
+              "expired"
+            ]
+          },
+          "stateReason": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "producer",
+                  "budget",
+                  "deadline"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "until": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/__schema2"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "budgetUsd": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMinimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "budgetPeriod": {
+            "type": "string",
+            "enum": [
+              "day",
+              "week",
+              "month"
+            ]
+          },
+          "spentUsd": {
+            "type": "number",
+            "minimum": 0
+          },
+          "periodStartedAt": {
+            "$ref": "#/$defs/__schema2"
+          },
+          "concurrency": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "onBusy": {
+            "type": "string",
+            "enum": [
+              "queue",
+              "skip",
+              "replace"
+            ]
+          },
+          "createdAt": {
+            "$ref": "#/$defs/__schema2"
+          },
+          "updatedAt": {
+            "$ref": "#/$defs/__schema2"
+          },
+          "stateChangedAt": {
+            "$ref": "#/$defs/__schema2"
+          }
+        },
+        "required": [
+          "id",
+          "seq",
+          "scenarioId",
+          "workflowId",
+          "versionRange",
+          "params",
+          "triggers",
+          "state",
+          "stateReason",
+          "until",
+          "budgetUsd",
+          "budgetPeriod",
+          "spentUsd",
+          "periodStartedAt",
+          "concurrency",
+          "onBusy",
+          "createdAt",
+          "updatedAt",
+          "stateChangedAt"
+        ],
+        "additionalProperties": false,
+        "$defs": {
+          "__schema0": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "$ref": "#/$defs/__schema1"
+            }
+          },
+          "__schema1": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/__schema1"
+                }
+              },
+              {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "$ref": "#/$defs/__schema1"
+                }
+              }
+            ]
+          },
+          "__schema2": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        }
+      },
+      "errors": {
+        "400": [
+          "invalid_input"
+        ],
+        "401": [
+          "unauthorized"
+        ],
+        "403": [
+          "forbidden"
+        ],
+        "404": [
+          "not_found"
+        ],
+        "409": [
+          "conflict"
+        ],
+        "500": [
+          "internal"
+        ],
+        "503": [
+          "unavailable"
+        ]
+      },
+      "params": {
+        "type": "object",
+        "properties": {
+          "bindingId": {
+            "type": "string",
+            "pattern": "^WB[1-9][0-9]*$"
+          }
+        },
+        "required": [
+          "bindingId"
+        ],
+        "additionalProperties": false
+      },
+      "headers": {
+        "type": "object",
+        "properties": {
+          "idempotency-key": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255,
+            "pattern": "^[\\x21-\\x7e]+$"
+          }
+        },
+        "additionalProperties": {}
+      }
+    },
+    {
+      "id": "listWorkflowPackages",
+      "method": "GET",
+      "path": "/v1/workflow-packages",
+      "kind": "json",
+      "summary": "The installed workflow packages, by id",
+      "pathParams": [],
+      "response": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "version": {
+                  "type": "string"
+                },
+                "hash": {
+                  "type": "string",
+                  "pattern": "^sha256:[0-9a-f]{64}$"
+                },
+                "origin": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "const": "file"
+                        },
+                        "path": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "path"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "const": "git"
+                        },
+                        "url": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "ref": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "commit": {
+                          "type": "string",
+                          "pattern": "^[0-9a-f]{40,64}$"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "url",
+                        "ref",
+                        "commit"
+                      ],
+                      "additionalProperties": false
+                    }
+                  ]
+                },
+                "workflows": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "signature": {
+                  "type": "string",
+                  "enum": [
+                    "verified",
+                    "invalid",
+                    "unverified",
+                    "absent",
+                    "skipped"
+                  ]
+                },
+                "signer": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "confirmedUnsigned": {
+                  "type": "boolean"
+                },
+                "permissions": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "installedAt": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "updatedAt": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                }
+              },
+              "required": [
+                "id",
+                "version",
+                "hash",
+                "origin",
+                "workflows",
+                "signature",
+                "signer",
+                "confirmedUnsigned",
+                "permissions",
+                "installedAt",
+                "updatedAt"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "additionalProperties": false
+      },
+      "errors": {
+        "401": [
+          "unauthorized"
+        ],
+        "403": [
+          "forbidden"
+        ],
+        "500": [
+          "internal"
+        ],
+        "503": [
+          "unavailable"
+        ]
+      }
+    },
+    {
+      "id": "removeWorkflowPackage",
+      "method": "DELETE",
+      "path": "/v1/workflow-packages/:packageId",
+      "kind": "json",
+      "summary": "Removes a package and the versions it brought; 409 `conflict` while one of them is the active version (deactivate or replace it first) or a live run is in it",
+      "pathParams": [
+        "packageId"
+      ],
+      "response": {
+        "type": "object",
+        "properties": {
+          "removed": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "removed"
+        ],
+        "additionalProperties": false
+      },
+      "errors": {
+        "400": [
+          "invalid_input"
+        ],
+        "401": [
+          "unauthorized"
+        ],
+        "403": [
+          "forbidden"
+        ],
+        "404": [
+          "not_found"
+        ],
+        "409": [
+          "conflict"
+        ],
+        "500": [
+          "internal"
+        ],
+        "503": [
+          "unavailable"
+        ]
+      },
+      "params": {
+        "type": "object",
+        "properties": {
+          "packageId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          }
+        },
+        "required": [
+          "packageId"
+        ],
+        "additionalProperties": false
+      },
+      "headers": {
+        "type": "object",
+        "properties": {
+          "idempotency-key": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255,
+            "pattern": "^[\\x21-\\x7e]+$"
+          }
+        },
+        "additionalProperties": {}
+      }
+    },
+    {
+      "id": "installWorkflowPackage",
+      "method": "POST",
+      "path": "/v1/workflow-packages/install",
+      "kind": "json",
+      "summary": "Reads and checks a package (folder, file or git:<url>#<ref>) and answers its preview; with `approvedHash` equal to the preview it installs it. The permissions are always in the preview",
+      "pathParams": [],
+      "response": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "preview",
+              "installed",
+              "updated",
+              "unchanged"
+            ]
+          },
+          "preview": {
+            "type": "object",
+            "properties": {
+              "packageId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "version": {
+                "type": "string",
+                "minLength": 1
+              },
+              "description": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "origin": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "file"
+                      },
+                      "path": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "path"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "git"
+                      },
+                      "url": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "ref": {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      "commit": {
+                        "type": "string",
+                        "pattern": "^[0-9a-f]{40,64}$"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "url",
+                      "ref",
+                      "commit"
+                    ],
+                    "additionalProperties": false
+                  }
+                ]
+              },
+              "hash": {
+                "type": "string",
+                "pattern": "^sha256:[0-9a-f]{64}$"
+              },
+              "workflows": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "string"
+                    },
+                    "path": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "version",
+                    "path",
+                    "description"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "permissions": {
+                "type": "object",
+                "properties": {
+                  "tools": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "plugins": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "effects": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "publicWrites": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": [
+                  "tools",
+                  "plugins",
+                  "effects",
+                  "publicWrites"
+                ],
+                "additionalProperties": false
+              },
+              "newPermissions": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "previousVersion": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "signature": {
+                "type": "object",
+                "properties": {
+                  "state": {
+                    "type": "string",
+                    "enum": [
+                      "verified",
+                      "invalid",
+                      "unverified",
+                      "absent",
+                      "skipped"
+                    ]
+                  },
+                  "signer": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "detail": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "state",
+                  "signer",
+                  "detail"
+                ],
+                "additionalProperties": false
+              },
+              "outcome": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "refused"
+                      },
+                      "reason": {
+                        "type": "string",
+                        "enum": [
+                          "invalid",
+                          "not_signed",
+                          "not_verified"
+                        ]
+                      },
+                      "detail": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "reason",
+                      "detail"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "ready"
+                      },
+                      "confirm": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "enum": [
+                            "unsigned",
+                            "new_permissions"
+                          ]
+                        }
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "confirm"
+                    ],
+                    "additionalProperties": false
+                  }
+                ]
+              }
+            },
+            "required": [
+              "packageId",
+              "version",
+              "description",
+              "origin",
+              "hash",
+              "workflows",
+              "permissions",
+              "newPermissions",
+              "previousVersion",
+              "signature",
+              "outcome"
+            ],
+            "additionalProperties": false
+          },
+          "workflows": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "version": {
+                  "type": "string"
+                },
+                "active": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "id",
+                "version",
+                "active"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "status",
+          "preview",
+          "workflows"
+        ],
+        "additionalProperties": false
+      },
+      "errors": {
+        "400": [
+          "invalid_input"
+        ],
+        "401": [
+          "unauthorized"
+        ],
+        "403": [
+          "forbidden"
+        ],
+        "409": [
+          "conflict"
+        ],
+        "500": [
+          "internal"
+        ],
+        "503": [
+          "unavailable"
+        ]
+      },
+      "body": {
+        "type": "object",
+        "properties": {
+          "origin": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4096
+          },
+          "approvedHash": {
+            "type": "string",
+            "pattern": "^sha256:[0-9a-f]{64}$"
+          }
+        },
+        "required": [
+          "origin"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "id": "listWorkflowRuns",
+      "method": "GET",
+      "path": "/v1/workflow-runs",
+      "kind": "json",
+      "summary": "The runs of the workflow engine (not the plays of the play machine), oldest first; filter by scenario, workflow and open or finished",
+      "pathParams": [],
+      "response": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "runId": {
+                  "type": "string"
+                },
+                "scenarioId": {
+                  "type": "string"
+                },
+                "workflow": {
+                  "$ref": "#/$defs/__schema0"
+                },
+                "born": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/__schema0"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "state": {
+                  "type": "string"
+                },
+                "steps": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "migrationPending": {
+                  "type": "boolean"
+                },
+                "need": {
+                  "type": "string"
+                },
+                "createdAt": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "updatedAt": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "finishedAt": {
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "runId",
+                "scenarioId",
+                "workflow",
+                "born",
+                "state",
+                "steps",
+                "migrationPending",
+                "need",
+                "createdAt",
+                "updatedAt",
+                "finishedAt"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "nextCursor": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor"
+        ],
+        "additionalProperties": false,
+        "$defs": {
+          "__schema0": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "version": {
+                "type": "string"
+              },
+              "hash": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "version",
+              "hash"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "errors": {
+        "400": [
+          "invalid_input"
+        ],
+        "401": [
+          "unauthorized"
+        ],
+        "403": [
+          "forbidden"
+        ],
+        "500": [
+          "internal"
+        ]
+      },
+      "query": {
+        "type": "object",
+        "properties": {
+          "after": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "limit": {
+            "default": 50,
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 200
+          },
+          "scenarioId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "workflowId": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "open",
+              "finished"
+            ]
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "id": "listWorkflows",
+      "method": "GET",
+      "path": "/v1/workflows",
+      "kind": "json",
+      "summary": "The saved versions of the library, by workflow and then by order of saving, without their documents; filter by workflow, state and source",
+      "pathParams": [],
+      "response": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "workflowId": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+                },
+                "version": {
+                  "type": "string",
+                  "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-[0-9A-Za-z.-]+)?$"
+                },
+                "seq": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9007199254740991
+                },
+                "hash": {
+                  "type": "string",
+                  "pattern": "^sha256:[0-9a-f]{64}$"
+                },
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "builtin",
+                    "user",
+                    "package"
+                  ]
+                },
+                "packageId": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "state": {
+                  "type": "string",
+                  "enum": [
+                    "active",
+                    "inactive"
+                  ]
+                },
+                "createdAt": {
+                  "$ref": "#/$defs/__schema0"
+                },
+                "updatedAt": {
+                  "$ref": "#/$defs/__schema0"
+                },
+                "activatedAt": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/__schema0"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "workflowId",
+                "version",
+                "seq",
+                "hash",
+                "source",
+                "packageId",
+                "state",
+                "createdAt",
+                "updatedAt",
+                "activatedAt"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "nextCursor": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor"
+        ],
+        "additionalProperties": false,
+        "$defs": {
+          "__schema0": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        }
+      },
+      "errors": {
+        "400": [
+          "invalid_input"
+        ],
+        "401": [
+          "unauthorized"
+        ],
+        "403": [
+          "forbidden"
+        ],
+        "500": [
+          "internal"
+        ]
+      },
+      "query": {
+        "type": "object",
+        "properties": {
+          "after": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "limit": {
+            "default": 50,
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 200
+          },
+          "workflowId": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "active",
+              "inactive"
+            ]
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "builtin",
+              "user",
+              "package"
+            ]
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "id": "saveWorkflow",
+      "method": "POST",
+      "path": "/v1/workflows",
+      "kind": "json",
+      "summary": "Validates and saves a version in the library, as `user`; the same version with the same content is a no-op and with other content is 409 `conflict`; `invalid_input` lists the issues in `details.issues`",
+      "pathParams": [],
+      "response": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "object",
+            "properties": {
+              "workflowId": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+              },
+              "version": {
+                "type": "string",
+                "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-[0-9A-Za-z.-]+)?$"
+              },
+              "seq": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "hash": {
+                "type": "string",
+                "pattern": "^sha256:[0-9a-f]{64}$"
+              },
+              "source": {
+                "type": "string",
+                "enum": [
+                  "builtin",
+                  "user",
+                  "package"
+                ]
+              },
+              "packageId": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "state": {
+                "type": "string",
+                "enum": [
+                  "active",
+                  "inactive"
+                ]
+              },
+              "createdAt": {
+                "$ref": "#/$defs/__schema0"
+              },
+              "updatedAt": {
+                "$ref": "#/$defs/__schema0"
+              },
+              "activatedAt": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/__schema0"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "workflowId",
+              "version",
+              "seq",
+              "hash",
+              "source",
+              "packageId",
+              "state",
+              "createdAt",
+              "updatedAt",
+              "activatedAt"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "version"
+        ],
+        "additionalProperties": false,
+        "$defs": {
+          "__schema0": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        }
+      },
+      "errors": {
+        "400": [
+          "invalid_input"
+        ],
+        "401": [
+          "unauthorized"
+        ],
+        "403": [
+          "forbidden"
+        ],
+        "409": [
+          "conflict"
+        ],
+        "500": [
+          "internal"
+        ]
+      },
+      "headers": {
+        "type": "object",
+        "properties": {
+          "idempotency-key": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255,
+            "pattern": "^[\\x21-\\x7e]+$"
+          }
+        },
+        "additionalProperties": {}
+      },
+      "body": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "activate": {
+                "type": "boolean"
+              },
+              "yaml": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 300000
+              }
+            },
+            "required": [
+              "yaml"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "activate": {
+                "type": "boolean"
+              },
+              "definition": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "$ref": "#/$defs/__schema0"
+                }
+              }
+            },
+            "required": [
+              "definition"
+            ],
+            "additionalProperties": false
+          }
+        ],
+        "$defs": {
+          "__schema0": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/__schema0"
+                }
+              },
+              {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "$ref": "#/$defs/__schema0"
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "diffWorkflow",
+      "method": "GET",
+      "path": "/v1/workflows/:workflowId/diff",
+      "kind": "json",
+      "summary": "What changed between two saved versions, part by part (inputs, limits, nodes, edges, triggers...), not line by line",
+      "pathParams": [
+        "workflowId"
+      ],
+      "response": {
+        "type": "object",
+        "properties": {
+          "workflowId": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+          },
+          "from": {
+            "type": "object",
+            "properties": {
+              "version": {
+                "$ref": "#/$defs/__schema0"
+              },
+              "hash": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "version",
+              "hash"
+            ],
+            "additionalProperties": false
+          },
+          "to": {
+            "type": "object",
+            "properties": {
+              "version": {
+                "$ref": "#/$defs/__schema0"
+              },
+              "hash": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "version",
+              "hash"
+            ],
+            "additionalProperties": false
+          },
+          "same": {
+            "type": "boolean"
+          },
+          "changes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "area": {
+                  "type": "string"
+                },
+                "key": {
+                  "type": "string"
+                },
+                "change": {
+                  "type": "string",
+                  "enum": [
+                    "added",
+                    "removed",
+                    "changed"
+                  ]
+                },
+                "before": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/__schema1"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "after": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/__schema2"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "area",
+                "key",
+                "change",
+                "before",
+                "after"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "workflowId",
+          "from",
+          "to",
+          "same",
+          "changes"
+        ],
+        "additionalProperties": false,
+        "$defs": {
+          "__schema0": {
+            "type": "string",
+            "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-[0-9A-Za-z.-]+)?$"
+          },
+          "__schema1": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/__schema1"
+                }
+              },
+              {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "$ref": "#/$defs/__schema1"
+                }
+              }
+            ]
+          },
+          "__schema2": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/__schema2"
+                }
+              },
+              {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "$ref": "#/$defs/__schema2"
+                }
+              }
+            ]
+          }
+        }
+      },
+      "errors": {
+        "400": [
+          "invalid_input"
+        ],
+        "401": [
+          "unauthorized"
+        ],
+        "403": [
+          "forbidden"
+        ],
+        "404": [
+          "not_found"
+        ],
+        "500": [
+          "internal"
+        ]
+      },
+      "params": {
+        "type": "object",
+        "properties": {
+          "workflowId": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+          }
+        },
+        "required": [
+          "workflowId"
+        ],
+        "additionalProperties": false
+      },
+      "query": {
+        "type": "object",
+        "properties": {
+          "from": {
+            "$ref": "#/$defs/__schema0"
+          },
+          "to": {
+            "$ref": "#/$defs/__schema0"
+          }
+        },
+        "required": [
+          "from",
+          "to"
+        ],
+        "additionalProperties": false,
+        "$defs": {
+          "__schema0": {
+            "type": "string",
+            "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-[0-9A-Za-z.-]+)?$"
+          }
+        }
+      }
+    },
+    {
+      "id": "getWorkflowVersion",
+      "method": "GET",
+      "path": "/v1/workflows/:workflowId/versions/:version",
+      "kind": "json",
+      "summary": "One saved version with its document",
+      "pathParams": [
+        "workflowId",
+        "version"
+      ],
+      "response": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "object",
+            "properties": {
+              "workflowId": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+              },
+              "version": {
+                "type": "string",
+                "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-[0-9A-Za-z.-]+)?$"
+              },
+              "seq": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "hash": {
+                "type": "string",
+                "pattern": "^sha256:[0-9a-f]{64}$"
+              },
+              "source": {
+                "type": "string",
+                "enum": [
+                  "builtin",
+                  "user",
+                  "package"
+                ]
+              },
+              "packageId": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "state": {
+                "type": "string",
+                "enum": [
+                  "active",
+                  "inactive"
+                ]
+              },
+              "createdAt": {
+                "$ref": "#/$defs/__schema0"
+              },
+              "updatedAt": {
+                "$ref": "#/$defs/__schema0"
+              },
+              "activatedAt": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/__schema0"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "workflowId",
+              "version",
+              "seq",
+              "hash",
+              "source",
+              "packageId",
+              "state",
+              "createdAt",
+              "updatedAt",
+              "activatedAt"
+            ],
+            "additionalProperties": false
+          },
+          "definition": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "$ref": "#/$defs/__schema1"
+            }
+          }
+        },
+        "required": [
+          "version",
+          "definition"
+        ],
+        "additionalProperties": false,
+        "$defs": {
+          "__schema0": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "__schema1": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/__schema1"
+                }
+              },
+              {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "$ref": "#/$defs/__schema1"
+                }
+              }
+            ]
+          }
+        }
+      },
+      "errors": {
+        "400": [
+          "invalid_input"
+        ],
+        "401": [
+          "unauthorized"
+        ],
+        "403": [
+          "forbidden"
+        ],
+        "404": [
+          "not_found"
+        ],
+        "500": [
+          "internal"
+        ]
+      },
+      "params": {
+        "type": "object",
+        "properties": {
+          "workflowId": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+          },
+          "version": {
+            "type": "string",
+            "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-[0-9A-Za-z.-]+)?$"
+          }
+        },
+        "required": [
+          "workflowId",
+          "version"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
+      "id": "activateWorkflow",
+      "method": "POST",
+      "path": "/v1/workflows/:workflowId/versions/:version/activate",
+      "kind": "json",
+      "summary": "Makes a saved version the one new runs are born in, without restarting the daemon; the open runs follow `workflows.running_on_change`",
+      "pathParams": [
+        "workflowId",
+        "version"
+      ],
+      "response": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "object",
+            "properties": {
+              "workflowId": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+              },
+              "version": {
+                "type": "string",
+                "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-[0-9A-Za-z.-]+)?$"
+              },
+              "seq": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "hash": {
+                "type": "string",
+                "pattern": "^sha256:[0-9a-f]{64}$"
+              },
+              "source": {
+                "type": "string",
+                "enum": [
+                  "builtin",
+                  "user",
+                  "package"
+                ]
+              },
+              "packageId": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "state": {
+                "type": "string",
+                "enum": [
+                  "active",
+                  "inactive"
+                ]
+              },
+              "createdAt": {
+                "$ref": "#/$defs/__schema0"
+              },
+              "updatedAt": {
+                "$ref": "#/$defs/__schema0"
+              },
+              "activatedAt": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/__schema0"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "workflowId",
+              "version",
+              "seq",
+              "hash",
+              "source",
+              "packageId",
+              "state",
+              "createdAt",
+              "updatedAt",
+              "activatedAt"
+            ],
+            "additionalProperties": false
+          },
+          "runningOnChange": {
+            "type": "string",
+            "enum": [
+              "pin",
+              "migrate_at_safe_point"
+            ]
+          }
+        },
+        "required": [
+          "version",
+          "runningOnChange"
+        ],
+        "additionalProperties": false,
+        "$defs": {
+          "__schema0": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        }
+      },
+      "errors": {
+        "400": [
+          "invalid_input"
+        ],
+        "401": [
+          "unauthorized"
+        ],
+        "403": [
+          "forbidden"
+        ],
+        "404": [
+          "not_found"
+        ],
+        "500": [
+          "internal"
+        ]
+      },
+      "params": {
+        "type": "object",
+        "properties": {
+          "workflowId": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+          },
+          "version": {
+            "type": "string",
+            "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-[0-9A-Za-z.-]+)?$"
+          }
+        },
+        "required": [
+          "workflowId",
+          "version"
+        ],
+        "additionalProperties": false
+      },
+      "headers": {
+        "type": "object",
+        "properties": {
+          "idempotency-key": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255,
+            "pattern": "^[\\x21-\\x7e]+$"
+          }
+        },
+        "additionalProperties": {}
+      }
+    },
+    {
+      "id": "deactivateWorkflow",
+      "method": "POST",
+      "path": "/v1/workflows/:workflowId/versions/:version/deactivate",
+      "kind": "json",
+      "summary": "Turns the active version off, so the workflow has none and a package that brought it can leave; the open runs keep their version, and activating it again is the way back",
+      "pathParams": [
+        "workflowId",
+        "version"
+      ],
+      "response": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "object",
+            "properties": {
+              "workflowId": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+              },
+              "version": {
+                "type": "string",
+                "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-[0-9A-Za-z.-]+)?$"
+              },
+              "seq": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "hash": {
+                "type": "string",
+                "pattern": "^sha256:[0-9a-f]{64}$"
+              },
+              "source": {
+                "type": "string",
+                "enum": [
+                  "builtin",
+                  "user",
+                  "package"
+                ]
+              },
+              "packageId": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "state": {
+                "type": "string",
+                "enum": [
+                  "active",
+                  "inactive"
+                ]
+              },
+              "createdAt": {
+                "$ref": "#/$defs/__schema0"
+              },
+              "updatedAt": {
+                "$ref": "#/$defs/__schema0"
+              },
+              "activatedAt": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/__schema0"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "workflowId",
+              "version",
+              "seq",
+              "hash",
+              "source",
+              "packageId",
+              "state",
+              "createdAt",
+              "updatedAt",
+              "activatedAt"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "version"
+        ],
+        "additionalProperties": false,
+        "$defs": {
+          "__schema0": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        }
+      },
+      "errors": {
+        "400": [
+          "invalid_input"
+        ],
+        "401": [
+          "unauthorized"
+        ],
+        "403": [
+          "forbidden"
+        ],
+        "404": [
+          "not_found"
+        ],
+        "500": [
+          "internal"
+        ]
+      },
+      "params": {
+        "type": "object",
+        "properties": {
+          "workflowId": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+          },
+          "version": {
+            "type": "string",
+            "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-[0-9A-Za-z.-]+)?$"
+          }
+        },
+        "required": [
+          "workflowId",
+          "version"
+        ],
+        "additionalProperties": false
+      },
+      "headers": {
+        "type": "object",
+        "properties": {
+          "idempotency-key": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255,
+            "pattern": "^[\\x21-\\x7e]+$"
+          }
+        },
+        "additionalProperties": {}
+      }
+    },
+    {
+      "id": "simulateWorkflow",
+      "method": "POST",
+      "path": "/v1/workflows/simulate",
+      "kind": "json",
+      "summary": "Walks a definition (a document, or a saved version) from its start to an end without running a step, opening a session or spending anything; stops at `workflows.simulate.max_steps`",
+      "pathParams": [],
+      "response": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "ok": {
+                "type": "boolean",
+                "const": true
+              },
+              "workflow": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "version": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "version"
+                ],
+                "additionalProperties": false
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "done",
+                  "cancelled",
+                  "failed",
+                  "truncated"
+                ]
+              },
+              "ended": {
+                "type": "string"
+              },
+              "inputs": {
+                "$ref": "#/$defs/__schema0"
+              },
+              "path": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "node": {
+                      "type": "string"
+                    },
+                    "step": {
+                      "type": "string"
+                    },
+                    "role": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "output": {
+                      "$ref": "#/$defs/__schema0"
+                    },
+                    "effects": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "via": {
+                      "type": "string",
+                      "enum": [
+                        "edge",
+                        "limit",
+                        "no_edge",
+                        "step_failed"
+                      ]
+                    },
+                    "edge": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "to": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "node",
+                    "step",
+                    "role",
+                    "output",
+                    "effects",
+                    "via",
+                    "to"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "counts": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                }
+              },
+              "warnings": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/__schema2"
+                }
+              }
+            },
+            "required": [
+              "ok",
+              "workflow",
+              "status",
+              "ended",
+              "inputs",
+              "path",
+              "counts",
+              "warnings"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "ok": {
+                "type": "boolean",
+                "const": false
+              },
+              "reason": {
+                "type": "string",
+                "enum": [
+                  "invalid_definition",
+                  "invalid_inputs",
+                  "invalid_outputs",
+                  "step_limit"
+                ]
+              },
+              "detail": {
+                "type": "string"
+              },
+              "errors": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/__schema2"
+                }
+              }
+            },
+            "required": [
+              "ok",
+              "reason",
+              "detail",
+              "errors"
+            ],
+            "additionalProperties": false
+          }
+        ],
+        "$defs": {
+          "__schema0": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "$ref": "#/$defs/__schema1"
+            }
+          },
+          "__schema1": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/__schema1"
+                }
+              },
+              {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "$ref": "#/$defs/__schema1"
+                }
+              }
+            ]
+          },
+          "__schema2": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "line": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "column": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": [
+              "path",
+              "code",
+              "message"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "errors": {
+        "400": [
+          "invalid_input"
+        ],
+        "401": [
+          "unauthorized"
+        ],
+        "403": [
+          "forbidden"
+        ],
+        "404": [
+          "not_found"
+        ],
+        "500": [
+          "internal"
+        ]
+      },
+      "body": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "inputs": {
+                "$ref": "#/$defs/__schema0"
+              },
+              "outputs": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/__schema0"
+                    },
+                    {
+                      "minItems": 1,
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/$defs/__schema0"
+                      }
+                    }
+                  ]
+                }
+              },
+              "fail": {
+                "maxItems": 200,
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/__schema2"
+                }
+              },
+              "yaml": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 300000
+              }
+            },
+            "required": [
+              "yaml"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "inputs": {
+                "$ref": "#/$defs/__schema0"
+              },
+              "outputs": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/__schema0"
+                    },
+                    {
+                      "minItems": 1,
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/$defs/__schema0"
+                      }
+                    }
+                  ]
+                }
+              },
+              "fail": {
+                "maxItems": 200,
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/__schema2"
+                }
+              },
+              "definition": {
+                "$ref": "#/$defs/__schema0"
+              }
+            },
+            "required": [
+              "definition"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "inputs": {
+                "$ref": "#/$defs/__schema0"
+              },
+              "outputs": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/__schema0"
+                    },
+                    {
+                      "minItems": 1,
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/$defs/__schema0"
+                      }
+                    }
+                  ]
+                }
+              },
+              "fail": {
+                "maxItems": 200,
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/__schema2"
+                }
+              },
+              "workflowId": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+              },
+              "version": {
+                "type": "string",
+                "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-[0-9A-Za-z.-]+)?$"
+              }
+            },
+            "required": [
+              "workflowId"
+            ],
+            "additionalProperties": false
+          }
+        ],
+        "$defs": {
+          "__schema0": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "$ref": "#/$defs/__schema1"
+            }
+          },
+          "__schema1": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/__schema1"
+                }
+              },
+              {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "$ref": "#/$defs/__schema1"
+                }
+              }
+            ]
+          },
+          "__schema2": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    {
+      "id": "validateWorkflow",
+      "method": "POST",
+      "path": "/v1/workflows/validate",
+      "kind": "json",
+      "summary": "Checks a definition (YAML text or document) against the validator of the library, saving nothing; the answer is 200 with `ok: false` and the issues, with the line of each when it came as YAML",
+      "pathParams": [],
+      "response": {
+        "type": "object",
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "stage": {
+            "type": "string",
+            "enum": [
+              "yaml",
+              "definition"
+            ]
+          },
+          "workflow": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+                  },
+                  "version": {
+                    "type": "string",
+                    "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-[0-9A-Za-z.-]+)?$"
+                  },
+                  "hash": {
+                    "type": "string",
+                    "pattern": "^sha256:[0-9a-f]{64}$"
+                  }
+                },
+                "required": [
+                  "id",
+                  "version",
+                  "hash"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "errors": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/__schema0"
+            }
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/__schema0"
+            }
+          }
+        },
+        "required": [
+          "ok",
+          "stage",
+          "workflow",
+          "errors",
+          "warnings"
+        ],
+        "additionalProperties": false,
+        "$defs": {
+          "__schema0": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "line": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "column": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": [
+              "path",
+              "code",
+              "message"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "errors": {
+        "400": [
+          "invalid_input"
+        ],
+        "401": [
+          "unauthorized"
+        ],
+        "403": [
+          "forbidden"
+        ],
+        "500": [
+          "internal"
+        ]
+      },
+      "body": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "yaml": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 300000
+              }
+            },
+            "required": [
+              "yaml"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "definition": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "$ref": "#/$defs/__schema0"
+                }
+              }
+            },
+            "required": [
+              "definition"
+            ],
+            "additionalProperties": false
+          }
+        ],
+        "$defs": {
+          "__schema0": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/__schema0"
+                }
+              },
+              {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "$ref": "#/$defs/__schema0"
+                }
+              }
+            ]
           }
         }
       }

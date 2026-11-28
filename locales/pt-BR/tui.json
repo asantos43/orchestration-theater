@@ -490,6 +490,10 @@
           "rate_limit": "limite de taxa de {{profiles}}",
           "unavailable": "{{profiles}} indisponível"
         },
+        "workflowBudget": {
+          "pause": "O orçamento da ligação {{bindingId}} ({{workflowId}}) acabou ({{spent}} de {{budget}} USD): pausada.",
+          "stop": "O orçamento da ligação {{bindingId}} ({{workflowId}}) acabou ({{spent}} de {{budget}} USD): parada."
+        },
         "handoff": "A tentativa {{attemptId}} passou de {{from}} para {{to}} ({{cause}}).",
         "selectionWait": "O papel {{role}} espera um Executor: {{on}}. Próxima olhada às {{until}}.",
         "resetWait": "A tentativa {{attemptId}} espera {{executor}} até {{until}}.",

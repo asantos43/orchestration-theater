@@ -4,6 +4,7 @@ import {
   assertItemNumber,
   assertLabels,
   assertNonEmptyText,
+  DEFAULT_COMMENT_LIST_LIMIT,
   InvalidInput,
   ISSUE_LIST_MAX,
   ISSUE_TRACKER_PORT_VERSION,
@@ -13,9 +14,12 @@ import {
   type CommentOptions,
   type Issue,
   type IssueComment,
+  type IssueCommentLister,
   type IssueRef,
   type IssueTracker,
   type LabelOptions,
+  type ListCommentsOptions,
+  type ListedComment,
   type ListIssuesOptions,
 } from '@otheater/core';
 import { z } from 'zod';
@@ -63,6 +67,10 @@ const CommentJsonSchema = z.object({
   created_at: z.string(),
 });
 
+const ListedCommentJsonSchema = CommentJsonSchema.extend({
+  body: z.string().nullable().optional(),
+});
+
 const PullNumberJsonSchema = z.object({ number: z.number().int().positive() });
 
 /** Issues of one page of the API (its most). */
@@ -80,7 +88,7 @@ const MAX_LIST_PAGES = 5;
  * `ProcessLauncher` in `repo`. `gh` finds the repository by the remotes of the checkout; the
  * `remote` of an option is not used. [proposta]
  */
-export class GithubIssueTracker implements IssueTracker {
+export class GithubIssueTracker implements IssueTracker, IssueCommentLister {
   readonly id = GITHUB_ISSUE_TRACKER_ADAPTER.id;
   readonly implements = GITHUB_ISSUE_TRACKER_ADAPTER.implements;
 
@@ -164,6 +172,46 @@ export class GithubIssueTracker implements IssueTracker {
       throw notFoundAs(`pull request #${String(opts.number)}`, error);
     }
     return this.#comment(opts);
+  }
+
+  /**
+   * The comments of an issue or a pull request, oldest first (P10b; `IssueCommentLister`). The
+   * endpoint is the same for both. At most `limit` of them, read in pages of {@link PAGE_SIZE}.
+   */
+  async listComments(opts: ListCommentsOptions): Promise<readonly ListedComment[]> {
+    checkedRef(opts, 'item number');
+    const limit = opts.limit ?? DEFAULT_COMMENT_LIST_LIMIT;
+    if (!Number.isSafeInteger(limit) || limit < 1) {
+      throw new InvalidInput(`limit must be a positive integer, got ${String(limit)}`);
+    }
+    const comments: ListedComment[] = [];
+    for (let page = 1; comments.length < limit; page += 1) {
+      let answer: z.output<typeof ListedCommentJsonSchema>[];
+      try {
+        answer = await this.#api.json(
+          opts.repo,
+          'GET',
+          `repos/{owner}/{repo}/issues/${String(opts.number)}/comments`,
+          z.array(ListedCommentJsonSchema),
+          [
+            ['per_page', String(PAGE_SIZE)],
+            ['page', String(page)],
+          ],
+        );
+      } catch (error) {
+        throw notFoundAs(`issue or pull request #${String(opts.number)}`, error);
+      }
+      for (const raw of answer) {
+        comments.push({
+          id: String(raw.id),
+          url: raw.html_url,
+          createdAt: ghTime('gh api comments', raw.created_at),
+          body: raw.body ?? '',
+        });
+      }
+      if (answer.length < PAGE_SIZE) break;
+    }
+    return comments.slice(0, limit);
   }
 
   async addLabels(opts: LabelOptions): Promise<readonly string[]> {
