@@ -29,6 +29,11 @@ async function harness(
     handlers?: ToolHandlers;
     producerQuestions?: 'choices' | 'choices_strict' | 'free';
     hiddenTools?: () => ReadonlySet<string>;
+    notices?: (context: {
+      attemptId: string;
+      playId: string;
+      demandId: string;
+    }) => Promise<readonly string[]>;
   } = {},
 ): Promise<Harness> {
   const { logger } = captureLogger();
@@ -41,6 +46,7 @@ async function harness(
       ? {}
       : { producerQuestions: options.producerQuestions }),
     ...(options.hiddenTools === undefined ? {} : { hiddenTools: options.hiddenTools }),
+    ...(options.notices === undefined ? {} : { notices: options.notices }),
     logger,
     version: '0.0.0-test',
   });
@@ -303,6 +309,63 @@ describe('the token and the role', () => {
     const actor = h.grant('actor');
     const asDirector = await callTool(actor, h.server.url, 'next_action', {});
     expect(asDirector.result?.isError === true || asDirector.body.error !== undefined).toBe(true);
+  });
+});
+
+describe('the notices of the Director (supervision, P14)', () => {
+  const read = (): ToolHandlers =>
+    new ToolHandlers().register('read_blackboard', () => ({ value: 1 }));
+
+  it('adds the notices as text blocks to the reply of a tool of an Actor', async () => {
+    const seen: unknown[] = [];
+    const h = await harness({
+      handlers: read(),
+      notices: (context) => {
+        seen.push(context);
+        return Promise.resolve(['[Director supervision, warning] stay inside']);
+      },
+    });
+    const { result } = await callTool(h.grant('actor'), h.server.url, 'read_blackboard', {
+      key: 'k',
+    });
+    expect(result?.structuredContent).toEqual({ value: 1 });
+    expect(result?.content.at(-1)).toEqual({
+      type: 'text',
+      text: '[Director supervision, warning] stay inside',
+    });
+    expect(seen).toEqual([{ attemptId: 'p1/d1/1', playId: 'p1', demandId: 'd1' }]);
+  });
+
+  it('adds nothing for another role, for submit, or when there is nothing to say', async () => {
+    let calls = 0;
+    const h = await harness({
+      handlers: read().register('read_contract', () => ({})),
+      notices: () => {
+        calls += 1;
+        return Promise.resolve(['note']);
+      },
+    });
+    const director = await callTool(h.grant('director'), h.server.url, 'ask_producer', {});
+    expect(JSON.stringify(director.result)).not.toContain('note');
+    expect(calls).toBe(0);
+    const submit = await callTool(h.grant('actor', 'p1/d1/2'), h.server.url, 'submit', {
+      result: { state: 'done' },
+    });
+    expect(JSON.stringify(submit.result)).not.toContain('"note"');
+    expect(calls).toBe(0);
+  });
+
+  it('falls back to the plain reply when the notices fail', async () => {
+    const h = await harness({
+      handlers: read(),
+      notices: () => Promise.reject(new Error('store closed')),
+    });
+    const { result } = await callTool(h.grant('actor'), h.server.url, 'read_blackboard', {
+      key: 'k',
+    });
+    expect(result?.isError).not.toBe(true);
+    expect(result?.structuredContent).toEqual({ value: 1 });
+    expect(result?.content).toHaveLength(1);
   });
 });
 

@@ -27,3 +27,16 @@ export const NOTES_KEY_PREFIX = 'notes/';
 export function notesKey(demandId: string): string {
   return `${NOTES_KEY_PREFIX}${demandId}`;
 }
+
+/**
+ * [proposta] The messages of the Director's supervision to the Actors of a demand (N309, D8; plan
+ * of Phase 11b, P14): each message is a version of `supervision/<demand>`, written when it is
+ * queued and again when its state changes (`delivered`, `dropped`), so a pending message survives
+ * a restart of the daemon (architecture 5.16). The latest version of each `noticeId` is its state.
+ */
+export const SUPERVISION_KEY_PREFIX = 'supervision/';
+
+/** The blackboard key of the supervision messages of the demand `demandId`. */
+export function supervisionKey(demandId: string): string {
+  return `${SUPERVISION_KEY_PREFIX}${demandId}`;
+}
