@@ -6,6 +6,7 @@ import {
   verifyComment,
   verifyLabel,
 } from './effects.js';
+import { runPlayKey } from '../play/run-play.js';
 import { codeHostOf, commentMarker, guardPublicWrite, numberOf, portFailure } from './support.js';
 import { NO_STEP_OUTPUT, type StepContext, type StepResult, type StepRunner } from '../types.js';
 
@@ -18,6 +19,20 @@ import { NO_STEP_OUTPUT, type StepContext, type StepResult, type StepRunner } fr
  *    `<run>:<node>:<ordinal>`, so a restart in the middle of the step does not write twice.
  */
 
+/** `params.body`, else the summary of the `run_play` node of `params.body_from`, else the input `body`. */
+async function bodyOf(ctx: StepContext): Promise<unknown> {
+  if (typeof ctx.params.body === 'string') return ctx.params.body;
+  if (typeof ctx.params.body_from === 'string') {
+    const entry = await ctx.deps.store.blackboard.get(ctx.runId, runPlayKey(ctx.params.body_from));
+    const value = entry?.value;
+    if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+      return value.summary;
+    }
+    return undefined;
+  }
+  return ctx.inputs.body;
+}
+
 function targetOf(ctx: StepContext): 'issue' | 'pr' {
   return ctx.params.target === 'pr' ? 'pr' : 'issue';
 }
@@ -28,7 +43,8 @@ function targetOf(ctx: StepContext): 'issue' | 'pr' {
  * - With `workflows.codehost.comment_marker: on` (default) the body ends with a hidden marker
  *   (`<!-- otheater-effect: <key> -->`), which is what the verifier looks for after a crash (see
  *   `verifyComment` and `CommentFinder`).
- * - The body is a literal text: params are not interpolated yet.
+ * - The body is a literal text: params are not interpolated yet. `params.body_from` names a `run_play`
+ *   node of the run (P12): the body is the summary that node left on the blackboard of the run.
  */
 export const commentStep: StepRunner = {
   type: 'comment',
@@ -42,7 +58,7 @@ export const commentStep: StepRunner = {
     const target = targetOf(ctx);
     const number = numberOf(ctx, target);
     if (number === undefined) return { kind: 'failed', reason: 'number_missing' };
-    const body = typeof ctx.params.body === 'string' ? ctx.params.body : ctx.inputs.body;
+    const body = await bodyOf(ctx);
     if (typeof body !== 'string' || body.trim() === '') {
       return { kind: 'failed', reason: 'comment_body_missing' };
     }

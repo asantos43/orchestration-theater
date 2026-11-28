@@ -520,7 +520,42 @@ Depois, o P4 e o P12 correm em paralelo. O **P10b** vem por último, com o resto
 - `ci-fix`: a CI que falhou num PR vira a leitura do log, a correção numa branch e um PR, com aprovação.
 - **Aceite próprio:** a parte 1 do critério de aceite, menos o pacote e o editor.
 
-**Como ficou:** a preencher.
+**Como ficou:** [V] feito, na branch `fase11b/p12-workflows-prontos` (2026-11-28). O guia de uso é o [docs/27](27-GUIA-DOS-WORKFLOWS-PRONTOS.md).
+- **Decisões do dono (2026-11-28) que o passo seguiu:**
+  - o `run_play` é a ponte para a peça de **hoje** (o `PlayRunner`); a troca da `playMachine` por `play.yaml` fica no P10c;
+  - a demanda sai da issue, do PR ou do log, espera um estado final, retoma sem abrir uma segunda peça e marca o texto de fora como dado;
+  - `event_poll: off` não inicia o laço de eventos do P6 (commit `77fce795`, com teste em `triggers/service.test.ts`).
+- **O passo `run_play`:**
+  - o tipo está em `workflows/src/step-types.ts` (`BRIDGE_STEP_TYPES`) e o passo, em `daemon/src/workflows/steps/play/run-play.ts`, registrado em `compose.ts`;
+  - o adaptador sobre a orquestração é `run-play-port.ts`, e o `open-play.ts` ganhou o id da peça como quarto parâmetro, para o reinício achar a peça;
+  - o daemon liga a porta depois do `startOrchestration` (a composição dos workflows vem antes dele), com uma porta tardia;
+  - o `run_play` conta como escrita `push`: o validador exige uma `approval` antes e o passo confere `workflows.security.require_approval` de novo (`approval_required` e `workflow.write.refused`);
+  - o `comment` ganhou `body_from` (lê do blackboard da execução o que o `run_play` deixou).
+- **As três definições** (`daemon/src/workflows/definitions/*.yaml`, embutidas em `ready-yaml.ts` e instaladas pelo daemon como `builtin` e ativas, sem ligar nada):
+  - `github-issues`, `pr-review` e `ci-fix`, todas com `approval`, `run_play` e `comment`;
+  - cada uma passa no validador do P1 sem erro e sem aviso, e a versão embutida é igual ao arquivo.
+- **Testes [V]:**
+  - os do passo e do adaptador (`steps/play/`);
+  - `ready-workflows.test.ts`, de cada definição;
+  - `ready-workflows.e2e.test.ts`, com o motor montado por `composeWorkflows`, o `fake` do code host e do rastreador, o relógio falso e a peça falsa;
+  - o e2e prova que a peça, o comentário e o `label` só saem depois da aprovação, e que um autor de fora da lista não inicia nada e gera `workflow.trigger.skipped`.
+- **Nada real foi rodado:** nenhum cliente, nenhuma rede, nenhum GitHub. [N] O efeito de uma peça de verdade, com um modelo, fica para o roteiro do dono.
+- **[proposta]** (a forma do `run_play` e das definições; vão ao dono):
+  - parâmetros `from` (`issue`, `pr`, `ci_log`), `number`, `instructions` e `timeout`; saída `ended`, `delivered`, `branch`, `pr_number`, `pr_url`, `summary` e `play_id`;
+  - a aprovação vem **antes** do trabalho, e não só antes do comentário;
+  - o rótulo `otheater` do `github-issues`;
+  - `body_from` no `comment`;
+  - sem um laço de tentativas no `ci-fix`.
+- **Desvios do docs/24 (seção 11), por falta do que vem no P10b e no P10c:**
+  - sem a triagem pelo Diretor no `github-issues` e sem `Fixes #N` no PR;
+  - `pr-review` roda uma peça inteira com a instrução de revisar, porque não há peça só com o Crítico;
+  - `ci-fix` abre um PR novo e não faz push na branch do PR que falhou;
+  - a aprovação antes da peça existe porque a peça empurra sozinha; uma aprovação depois do trabalho pede um modo de a peça parar antes do push.
+- **Observações [V] para quem fizer o P10b e o P10c:**
+  - um vínculo não herda os `triggers` da definição (a CLI do P10b deve copiá-los);
+  - as saídas de um nó ainda não aparecem nos nós seguintes (a interpolação tiraria o `body_from`);
+  - cancelar a execução não cancela a peça que ela abriu;
+  - `composeWorkflows` não passa `workflows.security.require_approval` ao validador do motor nem ao da biblioteca: o validador usa o padrão (`push`, `comment`, `label`), e só a guarda de execução segue a configuração.
 
 ### P13. Mural de recados (N308, opção 1)
 

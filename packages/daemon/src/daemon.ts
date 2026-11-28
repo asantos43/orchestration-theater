@@ -151,6 +151,8 @@ import { faultPlanPath, resolveFaultPlan } from './chaos/faults.js';
 import type { DiskGuard } from './disk/index.js';
 import { reconcileBeforeResume, type RecoveryReport } from './recovery/reconcile.js';
 import { composeWorkflows } from './workflows/compose.js';
+import { installReadyWorkflows } from './workflows/definitions/ready-workflows.js';
+import { createPlayRunPort } from './workflows/steps/play/run-play-port.js';
 import { BackupScheduler, type ActivityProbe } from './recovery/schedule.js';
 import { TrackingLauncher } from './recovery/tracking-launcher.js';
 import { ApplyCoordinator, type ApplyCoordinatorOptions } from './updates/apply/coordinator.js';
@@ -962,6 +964,9 @@ async function run(input: RunInput): Promise<DaemonHandle> {
           pullRequests: composition.triggerPorts.pullRequests,
           collaborators: composition.triggerPorts.collaborators,
         });
+  // Phase 11b, P12: `github-issues`, `pr-review` and `ci-fix` go into the library (idempotent); a
+  // binding names them, and nothing runs before the Producer binds one.
+  if (workflows !== undefined) await installReadyWorkflows(workflows.library);
   const recoveryStartedAt = clock.now();
   // Before anything is resumed: the orphans, the sessions, the worktrees and the effects (5.21).
   const recovery = await reconcileBeforeResume({
@@ -1084,6 +1089,16 @@ async function run(input: RunInput): Promise<DaemonHandle> {
       handoff,
       home: homedir(),
     });
+    // P12: `run_play` opens plays through the runner that exists only now (late-bound port).
+    if (workflows !== undefined && composition.codeHost !== undefined) {
+      workflows.plays.bind(
+        createPlayRunPort({
+          opening: orchestration.opening,
+          store,
+          codeHost: composition.codeHost,
+        }),
+      );
+    }
     const attachmentRoots = attachmentRootsPolicy({
       config: () => config.security.attachment_roots,
       store,

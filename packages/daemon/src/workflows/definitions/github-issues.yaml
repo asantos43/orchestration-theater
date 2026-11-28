@@ -1,0 +1,43 @@
+# The ready workflow 'github-issues' (docs/24 section 11; plan of Phase 11b, P12; decision N293).
+# An issue that gets the label becomes a play, and the play becomes a pull request that closes it.
+# Every choice of this file is a [proposta].
+#
+# - 'triggers' is what a binding of this workflow starts from; the binding has its own list and may
+#   change it (docs/24 section 8). The authors that may start a run are 'workflows.triggers.authors',
+#   not a field here: an issue of someone outside that list fires nothing (workflow.trigger.skipped).
+# - 'work' is the 'run_play' bridge (P12): it opens the play of today for the issue and waits for its
+#   end. The play pushes by itself, so the approval comes BEFORE it: without the approval the play is
+#   not even opened. The text of the issue reaches the play as data, never as an order.
+# - 'reply' comments on the issue what the play left (its branch, the pull request). With
+#   'workflows.security.require_approval' naming 'comment', the same approval covers it.
+id: github-issues
+version: 1.0.0
+engine: '>=1 <2'
+description: 'An issue with the label becomes a play, and the play becomes a pull request.'
+inputs:
+  issue: { type: number }
+triggers:
+  - { type: code_host.issue_labeled, filter: { label: otheater } }
+nodes:
+  read: { step: fetch_issue }
+  ask:
+    step: approval
+    params:
+      prompt: 'Open a play for this issue? It will push a branch and open a pull request.'
+      timeout: 24h
+      on_timeout: stop
+  work:
+    step: run_play
+    params:
+      from: issue
+      instructions: 'Resolve the issue below and deliver it as a pull request that closes the issue.'
+      timeout: 4h
+  reply: { step: comment, params: { target: issue, body_from: work } }
+edges:
+  - read -> ask when output.state == "open"
+  - read -> done
+  - ask -> work when output.approved
+  - ask -> cancelled
+  - work -> reply when output.delivered
+  - work -> done
+  - reply -> done
