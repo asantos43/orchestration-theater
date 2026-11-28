@@ -36,6 +36,7 @@ function fakeStep(node: string, signal = new AbortController().signal): StepCont
     inputs: {},
     signal,
     resumed: false,
+    approvals: 0,
     memo: { get: () => undefined, set: () => Promise.resolve() },
     deps: {} as StepContext['deps'],
   };
