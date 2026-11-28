@@ -13,7 +13,11 @@ import {
 import type { JsonObject } from '@otheater/core';
 import { z } from 'zod';
 import { createActor, initialTransition, transition, type SnapshotFrom } from 'xstate';
-import type { PlayNoticeKind } from '@otheater/protocol';
+import {
+  buildDaemonEvent,
+  type PlayNoticeKind,
+  type WorkflowLegacySnapshotMode,
+} from '@otheater/protocol';
 import type { PlayLimits } from '../config.js';
 import { situationText, writeSituation } from '../situations.js';
 import type { PausedPlay, PlayContext, PlayFlowRef } from './context.js';
@@ -60,6 +64,15 @@ export interface PlayRunnerOptions {
    * The disk guard keeps the id and calls `resume` when the space is back. Must not throw.
    */
   readonly onDiskFull?: ((playId: string) => void) | undefined;
+  /**
+   * `workflows.legacy_snapshot` (P3, D2/N311, [proposta]): what `resumeAll` does with a play saved
+   * by a version of the `play` older than this daemon's (the 1.x hand-written machine; there is no
+   * migration). `reject` (default): the play is not touched and stays refused, with the event
+   * `workflow.snapshot_rejected` and a notice in the chat. `cancel`: the play is cancelled and
+   * recorded. A snapshot of a newer version, or of another flow, is not legacy: it keeps the
+   * `Conflict` and the `play_not_resumed` notice.
+   */
+  readonly legacySnapshot?: WorkflowLegacySnapshotMode | undefined;
 }
 
 export interface NewPlayInput {
@@ -138,6 +151,7 @@ export class PlayRunner {
   readonly #logger: PlayRunnerLogger;
   readonly #onFinish: ((play: PlayRecord) => void) | undefined;
   readonly #onDiskFull: ((playId: string) => void) | undefined;
+  readonly #legacySnapshot: WorkflowLegacySnapshotMode;
   readonly #queues = new Map<string, Promise<void>>();
   readonly #timers = new Map<string, Map<string, ArmedDeadline>>();
   readonly #fired = new Set<Promise<void>>();
@@ -156,6 +170,7 @@ export class PlayRunner {
     this.#logger = options.logger ?? NO_LOGGER;
     this.#onFinish = options.onFinish;
     this.#onDiskFull = options.onDiskFull;
+    this.#legacySnapshot = options.legacySnapshot ?? 'reject';
   }
 
   /** Creates the play in NEED, with its first snapshot, and writes `play.created`. */
@@ -335,7 +350,8 @@ export class PlayRunner {
 
   /**
    * Resumes every play that is not finished. A play that cannot be restored (another version) is
-   * logged and skipped, and the others go on; the ids that failed come back in `refused`.
+   * logged and skipped, and the others go on; the ids that failed come back in `refused`. A play of
+   * the 1.x goes by `legacySnapshot` (`reject` or `cancel`) and also comes back in `refused`.
    */
   async resumeAll(): Promise<{ resumed: string[]; refused: string[] }> {
     const open = await this.#store.plays.list({ open: true });
@@ -343,6 +359,14 @@ export class PlayRunner {
     const refused: string[] = [];
     await Promise.all(
       open.map(async (play) => {
+        // [proposta] A record of another flow is a run of the generic engine (`WorkflowRuntime`
+        // resumes those), not a play: it is neither resumed nor refused here.
+        if (play.flowId !== PLAY_FLOW_ID) return;
+        if (play.flowVersion < PLAY_FLOW_VERSION) {
+          refused.push(play.id);
+          await this.#legacy(play);
+          return;
+        }
         try {
           await this.resume(play.id);
           resumed.push(play.id);
@@ -354,6 +378,58 @@ export class PlayRunner {
       }),
     );
     return { resumed: resumed.sort(), refused: refused.sort() };
+  }
+
+  /**
+   * A play of the `play` 1.x (a version older than the machine this daemon runs): its snapshot is
+   * not restored, and there is no migration (D2/N311). By `workflows.legacy_snapshot`, `reject`
+   * leaves the record as it is and `cancel` finishes it as CANCELLED; both write the event
+   * `workflow.snapshot_rejected` and a `play.notice` for the chat. Never throws.
+   */
+  async #legacy(play: PlayRecord): Promise<void> {
+    const mode = this.#legacySnapshot;
+    const reason = `saved by version ${String(play.flowVersion)} of the flow "${play.flowId}", and this daemon runs version ${String(PLAY_FLOW_VERSION)}: ${mode === 'cancel' ? 'the play is cancelled' : 'the snapshot is not restored'}`;
+    this.#logger.warn({ playId: play.id, mode }, 'play of a legacy version not resumed');
+    try {
+      const cancelled = await this.#enqueue(play.id, async () => {
+        const payload = {
+          flowId: play.flowId,
+          savedVersion: play.flowVersion,
+          currentVersion: PLAY_FLOW_VERSION,
+          mode,
+        };
+        if (mode === 'reject') {
+          await this.#store.events.append({
+            ...buildDaemonEvent('workflow.snapshot_rejected', payload),
+            scenarioId: play.scenarioId,
+            playId: play.id,
+          });
+          return null;
+        }
+        return this.#store.transaction(async (tx) => {
+          const saved = await tx.plays.update(play.id, {
+            state: 'CANCELLED',
+            finishedAt: tx.now(),
+          });
+          await tx.events.append({
+            ...buildDaemonEvent('workflow.snapshot_rejected', payload),
+            scenarioId: play.scenarioId,
+            playId: play.id,
+          });
+          return saved;
+        });
+      });
+      if (cancelled !== null) this.#notifyFinish(cancelled);
+    } catch (error) {
+      this.#logger.warn({ playId: play.id, err: error }, 'legacy play not recorded');
+    }
+    this.#notice(
+      'play_not_resumed',
+      play.id,
+      play.scenarioId,
+      'legacy_snapshot',
+      new Conflict(`Play ${play.id} ${reason}`),
+    );
   }
 
   /** The deadlines armed now, by play: `{demand id: epoch ms}`. For diagnostics and tests. */

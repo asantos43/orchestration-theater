@@ -6,8 +6,11 @@ export const PLAY_FLOW_ID = 'play';
 /**
  * Version of the machine. A snapshot is only restored on the same version (5.4); change the
  * machine in a way that breaks a stored snapshot and this number goes up, with a migration.
+ * 2 is the `play` 2.0 (plan of Phase 11b, P3): it is the major version of `play.yaml`
+ * (`workflows/definitions/play-definition.ts` checks it). A 1.x snapshot has no migration (D2/N311);
+ * `workflows.legacy_snapshot` says what becomes of it.
  */
-export const PLAY_FLOW_VERSION = 1;
+export const PLAY_FLOW_VERSION = 2;
 
 // The states of the play live in the protocol, with the payloads of the events that carry them.
 export { FINAL_PLAY_STATES, PLAY_STATES, type PlayState } from '@otheater/protocol';

@@ -100,6 +100,7 @@ import {
   SUPERVISION_SWITCHES,
 } from './supervision/config.js';
 import {
+  WORKFLOW_LEGACY_SNAPSHOT_MODES,
   WORKFLOW_BUDGET_ON_EXHAUSTED_MODES,
   WORKFLOW_BUDGET_PERIODS,
   WORKFLOW_ON_BUSY,
@@ -2213,6 +2214,8 @@ export const DaemonConfigSchema = z
     /**
      * The workflow library and the bindings of the scenarios (docs/24 section 7 and 12, N296; Phase
      * 11b, P5; the keys are described at `WorkflowsSettings`). `budget.period` is [proposta].
+     * `legacy_snapshot` (P3, [proposta]): `reject` (default) or `cancel` a play saved by the
+     * hand-written machine (1.x); see `WorkflowsSettings`.
      * `runtime` (P2, every key [proposta]) holds the defaults of the generic step types; a node's
      * own `timeout` or `on_timeout` wins.
      * - `runtime.wait_event.poll`: how often the log is read while a `wait_event` waits for its event.
@@ -2253,6 +2256,7 @@ export const DaemonConfigSchema = z
             on_busy: z.enum(WORKFLOW_ON_BUSY).default('queue'),
           })
           .prefault({}),
+        legacy_snapshot: z.enum(WORKFLOW_LEGACY_SNAPSHOT_MODES).default('reject'),
         runtime: z
           .strictObject({
             wait_event: z.strictObject({ poll: DurationSchema.prefault('2s') }).prefault({}),

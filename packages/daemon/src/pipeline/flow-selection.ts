@@ -5,7 +5,10 @@ import {
   describeFlowProblems,
   flowLimitOverrides,
   parseFlowConfig,
+  parseFlowsConfig,
   skippedSteps,
+  type FlowLimitKey,
+  type FlowStepId,
   type ResolvedFlow,
   type ScenarioRegistry,
 } from '@otheater/core';
@@ -40,14 +43,47 @@ export function flowHashOf(flow: ResolvedFlow): string {
   return createHash('sha256').update(canonicalFlowJson(flow)).digest('hex');
 }
 
+/**
+ * A flow of the configuration (`flows.<id>`, N243) as the `play` 2.0 takes it: the official
+ * `play` with the parameter `skip`, the optional steps the flow turns off (`plan_review`,
+ * `critique`), and the limits it sets. [proposta] This is the form `ot config` shows; the effect is
+ * the one `flows.<id>` always had, because the play keeps `skip` in its context and the guards of
+ * the machine read it.
+ */
+export interface PlayWorkflowParams {
+  readonly workflow: typeof OFFICIAL_PLAY_FLOW_ID;
+  readonly params: {
+    readonly skip: readonly FlowStepId[];
+    readonly limits: Readonly<Partial<Record<FlowLimitKey, number>>>;
+  };
+}
+
+export function playParamsOfFlow(flow: ResolvedFlow): PlayWorkflowParams {
+  return {
+    workflow: OFFICIAL_PLAY_FLOW_ID,
+    params: { skip: skippedSteps(flow), limits: flowLimitOverrides(flow) },
+  };
+}
+
 /** The reference a play keeps in its snapshot. */
 export function flowRefOf(flow: ResolvedFlow): PlayFlowRef {
   return {
     id: flow.id,
     version: flow.version,
     hash: flowHashOf(flow),
-    skip: skippedSteps(flow),
+    skip: [...playParamsOfFlow(flow).params.skip],
   };
+}
+
+/**
+ * `flows` of the configuration in the form of the `play` 2.0: `{ <id>: { workflow: 'play', params:
+ * { skip, limits } } }`. A flow that does not validate is left out (the validation of the daemon
+ * has already refused it at start-up).
+ */
+export function flowsAsPlayParams(flows: unknown): Record<string, PlayWorkflowParams> {
+  const parsed = parseFlowsConfig(flows);
+  if (!parsed.ok) return {};
+  return Object.fromEntries([...parsed.flows].map(([id, flow]) => [id, playParamsOfFlow(flow)]));
 }
 
 /** What a layer of `configOverride` says: the id, `undefined` (no key) or a problem. */

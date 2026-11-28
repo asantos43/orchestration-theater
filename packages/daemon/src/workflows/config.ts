@@ -1,5 +1,9 @@
 // SPDX-License-Identifier: MPL-2.0
 import {
+  WORKFLOW_LEGACY_SNAPSHOT_MODES,
+  type WorkflowLegacySnapshotMode,
+} from '@otheater/protocol';
+import {
   WORKFLOW_BUDGET_PERIODS,
   WORKFLOW_ON_BUSY,
   type WorkflowBudgetPeriod,
@@ -23,6 +27,10 @@ import {
  * - `binding.concurrency`: how many runs of one binding may be live at once (default 1).
  * - `binding.on_busy`: what a trigger does when the binding is at its concurrency: `queue`
  *   (default), `skip` or `replace`.
+ * - `legacy_snapshot` (P3, D2/N311, [proposta] the modes): what the daemon does, at start-up, with a
+ *   play saved by version 1 of the hand-written machine. There is no migration of 1.x. `reject`
+ *   (default) leaves the record as it is, writes `workflow.snapshot_rejected` and warns in the
+ *   chat; `cancel` cancels the play, records it and writes the same event.
  */
 export const WORKFLOW_BUDGET_ON_EXHAUSTED_MODES = ['pause', 'stop'] as const;
 export type WorkflowBudgetOnExhausted = (typeof WORKFLOW_BUDGET_ON_EXHAUSTED_MODES)[number];
@@ -30,7 +38,8 @@ export type WorkflowBudgetOnExhausted = (typeof WORKFLOW_BUDGET_ON_EXHAUSTED_MOD
 /** The value of `workflows.allowed` that lets every installed definition be chosen. */
 export const WORKFLOWS_ALL_INSTALLED = 'all_installed';
 
-export { WORKFLOW_BUDGET_PERIODS, WORKFLOW_ON_BUSY };
+export { WORKFLOW_BUDGET_PERIODS, WORKFLOW_ON_BUSY, WORKFLOW_LEGACY_SNAPSHOT_MODES };
+export type { WorkflowLegacySnapshotMode };
 
 /** `workflows` as the library and the bindings read it. */
 export interface WorkflowsSettings {
@@ -44,6 +53,8 @@ export interface WorkflowsSettings {
     readonly concurrency: number;
     readonly on_busy: WorkflowOnBusy;
   };
+  /** P3: what becomes of a play saved by the hand-written machine (1.x). */
+  readonly legacy_snapshot: WorkflowLegacySnapshotMode;
 }
 
 /** The defaults of `workflows`, for a service built without a configuration. */
@@ -52,4 +63,5 @@ export const DEFAULT_WORKFLOWS_SETTINGS: WorkflowsSettings = {
   allowed: WORKFLOWS_ALL_INSTALLED,
   budget: { on_exhausted: 'pause', period: 'day' },
   binding: { concurrency: 1, on_busy: 'queue' },
+  legacy_snapshot: 'reject',
 };
