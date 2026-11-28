@@ -570,6 +570,9 @@ Depois, o P4 e o P12 correm em paralelo. O **P10b** vem por último, com o resto
   15. As chaves `workflows.simulate.max_steps` e `workflows.simulate.on_limit`, acima, e os padrões.
   16. A forma da CLI: `list <o quê>`; `activate <id> <versão>` ou `<id>@<versão>`; `simulate <arquivo | id[@versão]>`; `install` em duas chamadas com `--approve <hash>`; simulação truncada sai com 0 e recusa com 1; as opções novas (`--workflow`, `--state`, `--input`, `--outputs`, `--fail`, `--activate`, `--approve`, `--range`, `--params`, `--triggers`, `--budget`, `--period`, `--concurrency`, `--on-busy`); `--until` só com dígitos vira número (época em ms); reaproveita `chat.noDaemon` e `chat.connectFailed`.
 - **Fica de fora:** a troca da máquina da peça (P10c), a triagem do Diretor no `github-issues` [N] e a tela da TUI (P11). [N] Nada foi exercitado com GitHub, modelo ou cliente reais.
+- **Decisões do dono (2026-11-28, por múltipla escolha):**
+  - as 16 escolhas [proposta] acima foram aceitas ("Aceitar todas");
+  - o `simulate` rodando o `fake-agent` (em vez do passeio seco) e a triagem pelo Diretor no `github-issues` passam ao **P10d**.
 
 ### P11. Editor do YAML na TUI
 
