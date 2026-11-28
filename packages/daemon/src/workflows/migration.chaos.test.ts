@@ -337,92 +337,102 @@ const EFFECT_POINTS: readonly { point: string; done: boolean }[] = [
 ];
 
 describe(`a generated pair (seed ${String(SEED)}) killed with SIGKILL at an effect`, () => {
-  const cases = slicer.take(
-    TARGETS.flatMap(({ label, effect }) =>
-      EFFECT_POINTS.map(({ point, done }) => ({ label, effect, point, done })),
-    ),
+  const cases = TARGETS.flatMap(({ label, effect }) =>
+    EFFECT_POINTS.map(({ point, done }) => ({ label, effect, point, done })),
   );
 
   for (const { label, effect, point, done } of cases) {
-    it(`at ${point} of ${label} (${effect.type} ${effect.token}, ${effect.version}): the run ends in 1.1.0, once`, async () => {
-      const name = `effect-${point.split('.')[1] ?? point}-${effect.token}`;
-      await killAndResume(
-        name,
-        {
-          OT_CHILD_CRASH: JSON.stringify([{ point, detail: effect.type, nth: effect.nth }]),
-        },
-        point,
-        () => {
-          if (effect.type !== 'demo.write') return;
-          // The kill is on this write: it is in the world exactly when the point is after its execute.
-          expect(worldOf(name).includes(effect.token)).toBe(done);
-        },
-      );
-    });
+    it.runIf(slicer.has())(
+      `at ${point} of ${label} (${effect.type} ${effect.token}, ${effect.version}): the run ends in 1.1.0, once`,
+      async () => {
+        const name = `effect-${point.split('.')[1] ?? point}-${effect.token}`;
+        await killAndResume(
+          name,
+          {
+            OT_CHILD_CRASH: JSON.stringify([{ point, detail: effect.type, nth: effect.nth }]),
+          },
+          point,
+          () => {
+            if (effect.type !== 'demo.write') return;
+            // The kill is on this write: it is in the world exactly when the point is after its execute.
+            expect(worldOf(name).includes(effect.token)).toBe(done);
+          },
+        );
+      },
+    );
   }
 });
 
 describe(`a generated pair (seed ${String(SEED)}) killed at the commit that migrates the run`, () => {
-  const cases = slicer.take([
+  const cases = [
     { point: 'store.before_commit', migrated: false },
     { point: 'store.after_commit', migrated: true },
-  ]);
+  ];
 
   for (const { point, migrated } of cases) {
-    it(`at ${point}: the migration is whole or not at all, and the restart ends the run in 1.1.0`, async () => {
-      const name = point.replace('.', '-');
-      await killAndResume(name, { OT_CHILD_STORE_CRASH: point }, point, (view) => {
-        // The migration and its event are one transaction: both are there or neither is.
-        expect(count(view, 'workflow.migrated')).toBe(migrated ? 1 : 0);
-        expect(view.play?.workflowVersion).toBe(
-          migrated ? GENERATED_TO_VERSION : GENERATED_FROM_VERSION,
-        );
-        expect(view.play?.bornVersion).toBe(GENERATED_FROM_VERSION);
-        // Not migrated: the request is still saved with the run, so the restart makes it.
-        expect(view.play?.migration !== null).toBe(!migrated);
-        expect(worldOf(name).every((id) => PAIR.expectedWrites.includes(id))).toBe(true);
-      });
-    });
+    it.runIf(slicer.has())(
+      `at ${point}: the migration is whole or not at all, and the restart ends the run in 1.1.0`,
+      async () => {
+        const name = point.replace('.', '-');
+        await killAndResume(name, { OT_CHILD_STORE_CRASH: point }, point, (view) => {
+          // The migration and its event are one transaction: both are there or neither is.
+          expect(count(view, 'workflow.migrated')).toBe(migrated ? 1 : 0);
+          expect(view.play?.workflowVersion).toBe(
+            migrated ? GENERATED_TO_VERSION : GENERATED_FROM_VERSION,
+          );
+          expect(view.play?.bornVersion).toBe(GENERATED_FROM_VERSION);
+          // Not migrated: the request is still saved with the run, so the restart makes it.
+          expect(view.play?.migration !== null).toBe(!migrated);
+          expect(worldOf(name).every((id) => PAIR.expectedWrites.includes(id))).toBe(true);
+        });
+      },
+    );
   }
 });
 
 describe(`a generated pair (seed ${String(SEED)}) killed with a migration waiting`, () => {
-  const cases = slicer.take([{ name: 'request' }]);
+  const cases = [{ name: 'request' }];
 
   for (const { name } of cases) {
-    it('dies in 1.0.0 right after the request was saved: the restart makes the migration', async () => {
-      await killAndResume(
-        name,
-        { OT_CHILD_KILL_AFTER_REQUEST: '1' },
-        'workflow.after_request',
-        (view) => {
-          expect(view.play?.workflowVersion).toBe(GENERATED_FROM_VERSION);
-          expect(view.play?.migration).toEqual({
-            toVersion: GENERATED_TO_VERSION,
-            trigger: 'request',
-          });
-          expect(count(view, 'workflow.migrated')).toBe(0);
-        },
-      );
-    });
+    it.runIf(slicer.has())(
+      'dies in 1.0.0 right after the request was saved: the restart makes the migration',
+      async () => {
+        await killAndResume(
+          name,
+          { OT_CHILD_KILL_AFTER_REQUEST: '1' },
+          'workflow.after_request',
+          (view) => {
+            expect(view.play?.workflowVersion).toBe(GENERATED_FROM_VERSION);
+            expect(view.play?.migration).toEqual({
+              toVersion: GENERATED_TO_VERSION,
+              trigger: 'request',
+            });
+            expect(count(view, 'workflow.migrated')).toBe(0);
+          },
+        );
+      },
+    );
   }
 });
 
 describe(`a generated pair (seed ${String(SEED)}) with no kill`, () => {
-  const cases = slicer.take([{ name: 'plain' }]);
+  const cases = [{ name: 'plain' }];
 
   for (const { name } of cases) {
-    it('the same program migrates and ends the run in one process', async () => {
-      const first = await runChild(name, 'first');
-      expect(first.code, first.stderr).toBe(0);
-      expect(first.stdout).toContain('FINAL done');
-      expectEnded(name);
-      assertInvariants([
-        checkI1({ dataDir: caseDir(name) }),
-        checkI4(worldAsJournal(name)),
-        checkI5({ storePath: storePath(name) }),
-        checkI7({ root: caseDir(name) }),
-      ]);
-    });
+    it.runIf(slicer.has())(
+      'the same program migrates and ends the run in one process',
+      async () => {
+        const first = await runChild(name, 'first');
+        expect(first.code, first.stderr).toBe(0);
+        expect(first.stdout).toContain('FINAL done');
+        expectEnded(name);
+        assertInvariants([
+          checkI1({ dataDir: caseDir(name) }),
+          checkI4(worldAsJournal(name)),
+          checkI5({ storePath: storePath(name) }),
+          checkI7({ root: caseDir(name) }),
+        ]);
+      },
+    );
   }
 });
