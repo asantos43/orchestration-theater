@@ -190,6 +190,9 @@ describe('daemon event registry', () => {
       'workflow.notified',
       'workflow.binding.changed',
       'workflow.budget_exhausted',
+      'workflow.package.installed',
+      'workflow.package.removed',
+      'workflow.package.signature_failed',
     ]);
     for (const [type, entry] of Object.entries(DAEMON_EVENT_TYPES)) {
       expect(entry.schemaVersion).toBe(type === 'executor.selected' ? 2 : 1);
