@@ -40,3 +40,16 @@ export const SUPERVISION_KEY_PREFIX = 'supervision/';
 export function supervisionKey(demandId: string): string {
   return `${SUPERVISION_KEY_PREFIX}${demandId}`;
 }
+
+/**
+ * [proposta] The questions an Actor asked the Director with `ask_director` (N308, option 2; plan
+ * of Phase 11b, P15): each question is one version of `questions/<demand>`, written with the
+ * attempt as the author, so the count of versions is what `collab.ask_director.max_per_demand`
+ * limits (over all the attempts of the demand, and over a restart of the daemon).
+ */
+export const QUESTIONS_KEY_PREFIX = 'questions/';
+
+/** The blackboard key of the questions of the demand `demandId`. */
+export function questionsKey(demandId: string): string {
+  return `${QUESTIONS_KEY_PREFIX}${demandId}`;
+}

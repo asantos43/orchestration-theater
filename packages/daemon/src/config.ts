@@ -93,6 +93,10 @@ import {
 } from './direct/direct-config.js';
 import { AnalysisConfigSchema } from './analysis/analysis-config.js';
 import { AtifConfigSchema } from './atif/atif-config.js';
+import {
+  COLLAB_ASK_DIRECTOR_MODES,
+  COLLAB_ASK_DIRECTOR_ON_TIMEOUT,
+} from './collab/ask-director-config.js';
 import { COLLAB_NOTES_MODES } from './collab/notes-config.js';
 import {
   SUPERVISION_DELIVERIES,
@@ -2164,6 +2168,16 @@ export const DaemonConfigSchema = z
      *   `off`: the two tools are neither listed nor callable.
      * - `max_per_actor`: the notes one demand may post in a play, over all its attempts.
      * - `max_chars`: the longest note (at most {@link NOTE_TEXT_MAX}, the cap of the tool's schema).
+     *
+     * `ask_director` is the question of an Actor to the Director (option 2; plan of Phase 11b,
+     * P15): the tool `ask_director` of the Actor and `answer_actor`, `relay_question` of the Director.
+     * - `mode`: `answer` (default): the Director answers from what it knows; `relay`: the Director
+     *   may also hand the question to the Actor that owns the information, through the channel of
+     *   the supervision; `off`: the three tools are neither listed nor callable.
+     * - `timeout`: how long the call waits for the answer (default `10m`).
+     * - `on_timeout`: `blocked` (default) ends the attempt as a `blocked` Actor would; `continue`
+     *   gives the Actor "no answer" and it goes on.
+     * - `max_per_demand`: the questions one demand may ask, over all its attempts.
      */
     collab: z
       .strictObject({
@@ -2172,6 +2186,14 @@ export const DaemonConfigSchema = z
             mode: z.enum(COLLAB_NOTES_MODES).default('play'),
             max_per_actor: z.int().min(1).max(1000).default(20),
             max_chars: z.int().min(1).max(NOTE_TEXT_MAX).default(2000),
+          })
+          .prefault({}),
+        ask_director: z
+          .strictObject({
+            mode: z.enum(COLLAB_ASK_DIRECTOR_MODES).default('answer'),
+            timeout: DurationSchema.prefault('10m'),
+            on_timeout: z.enum(COLLAB_ASK_DIRECTOR_ON_TIMEOUT).default('blocked'),
+            max_per_demand: z.int().min(1).max(100).default(3),
           })
           .prefault({}),
       })

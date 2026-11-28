@@ -214,15 +214,16 @@ interface PauseGate {
 }
 
 /** The reason the Director reads when an Actor was cancelled (N176). */
-/** The `submit` of an Actor that only says where it is (the answer to `request_status`). [proposta] */
+/**
+ * The `submit` of an Actor that does not end its work: the answer to `request_status` (state
+ * `status`, P14) and the answer to a question the Director relayed (state `answer`, P15). [proposta]
+ */
 function isStatusAnswer(output: unknown): boolean {
   if (typeof output !== 'object' || output === null) return false;
   const result = (output as { result?: unknown }).result;
-  return (
-    typeof result === 'object' &&
-    result !== null &&
-    (result as { state?: unknown }).state === 'status'
-  );
+  if (typeof result !== 'object' || result === null) return false;
+  const { state } = result as { state?: unknown };
+  return state === 'status' || state === 'answer';
 }
 
 const ACTOR_CANCELLED_REASON = 'The attempt was cancelled by the Producer.';

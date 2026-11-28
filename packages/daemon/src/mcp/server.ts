@@ -439,8 +439,12 @@ export class FrameworkMcpServer implements McpAccess {
           server.registerTool(
             tool.name,
             { description: describe(tool), inputSchema: deferred(tool.input) },
-            async (args) =>
-              await this.#withNotices(record, tool, asResult(await this.#call(record, tool, args))),
+            async (args, context) =>
+              await this.#withNotices(
+                record,
+                tool,
+                asResult(await this.#call(record, tool, args, context.mcpReq.signal)),
+              ),
           );
         }
         for (const binding of await this.#pluginTools(record)) {
@@ -647,7 +651,12 @@ export class FrameworkMcpServer implements McpAccess {
   }
 
   /** One call of a tool: the order is revoked? submit? input valid? handler? */
-  async #call(record: GrantRecord, tool: ToolDefinition, args: unknown): Promise<ToolReply> {
+  async #call(
+    record: GrantRecord,
+    tool: ToolDefinition,
+    args: unknown,
+    signal?: AbortSignal,
+  ): Promise<ToolReply> {
     if (record.revoked) return { ok: false, value: { error: 'revoked' } };
     await this.#options.gate?.wait();
     try {
@@ -684,6 +693,7 @@ export class FrameworkMcpServer implements McpAccess {
           worktree: record.input.worktree,
           networkAllow: record.input.networkAllow ?? [],
           record: record.input.record,
+          signal,
         },
       });
       if (value instanceof ToolFailure) {

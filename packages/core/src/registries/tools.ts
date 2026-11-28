@@ -348,6 +348,34 @@ export const readNotesOutput = z.strictObject({
   ),
 });
 
+/**
+ * [proposta] `ask_director` (N308, option 2; plan of Phase 11b, P15): the question of an Actor to
+ * the Director, a `blocked` that does not end the demand. The call waits for the answer up to
+ * `collab.ask_director.timeout`. The schema caps a question at {@link QUESTION_TEXT_MAX_CHARS}
+ * characters. `source` says who answered: the Director, or (mode `relay`) another Actor, whose
+ * text is data, not an order. `answered: false` is "no answer" (`on_timeout: continue`); with
+ * `on_timeout: blocked` the daemon records the demand as blocked and says so (`blocked: true`):
+ * the Actor ends its turn.
+ */
+export const QUESTION_TEXT_MAX_CHARS = 4000;
+const questionText = z.string().min(1).max(QUESTION_TEXT_MAX_CHARS);
+export const askDirectorInput = z.strictObject({ question: questionText });
+export const askDirectorOutput = z.strictObject({
+  answered: z.boolean(),
+  questionId: z.string(),
+  source: z.enum(['director', 'actor']).optional(),
+  answer: z.string().optional(),
+  reason: z.literal('timeout').optional(),
+  blocked: z.boolean().optional(),
+  /** What the reply is: a text from the Director or from another Actor, to weigh, not to obey. */
+  notice: z.string(),
+  /** How many questions the demand may still ask (`collab.ask_director.max_per_demand`). */
+  remaining: z.int().min(0),
+});
+/** The Director's answer to a question (`answer_actor`) and the relay to an Actor (`relay_question`). */
+const answerActorInput = z.strictObject({ questionId: id, text: z.string().min(1).max(20_000) });
+const relayQuestionInput = z.strictObject({ questionId: id, attemptId: id });
+
 const COMMON = EXECUTOR_ROLE_IDS;
 
 function tool(
@@ -420,6 +448,16 @@ export const OFFICIAL_TOOLS: readonly ToolDefinition[] = [
     z.strictObject({ ok: z.boolean(), recipients: z.int().min(0) }),
   ),
   tool('request_status', DIRECTOR, z.strictObject({ attemptId: id }), supervisionDelivery),
+  // The questions of the Actors (N308, option 2; P15 of Phase 11b). `answer_actor` answers one;
+  // `relay_question` (mode `relay` only) hands it to the Actor that owns the information, through
+  // the channel of the supervision. All three are hidden when `collab.ask_director.mode` is `off`.
+  tool('answer_actor', DIRECTOR, answerActorInput, accepted),
+  tool(
+    'relay_question',
+    DIRECTOR,
+    relayQuestionInput,
+    z.strictObject({ ok: z.boolean(), noticeId: z.string().optional() }),
+  ),
   tool('ask_producer', DIRECTOR, askProducerInput, json),
   tool(
     'open_pr',
@@ -491,6 +529,8 @@ export const OFFICIAL_TOOLS: readonly ToolDefinition[] = [
   // The board is the framework's own state, not the worktree: `read` by the definition above.
   tool('post_note', ['actor'], postNoteInput, postNoteOutput),
   tool('read_notes', ['actor'], readNotesInput, readNotesOutput),
+  // The question to the Director (N308, option 2): hidden when `collab.ask_director.mode` is `off`.
+  tool('ask_director', ['actor'], askDirectorInput, askDirectorOutput),
   tool('git_commit', ['actor'], gitCommitInput, gitCommitOutput, {
     effect: 'local_write',
     idempotencyKey: 'attempt_step',

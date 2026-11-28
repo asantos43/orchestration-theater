@@ -41,6 +41,7 @@ export const SUPERVISION_NOTICE_KINDS = [
   'broadcast',
   'contract',
   'status_request',
+  'question',
 ] as const;
 export type SupervisionNoticeKind = (typeof SUPERVISION_NOTICE_KINDS)[number];
 
