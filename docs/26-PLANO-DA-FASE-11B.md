@@ -90,18 +90,19 @@ O `@otheater/workflows` é pacote novo do monorepo, não dependência de fora. E
 | P1 | `@otheater/workflows`: schema da definição, linguagem de condição, compilador para XState, validador e hash | P0 | P7, P13 | feito (#359) |
 | P2 | Runtime do motor no daemon e tipos de passo genéricos (`call_tool`, `wait_event`, `branch`, `approval`, `notify`) | P1 | P5, P14 | feito (#413) |
 | P3 | A definição `play` 2.0: os tipos de passo da peça, a troca da máquina, o `flows.<id>` como parâmetro, o snapshot 1.x recusado | P2 | P6, P8, P9 | feito (#418) |
-| P4 | Versão de nascimento e migração em ponto seguro (N295), com a 2.0 → 2.1 de teste e o caos sobre workflows gerados | P3 | P10, P12 | a fazer |
+| P4 | Versão de nascimento e migração em ponto seguro (N295), com a 2.0 → 2.1 de teste e o caos sobre workflows gerados | P10a | P12 | a fazer |
 | P5 | Biblioteca e vínculos (N296): tabelas, `workflows.default` e `allowed`, estados do vínculo, prazo, orçamento por período, concorrência | P1 | P2, P14 | feito (#412) |
-| P6 | Gatilhos: laço de sondagem mínimo (D3), eventos internos, eventos de plugin declarados (D6), filtro de autor | P5 | P3, P8, P9 | a fazer |
+| P6 | Gatilhos: laço de sondagem mínimo (D3), eventos internos, eventos de plugin declarados (D6), filtro de autor | P5 | P3, P8, P9 | feito (#421) |
 | P7 | Porta `IssueTracker` (D4), adaptador GitHub, falso, conformidade; `fetchPullRequest` e `fetchCiLog` na `CodeHost` | P0 | P1, P13 | feito (#362) |
 | P8 | Tipos de passo do code host (`fetch_issue`, `fetch_pr`, `fetch_ci_log`, `comment`, `label`), aprovação antes de push e comentário, texto externo marcado | P2, P7 | P3, P6, P9 | feito (#416) |
 | P9 | Pacotes de workflow (N298): arquivo ou git com ref fixa, permissões na instalação, SSHSIG e chaves confiáveis (D5) | P1, P5 | P3, P6, P8 | feito (#417) |
-| P10 | API e CLI: validar, simular com o `fake-agent`, salvar, ativar, diff, listar, instalar (`ot flow ...`) | P4, P5, P9 | P12 | a fazer |
-| P11 | Editor do YAML na TUI, com o validador do P1 | P10 | P15, P16 (a parte automática) | a fazer |
-| P12 | Workflows prontos: `github-issues`, `pr-review` e `ci-fix` | P6, P8 | P10 | a fazer |
+| P10a | A peça pela `play.yaml` (o `playMachine` sai), os gatilhos do P6 na composição do daemon e os adaptadores GitHub de PR, colaborador e CI | P3, P6, P8 | nada | a fazer |
+| P10b | API e CLI: validar, simular com o `fake-agent`, salvar, ativar, desativar, diff, listar, instalar (`ot flow ...`) | P4, P5, P9, P10a | P12 | a fazer |
+| P11 | Editor do YAML na TUI, com o validador do P1 | P10b | P15, P16 (a parte automática) | a fazer |
+| P12 | Workflows prontos: `github-issues`, `pr-review` e `ci-fix` | P6, P8, P10a | P4, P10b | a fazer |
 | P13 | Mural de recados da peça (N308, opção 1): `post_note`, `read_notes` | P0 | P1, P7 | feito (#360) |
 | P14 | Supervisão do Diretor (N309): sinais, `warn` e `redirect`, o canal pela resposta MCP (D8) e os três extras | P13 | P2, P5 | feito (#414) |
-| P15 | `ask_director` (N308, opção 2): o `blocked` que não encerra, com espera, prazo e o modo `relay` pelo canal do P14 | P14 | P3 a P12 | a fazer |
+| P15 | `ask_director` (N308, opção 2): o `blocked` que não encerra, com espera, prazo e o modo `relay` pelo canal do P14 | P14 | P3 a P12 | feito (#420) |
 | P16 | Aceite da fase | P1 a P15, P17, P18 | nada | a fazer |
 | P17 | Testes da TUI num terminal real com o `@microsoft/tui-test` (N320) | P1, P7, P13 | os da onda 2 | feito (este PR) |
 | P18a | Nova detecção dos clientes (N321, itens 2 e 5): sem reiniciar o daemon, a cada abertura do assistente e ao criar uma conta; no Windows, o `Path` do registro; o motivo de cada cliente não achado na API | P7 | os da onda 2 | feito (#367) |
@@ -112,7 +113,7 @@ Ondas **[proposta, forma decidida na D9]**:
 - onda 1, logo depois do merge deste plano: **P1, P7 e P13**, em paralelo (três agentes);
 - onda 2: **P2, P5 e P14**, e o **P17** (N320, acrescentado em 2026-11-25), que mexe só nos testes da TUI e na CI;
 - onda 3: **P3, P8 e P9**, e depois **P6** e **P15**, assim que uma vaga abrir;
-- onda 4: **P4, P10 e P12**;
+- onda 4 (reordenada pelo dono em 2026-11-28, com a divisão do P10): primeiro o **P10a**, sozinho; depois **P4 e P12**, em paralelo; por fim o **P10b**;
 - onda 5: **P11** e **P16**.
 
 O P3 é o passo de maior risco, porque troca o núcleo mais testado. Ele corre sozinho na suíte completa: enquanto ele roda os e2e, os outros dois agentes da onda só rodam os testes do próprio pacote.
@@ -349,7 +350,7 @@ Todos **[proposta]** quanto ao nome. Cada um entra no catálogo do protocolo e n
 - Eventos de plugin: as três condições da D6. O manifesto de plugin ganha o campo `triggers` opcional (`docs/reference/plugin-manifest.schema.json`).
 - **Aceite próprio:** com o relógio falso, a issue nova dispara uma vez; o autor fora da lista é pulado; o vínculo ocupado segue `on_busy`; um evento de plugin não declarado não dispara.
 
-**Como ficou** (2026-11-28, [V] com tsc, os testes locais do protocolo, do núcleo e do daemon; PR a abrir):
+**Como ficou** (2026-11-28, [V] com tsc, os testes locais do protocolo, do núcleo e do daemon; PR #421; o desvio da D3 e as escolhas do Claude foram aceitos pelo dono em 2026-11-28):
 
 - **Montagem:** `createWorkflowTriggers(deps)` (`triggers/service.ts`) devolve `start`, `stop`, `pass` e o `ledger`. São dois laços sobre o `Clock`: um para o code host (a cada `poll.interval`) e outro para o log de eventos (a cada `event_poll`). `pass()` faz um olhar de cada laço agora, para os testes e para um comando que peça uma olhada. [V] Nenhum gatilho do sistema operacional em modo algum (D3). O `PollLoop` (`poll-loop.ts`) é genérico (`PollSource {id, poll}`), então a Fase 9b pode emprestar o mesmo laço às suas fontes.
 - **Gatilhos do vínculo:** o campo `triggers` do vínculo ganhou forma (`types.ts`): `event` (`filter.name`), `code_host.issue_opened`, `code_host.issue_labeled` (`filter.label`), `code_host.pr_opened` e `code_host.ci_failed`, os quatro do code host com `filter.labels` (todos) e `filter.labels_any` (algum). Um gatilho que o daemon não entende gera um `workflow.trigger.skipped` (motivo `invalid`) uma vez por processo e é ignorado.
@@ -363,7 +364,8 @@ Todos **[proposta]** quanto ao nome. Cada um entra no catálogo do protocolo e n
 - **Eventos novos:** `workflow.trigger.fired`, `workflow.trigger.skipped` (motivos: `author`, `busy`, `paused`, `budget`, `undeclared`, `plugin_inactive`, `plugin_events_off`, `refused`, `no_workflow`, `invalid`) e `workflow.poll.failed`, nos catálogos do protocolo e do daemon (contagens 179 e 181).
 - **Chaves novas:** `workflows.triggers.authors`, `authors_list`, `plugin_events`, `poll.mode`, `poll.interval` (mínimo `1m`), `poll.on_error`, e as [proposta] `poll.backoff_max` (`1h`), `poll.limit` (30, máximo 100) e `event_poll` (`2s` ou `off`).
 - **Aceite próprio:** com o relógio falso (`service.test.ts`): a issue nova dispara uma vez (e não de novo após reinício); o autor fora da lista é pulado; o vínculo ocupado segue `queue`, `skip` e `replace`; o evento de plugin não declarado não dispara (e o declarado dispara); o erro de sondagem segue `backoff` (com dobra e teto) e `pause_binding`. Também: `pr_opened`, `ci_failed` (um disparo por sha), filtros de rótulo, `poll.mode: off`, vínculo pausado ou sem orçamento não olhado, `start`/`stop` sem timer sobrando. Mais testes de `poll-loop`, `seen`, `authors`, `types`, `plugin-events`, `fire`, da configuração e do manifesto.
-- **Escolhas do Claude ([proposta], para o dono confirmar):**
+- **Desvio da D3 (aceito pelo dono em 2026-11-28, por múltipla escolha: "Aceitar"):** a D3 fala em um laço "sobre os `wakeups` que já existem". O laço dorme no `Clock` e guarda em memória o próximo olhar de cada fonte, porque a tabela `wakeups` serve ao perfil que espera cota e tem uma linha por perfil. O "uma vez só" continua durável pelo livro e pelo id da execução. Registrado também na N312 do docs/13.
+- **Escolhas do Claude (decidido pelo dono em 2026-11-28, "Aceitar todas"):** valem como estão:
   - o laço dorme no `Clock` e guarda em memória o próximo olhar de cada fonte, em vez de usar a tabela `wakeups`, que serve ao perfil que espera cota e é uma linha por perfil;
   - duas portas estreitas injetadas, `PullRequestLister` e `CollaboratorCheck` (e o `CiReader`), porque `CodeHost` e `IssueTracker` não listam PRs nem dizem quem é colaborador;
   - o filtro de autor é uma chave global, não um campo do gatilho;
@@ -373,7 +375,7 @@ Todos **[proposta]** quanto ao nome. Cada um entra no catálogo do protocolo e n
   - as chaves `poll.backoff_max`, `poll.limit` e `event_poll`;
   - a lista `authors_list` também vale no modo `collaborators`;
   - o tipo do gatilho como texto livre no evento, e os nomes dos motivos de `skipped`.
-- **[N] Falta para o P10:** ligar `createWorkflowTriggers` na composição do daemon (`start` ao subir, `stop` ao descer) com o `WorkflowRuntime`, a `WorkflowLibrary`, os `WorkflowBindings`, o registro de plugins e `repoOf` (o repositório do projeto de cada cenário); escrever os adaptadores reais de `PullRequestLister` e `CollaboratorCheck` sobre o GitHub (hoje só falsos nos testes); e a superfície de rotas e CLI que cria vínculos com `triggers` e pede um olhar (`pass`). [N] Sem isso o laço não roda no daemon real, e sem `pullRequests` os gatilhos `pr_opened` e `ci_failed` falham o olhar com `AdapterUnavailable` e seguem `poll.on_error`.
+- **[N] Falta para o P10 (agora P10a):** ligar `createWorkflowTriggers` na composição do daemon (`start` ao subir, `stop` ao descer) com o `WorkflowRuntime`, a `WorkflowLibrary`, os `WorkflowBindings`, o registro de plugins e `repoOf` (o repositório do projeto de cada cenário); escrever os adaptadores reais de `PullRequestLister` e `CollaboratorCheck` sobre o GitHub (hoje só falsos nos testes); e a superfície de rotas e CLI que cria vínculos com `triggers` e pede um olhar (`pass`). [N] Sem isso o laço não roda no daemon real, e sem `pullRequests` os gatilhos `pr_opened` e `ci_failed` falham o olhar com `AdapterUnavailable` e seguem `poll.on_error`.
 
 ### P7. Porta `IssueTracker` (D4)
 
@@ -462,7 +464,14 @@ Todos **[proposta]** quanto ao nome. Cada um entra no catálogo do protocolo e n
   - `npm` não é fonte (recusada).
 - **Escolhas do Claude (decidido pelo dono em 2026-11-28, "Aceitar todas"):** o formato do pacote (`package.yaml` com o sha256 de cada arquivo e uma assinatura só, o arquivo sozinho com `<arquivo>.sshsig`, o namespace `otheater-workflow-package`); os cinco estados da assinatura; as confirmações `unsigned` e `new_permissions`; o registro em `workflow-packages.json`, que guarda as permissões da versão atual; a instalação tudo ou nada, com `unchanged` e `Conflict`; as chaves `activate`, `fetch_timeout`, `verify_timeout`, `max_workflows` e `ssh_keygen`, com os padrões acima; e o desativar no P10.
 
-### P10. API e CLI (N297)
+### P10. A peça pela definição (P10a) e a API e a CLI (P10b) (N297)
+
+**Divisão (dono, 2026-11-28, por múltipla escolha: "Dividir o P10"):** o P4 e o P12 dependem de a peça rodar pela `play.yaml`, que o P10 herdou do P3. Por isso o P10 se divide em dois. O **P10a** vai primeiro e sozinho:
+- liga o `PlayStageHost` e o `createPlayStepRunners` ao runtime, a peça passa a rodar pela `play.yaml` e o `playMachine` sai, valendo o critério 4;
+- monta o `createWorkflowTriggers` do P6 na composição do daemon;
+- escreve os adaptadores GitHub de `PullRequestLister`, `CollaboratorCheck` e `CiReader`.
+
+Depois, o P4 e o P12 correm em paralelo. O **P10b** vem por último, com o resto desta seção: as rotas, a CLI e o desativar.
 
 **Arquivos:** `daemon/src/api/routes/workflows.ts` (novo), `docs/reference/api-routes.json`, `daemon/src/commands/flow.ts` (novo), `client/src/` (os métodos da API).
 
@@ -585,7 +594,7 @@ Todos **[proposta]** quanto ao nome. Cada um entra no catálogo do protocolo e n
 - No prazo vencido, segue `on_timeout`: `blocked` encerra como hoje, `continue` devolve "sem resposta" e o Ator segue.
 - **Aceite próprio:** a pergunta respondida, a pergunta que estoura o prazo nos dois modos e o limite `max_per_demand`.
 
-**Como ficou** (2026-11-28, [V] com 24 testes de unidade e 6 e2e locais, mais os de protocol, core, daemon e fake-agent; PR a abrir):
+**Como ficou** (2026-11-28, [V] com 24 testes de unidade e 6 e2e locais, mais os de protocol, core, daemon e fake-agent; PR #420; as escolhas do Claude foram aceitas pelo dono em 2026-11-28):
 
 - **Serviço (`collab/ask-director.ts`, `ask-director-config.ts`):** o `AskDirectorService` registra os handlers das três ferramentas na cadeia do `daemon.ts` e liga ao runtime (sessões do Diretor, fila de prompts, hub de eventos) junto com a supervisão (`orchestration/wiring.ts`). A pergunta vai ao Diretor pela fila de prompts da sessão dele, como prompt `#ot-question`; o texto do Ator vai marcado como dado a pesar, não como ordem.
 - **Espera:** a chamada `ask_director` espera até `collab.ask_director.timeout` (`10m`), pelo `Clock`. É cancelável: pelo sinal da requisição MCP (`mcp/server.ts` agora repassa `ctx.mcpReq.signal` em `ToolCaller.signal`), por `attempt.cancelled`, `attempt.aborted` e `session.closed` (menos `interrupted`) da tentativa, por uma peça que chega a estado final e pelo `unbind` do serviço. Em todos os casos o timer é solto.
@@ -597,7 +606,7 @@ Todos **[proposta]** quanto ao nome. Cada um entra no catálogo do protocolo e n
 - **Prompts e fake-agent:** `prompts/actor.md` ganhou "Asking the Director" e `prompts/director.md` ganhou "Questions from the Actors" (snapshots do `prompts-files` atualizados). O fake-agent ganhou `#actor-ask:<id>=<pergunta>[*<n>][@<tentativa>]`, `#actor-answer:<id>=<texto>`, o turno do Diretor para `#ot-question` (a pergunta `silent` fica sem resposta; `relay <demanda> ...` repassa) e `#independent` no pedido, que tira a dependência do `beta` para os dois Atores rodarem juntos.
 - **Aceite próprio:** `collab/ask-director.test.ts` (24 testes: resposta, os dois `on_timeout` com o `FakeClock`, relay, limite, cancelamento, modo `off`) e `orchestration/ask-director-e2e.test.ts` (6 testes com o fake-agent: pergunta respondida, prazo em `continue` e em `blocked`, relay entre dois Atores, limite e modo `off`).
 - **Não coberto:** [N] não foi verificado com Claude Code, Codex ou OpenCode reais que a chamada MCP longa (até 10 minutos) sobrevive ao tempo limite de chamada de ferramenta de cada cliente, nem que um Ator real responde a pergunta repassada pelo `submit` com `state: 'answer'`. [N] A pergunta pendente vive em memória: um reinício do daemon perde a espera (a pergunta fica no blackboard, mas a chamada do Ator já terá caído com a sessão).
-- **Escolhas do Claude ([proposta], a confirmar pelo dono):**
+- **Escolhas do Claude (decidido pelo dono em 2026-11-28, "Aceitar todas"):** valem como estão, inclusive a pergunta pendente só em memória:
   - o serviço fica em `collab/ask-director.ts` e a pergunta pendente fica só em memória;
   - os nomes `ask_director` (Ator), `answer_actor` e `relay_question` (Diretor), e o tipo de aviso `question` no canal do P14;
   - o modo `off` oculta e também recusa as três ferramentas; `relay_question` fica oculta fora do modo `relay` e exige `supervision.mode` diferente de `off` e `log`;
