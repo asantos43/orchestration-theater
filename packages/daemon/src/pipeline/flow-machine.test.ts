@@ -2,6 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import type { PlayFlowRef } from './context.js';
 import { limitsOf, Model } from './model-fixture.js';
+import { PLAY_FLOW_VERSION } from './definitions.js';
 import { playMachine } from './machine.js';
 
 const HASH = 'a'.repeat(64);
@@ -121,7 +122,7 @@ describe('a flow of the configuration in the play machine (P12)', () => {
       skip: ['plan_review'],
     });
     // the machine itself stays the official play, so a saved play restores as before
-    expect(persisted.context).toMatchObject({ flowId: 'play', flowVersion: 1 });
+    expect(persisted.context).toMatchObject({ flowId: 'play', flowVersion: PLAY_FLOW_VERSION });
 
     const official = new Model().start();
     const plain = playMachine.getPersistedSnapshot(official.snapshot) as unknown as {

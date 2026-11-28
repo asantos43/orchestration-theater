@@ -27,6 +27,7 @@ export * from './atif-events.js';
 export * from './collab-events.js';
 export * from './supervision-events.js';
 export * from './workflow-events.js';
+export * from './workflow-snapshot-events.js';
 export * from './workflow-binding-events.js';
 export * from './selection-events.js';
 export * from './notice-events.js';

@@ -102,6 +102,7 @@ import {
   WorkflowStepFinishedPayloadSchema,
   WorkflowStepStartedPayloadSchema,
 } from './workflow-events.js';
+import { WorkflowSnapshotRejectedPayloadSchema } from './workflow-snapshot-events.js';
 import {
   WorkflowBindingChangedPayloadSchema,
   WorkflowBudgetExhaustedPayloadSchema,
@@ -1085,6 +1086,11 @@ export const DAEMON_EVENT_DEFINITIONS = [
     payload: WorkflowRunRefusedPayloadSchema,
   }),
   defineEventType({
+    type: 'workflow.snapshot_rejected',
+    schemaVersion: 1,
+    payload: WorkflowSnapshotRejectedPayloadSchema,
+  }),
+  defineEventType({
     type: 'workflow.notified',
     schemaVersion: 1,
     payload: WorkflowNotifiedPayloadSchema,
@@ -1234,6 +1240,7 @@ export type SupervisionRedirectPayload = DaemonEventPayloads['supervision.redire
 export type SupervisionBroadcastPayload = DaemonEventPayloads['supervision.broadcast'];
 export type SupervisionStatusRequestedPayload = DaemonEventPayloads['supervision.status_requested'];
 export type SupervisionLimitReachedPayload = DaemonEventPayloads['supervision.limit_reached'];
+export type WorkflowSnapshotRejectedPayload = DaemonEventPayloads['workflow.snapshot_rejected'];
 export type WorkflowBindingChangedPayload = DaemonEventPayloads['workflow.binding.changed'];
 export type WorkflowBudgetExhaustedPayload = DaemonEventPayloads['workflow.budget_exhausted'];
 export type ProfileWarningPayload = DaemonEventPayloads['profile.warning'];

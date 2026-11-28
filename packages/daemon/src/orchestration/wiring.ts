@@ -208,6 +208,8 @@ export function startOrchestration(input: OrchestrationInput): Orchestration {
     clock: composition.clock,
     effects,
     logger,
+    // P3 of Phase 11b (D2/N311): what start-up does with a play saved by the 1.x machine.
+    legacySnapshot: config.workflows.legacy_snapshot,
     onDiskFull: (playId) => {
       composition.disk.hit(playId);
     },

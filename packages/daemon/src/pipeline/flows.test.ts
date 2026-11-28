@@ -38,7 +38,7 @@ describe('assertPlayFlowLinked', () => {
         flow.id === PLAY_FLOW_ID ? { ...flow, version: PLAY_FLOW_VERSION + 1 } : flow,
       ),
     });
-    expect(problemsOf(registries)).toMatch(/has version 2 and the machine is version 1/);
+    expect(problemsOf(registries)).toMatch(/has version 3 and the machine is version 2/);
   });
 
   it('refuses a registry whose flow does not list a role the machine runs', () => {

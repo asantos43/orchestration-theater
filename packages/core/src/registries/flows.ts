@@ -28,7 +28,9 @@ export const FLOW_ID_PATTERN = /^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$/;
 export const OFFICIAL_FLOWS: readonly FlowDefinition[] = [
   {
     id: 'play',
-    version: 1,
+    // 2: the play 2.0 (Phase 11b, P3), which replaced the hand-written machine; a 1.x snapshot is
+    // not restored (`workflows.legacy_snapshot`).
+    version: 2,
     roles: ['director', 'author', 'reviewer', 'scriptwriter', 'actor', 'critic'],
     tools: [
       'next_action',
