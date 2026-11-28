@@ -87,6 +87,14 @@ import {
 import { AtifExportFailedPayloadSchema, AtifExportedPayloadSchema } from './atif-events.js';
 import { CollabLimitReachedPayloadSchema, NotePostedPayloadSchema } from './collab-events.js';
 import {
+  SupervisionBroadcastPayloadSchema,
+  SupervisionLimitReachedPayloadSchema,
+  SupervisionRedirectPayloadSchema,
+  SupervisionSignalPayloadSchema,
+  SupervisionStatusRequestedPayloadSchema,
+  SupervisionWarningPayloadSchema,
+} from './supervision-events.js';
+import {
   TelemetryBatchRejectedPayloadSchema,
   TelemetryExportFailedPayloadSchema,
   TelemetryPurgedPayloadSchema,
@@ -949,6 +957,36 @@ export const DAEMON_EVENT_DEFINITIONS = [
     payload: CollabLimitReachedPayloadSchema,
   }),
   defineEventType({
+    type: 'supervision.signal',
+    schemaVersion: 1,
+    payload: SupervisionSignalPayloadSchema,
+  }),
+  defineEventType({
+    type: 'supervision.warning',
+    schemaVersion: 1,
+    payload: SupervisionWarningPayloadSchema,
+  }),
+  defineEventType({
+    type: 'supervision.redirect',
+    schemaVersion: 1,
+    payload: SupervisionRedirectPayloadSchema,
+  }),
+  defineEventType({
+    type: 'supervision.broadcast',
+    schemaVersion: 1,
+    payload: SupervisionBroadcastPayloadSchema,
+  }),
+  defineEventType({
+    type: 'supervision.status_requested',
+    schemaVersion: 1,
+    payload: SupervisionStatusRequestedPayloadSchema,
+  }),
+  defineEventType({
+    type: 'supervision.limit_reached',
+    schemaVersion: 1,
+    payload: SupervisionLimitReachedPayloadSchema,
+  }),
+  defineEventType({
     type: 'plugin.installed',
     schemaVersion: 1,
     payload: PluginInstalledPayloadSchema,
@@ -1137,6 +1175,12 @@ export type AtifExportedPayload = DaemonEventPayloads['atif.exported'];
 export type AtifExportFailedPayload = DaemonEventPayloads['atif.export_failed'];
 export type NotePostedPayload = DaemonEventPayloads['note.posted'];
 export type CollabLimitReachedPayload = DaemonEventPayloads['collab.limit_reached'];
+export type SupervisionSignalPayload = DaemonEventPayloads['supervision.signal'];
+export type SupervisionWarningPayload = DaemonEventPayloads['supervision.warning'];
+export type SupervisionRedirectPayload = DaemonEventPayloads['supervision.redirect'];
+export type SupervisionBroadcastPayload = DaemonEventPayloads['supervision.broadcast'];
+export type SupervisionStatusRequestedPayload = DaemonEventPayloads['supervision.status_requested'];
+export type SupervisionLimitReachedPayload = DaemonEventPayloads['supervision.limit_reached'];
 export type ProfileWarningPayload = DaemonEventPayloads['profile.warning'];
 export type ProfileExecStartedPayload = DaemonEventPayloads['profile.exec.started'];
 export type ProfileExecEndedPayload = DaemonEventPayloads['profile.exec.ended'];

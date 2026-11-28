@@ -94,6 +94,11 @@ import { AnalysisConfigSchema } from './analysis/analysis-config.js';
 import { AtifConfigSchema } from './atif/atif-config.js';
 import { COLLAB_NOTES_MODES } from './collab/notes-config.js';
 import {
+  SUPERVISION_DELIVERIES,
+  SUPERVISION_MODES,
+  SUPERVISION_SWITCHES,
+} from './supervision/config.js';
+import {
   exportsOtlp,
   HEADER_NAME_PATTERN,
   SUPPORTED_OTLP_PROTOCOLS,
@@ -2147,6 +2152,41 @@ export const DaemonConfigSchema = z
             max_chars: z.int().min(1).max(NOTE_TEXT_MAX).default(2000),
           })
           .prefault({}),
+      })
+      .prefault({}),
+    /**
+     * The Director's supervision of the Actors at work (N309, D8; plan of Phase 11b, P14). Every
+     * key is [proposta], except the default mode `warn` and the channel `tool_reply` (N309, N317).
+     * - `mode`: how far the Director may go. `warn` (default): a signal calls the Director, who may
+     *   warn; `log`: only the `supervision.signal` event; `redirect`: as `warn`, plus the Director
+     *   may cancel the attempt to relaunch it with the warning; `off`: no watching and no tools.
+     * - `delivery`: how the message reaches the Actor. `tool_reply` (default): in the reply of the
+     *   next MCP tool it calls; `next_turn`: the same, from its next turn on; `relaunch`: cancel
+     *   and relaunch with the message in the prompt.
+     * - `triggers`: each signal on or off. `test_loop` is the number of failures in a row of the
+     *   same test (2 to 100) or `off`; `budget_fraction` is the fraction of the demand's time
+     *   already spent (0.05 to 1) or `off`.
+     * - `max_warnings_per_demand`: how many times the Director is called for one demand.
+     * - `director_budget`: the share of the steps of the play the Director's supervision turns
+     *   may cost (0 to 1; at least one call is always allowed unless it is 0).
+     * - `broadcast`, `status_request`: the extras, each with its own switch.
+     */
+    supervision: z
+      .strictObject({
+        mode: z.enum(SUPERVISION_MODES).default('warn'),
+        delivery: z.enum(SUPERVISION_DELIVERIES).default('tool_reply'),
+        triggers: z
+          .strictObject({
+            outside_demand: z.enum(SUPERVISION_SWITCHES).default('on'),
+            contract_changed: z.enum(SUPERVISION_SWITCHES).default('on'),
+            test_loop: z.union([z.literal('off'), z.int().min(2).max(100)]).default(3),
+            budget_fraction: z.union([z.literal('off'), z.number().min(0.05).max(1)]).default(0.8),
+          })
+          .prefault({}),
+        max_warnings_per_demand: z.int().min(0).max(100).default(3),
+        director_budget: z.number().min(0).max(1).default(0.1),
+        broadcast: z.enum(SUPERVISION_SWITCHES).default('on'),
+        status_request: z.enum(SUPERVISION_SWITCHES).default('on'),
       })
       .prefault({}),
     /**

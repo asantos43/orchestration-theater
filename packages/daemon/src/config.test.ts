@@ -100,6 +100,53 @@ describe('parseConfig', () => {
     });
   });
 
+  it('has the defaults of supervision, takes its other modes and refuses bad values (N309, P14 of 11b, [proposta])', () => {
+    expect(parseConfig('').supervision).toEqual({
+      mode: 'warn',
+      delivery: 'tool_reply',
+      triggers: { outside_demand: 'on', contract_changed: 'on', test_loop: 3, budget_fraction: 0.8 },
+      max_warnings_per_demand: 3,
+      director_budget: 0.1,
+      broadcast: 'on',
+      status_request: 'on',
+    });
+    const other = parseConfig(
+      [
+        'supervision:',
+        '  mode: redirect',
+        '  delivery: next_turn',
+        '  triggers:',
+        '    outside_demand: off',
+        '    test_loop: off',
+        '    budget_fraction: 0.5',
+        '  max_warnings_per_demand: 5',
+        '  director_budget: 0.25',
+        '  broadcast: off',
+      ].join('\n'),
+    ).supervision;
+    expect(other).toMatchObject({
+      mode: 'redirect',
+      delivery: 'next_turn',
+      triggers: { outside_demand: 'off', contract_changed: 'on', test_loop: 'off', budget_fraction: 0.5 },
+      max_warnings_per_demand: 5,
+      director_budget: 0.25,
+      broadcast: 'off',
+      status_request: 'on',
+    });
+    for (const bad of [
+      'mode: loud',
+      'delivery: pigeon',
+      'triggers:\n    test_loop: 1',
+      'triggers:\n    budget_fraction: 0',
+      'triggers:\n    nope: on',
+      'director_budget: 2',
+      'max_warnings_per_demand: -1',
+      'nope: 1',
+    ]) {
+      expect(() => parseConfig(`supervision:\n  ${bad}\n`)).toThrow(InvalidInput);
+    }
+  });
+
   it('has the defaults of ui.keymap, ui.clipboard, ui.mouse, ui.render, ui.runtime and ui.keyboard (N34 to N37)', () => {
     const { ui } = parseConfig('');
     expect(ui.keymap).toEqual({ preset: 'agents', environment: 'auto', overrides: {} });

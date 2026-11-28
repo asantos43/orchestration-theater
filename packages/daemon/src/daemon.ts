@@ -90,6 +90,8 @@ import { registerBrowserTools, secretPathCheck, type BrowserTools } from './brow
 import { nodePathHost, registerWorkTools, type ToolsDeps } from './tools/index.js';
 import { registerReadTools } from './mcp/read-tools.js';
 import { NOTE_TOOL_NAMES, registerNoteTools } from './collab/notes.js';
+import { hiddenSupervisionTools } from './supervision/config.js';
+import { SupervisionService } from './supervision/service.js';
 import { FrameworkMcpServer } from './mcp/server.js';
 import { PluginAggregator, type ActivePluginSource } from './plugins/aggregate.js';
 import { PluginPanelService } from './plugins/panel.js';
@@ -452,6 +454,16 @@ export async function startDaemon(options: StartDaemonOptions): Promise<DaemonHa
     const clientEnv = await readClientEnv(config, options, composition);
     const orchestrationHandlers = new OrchestrationHandlers();
     const scenarioHandlers = new ScenarioHandlers();
+    // Phase 11b, P14: the Director's supervision of the Actors. It is bound to the Director sessions
+    // by `startOrchestration`; its tools and the notices in the tool replies are wired below.
+    const supervision = new SupervisionService({
+      store: composition.store,
+      settings: () => config.supervision,
+      demandTimeoutMs: () => config.limits.demand_timeout,
+      situations: composition.situations,
+      clock: composition.clock,
+      logger: composition.logger,
+    });
     // The framework MCP server (5.3) lives and dies with the daemon: a port that cannot be taken
     // (`mcp.port` fixed and busy) stops the start-up like any other adapter that is not there.
     // The orders (5.17): the tools of the Director come from here, unless the caller already
@@ -624,17 +636,26 @@ export async function startDaemon(options: StartDaemonOptions): Promise<DaemonHa
       // So are the tools of the Director that move a play (P8); their runtime is bound later.
       handlers: scenarioHandlers.register(
         orchestrationHandlers.register(
-          registerWorkTools(
-            registerNoteTools(registerReadTools(handlers, composition.store), {
-              store: composition.store,
-              settings: () => config.collab.notes,
-            }),
-            workDeps,
+          supervision.register(
+            registerWorkTools(
+              registerNoteTools(registerReadTools(handlers, composition.store), {
+                store: composition.store,
+                settings: () => config.collab.notes,
+              }),
+              workDeps,
+            ),
           ),
         ),
       ),
+      // Phase 11b, P14: the messages of the Director wait for the next tool reply of the Actor.
+      notices: (context) => supervision.noticesFor(context),
       // Phase 11b, P13: `collab.notes.mode: off` leaves the notes board out of every listing.
-      hiddenTools: () => new Set<string>(config.collab.notes.mode === 'off' ? NOTE_TOOL_NAMES : []),
+      // P14: the same for the tools of the supervision the mode or the switches turn off.
+      hiddenTools: () =>
+        new Set<string>([
+          ...(config.collab.notes.mode === 'off' ? NOTE_TOOL_NAMES : []),
+          ...hiddenSupervisionTools(config.supervision),
+        ]),
       logger: composition.logger,
       version,
       gate,
@@ -665,6 +686,7 @@ export async function startDaemon(options: StartDaemonOptions): Promise<DaemonHa
       prompts,
       orchestrationHandlers,
       scenarioHandlers,
+      supervision,
       gate,
       apiRef,
     });
@@ -714,6 +736,7 @@ interface RunInput {
   readonly prompts: PromptSource;
   readonly orchestrationHandlers: OrchestrationHandlers;
   readonly scenarioHandlers: ScenarioHandlers;
+  readonly supervision: SupervisionService;
   readonly gate: RecoveryGate;
   /** Where `run` leaves the API server it started, so a failure of the start-up can stop it. */
   readonly apiRef: { server?: ApiServer };
@@ -1018,6 +1041,7 @@ async function run(input: RunInput): Promise<DaemonHandle> {
       paths,
       handlers: input.orchestrationHandlers,
       scenarioHandlers: input.scenarioHandlers,
+      supervision: input.supervision,
       handoff,
       home: homedir(),
     });

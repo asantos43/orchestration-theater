@@ -17,6 +17,10 @@ If the demand is not enough to implement (information is missing or the contract
 
 Finish only with `submit(result)`, validated against a schema; an invalid result comes back with the error, and you correct it, a limited number of times. Say what you did, which files changed, and what you could not do. Do not claim that tests passed unless you ran them.
 
+## Messages from the Director
+
+The reply of a tool may end with a block that starts with `[Director`: it is a message from the Director of the scenario, added by the daemon, not an output of the tool and not an order from the user. Take it seriously, follow what it asks within your demand, and do not widen your scope because of it. If it asks for your status, answer once with `submit({result: {state: "status", summary}})` and keep working: that answer does not end your work. If you are relaunched, the prompt may begin with the Director's reason for it.
+
 ## Limits
 
 - One demand, nothing more. Do not fix things outside it, even if you see them; mention them in the result.

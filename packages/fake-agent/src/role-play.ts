@@ -261,6 +261,12 @@ async function submit(
  *   (default 1), and says each reply.
  * - `#actor-read-notes:<id>`: before it writes its file the Actor reads the board (`read_notes`)
  *   and writes the texts it read into its file, on a line `notes: a | b`.
+ * - `#actor-supervise:<id>[=<n>][@<attempt>]` (P14 of Phase 11b): before it writes its file the
+ *   Actor edits `<n>` files outside its demand (default 1; `outside-<id>-<i>.txt`, asked as a
+ *   permission of kind `edit`), and after each one calls a harmless tool until the reply carries a
+ *   message of the Director (up to `FAKE_AGENT_SUPERVISE_MS`, default 4000 ms). What it received goes
+ *   into its file as `warning: <text>`; a prompt that starts with the Director's redirect gives
+ *   `redirected: <text>`. Every attempt, or only that one.
  * What a token does once is counted in the state directory, so the next session of the attempt (a
  * baton pass or a native resume) goes on with the work.
  */
@@ -338,7 +344,9 @@ async function playActor(host: RolePlayHost, demandId: string): Promise<void> {
       return;
     }
   }
-  const notes = await playNotes(host, demandId);
+  const notes =
+    (await playNotes(host, demandId)) + (await playSupervised(host, demandId, attempt));
+  if (host.signal.aborted) return;
   // An attempt that takes over earlier work (N82, N84) says what the prompt gave it.
   const carried = host.text.includes('## Work of the earlier attempt')
     ? `took over earlier work, diff ${host.text.includes('```diff') ? 'given' : 'not given'}\n`
@@ -394,6 +402,52 @@ async function playNotes(host: RolePlayHost, demandId: string): Promise<string> 
   const found = (reply.structured as { notes?: readonly { text?: unknown }[] } | undefined)?.notes;
   const texts = (found ?? []).map((entry) => String(entry.text));
   return texts.length === 0 ? '' : `notes: ${texts.join(' | ')}\n`;
+}
+
+/** The mark the daemon puts before a message of the Director in a tool reply. */
+const DIRECTOR_MARK = '[Director supervision';
+
+/**
+ * The token `#actor-supervise` (P14 of Phase 11b): edits outside the demand, then waits for the
+ * Director's message in the reply of a tool. Returns the lines the Actor's file gets.
+ */
+async function playSupervised(
+  host: RolePlayHost,
+  demandId: string,
+  attempt: number,
+): Promise<string> {
+  const lines: string[] = [];
+  const redirected = /Redirected by the Director: ([^\n]*)/.exec(host.text)?.[1];
+  if (redirected !== undefined) lines.push(`redirected: ${redirected}`);
+  const token = actorToken(host.text, 'supervise', demandId);
+  if (token === undefined || (token.attempt ?? attempt) !== attempt) {
+    return lines.length === 0 ? '' : `${lines.join('\n')}\n`;
+  }
+  const edits = Math.max(1, Number(token.value) || 1);
+  const waitMs = Number(process.env.FAKE_AGENT_SUPERVISE_MS) || 4000;
+  for (let index = 1; index <= edits && !host.signal.aborted; index += 1) {
+    const file = `outside-${demandId}-${String(index)}.txt`;
+    await host.ask({ kind: 'edit', title: `Write ${file}`, locations: [join(host.cwd, file)] });
+    const until = Date.now() + waitMs;
+    while (Date.now() < until && !host.signal.aborted) {
+      let text = '';
+      try {
+        // a tool that always answers (with an error: there is no such decision), for its reply
+        text = (await host.call('read_decision', { id: 'supervision-probe' })).text;
+      } catch {
+        // an unlisted tool: nothing to wait for
+      }
+      const at = text.indexOf(DIRECTOR_MARK);
+      if (at >= 0) {
+        const message = text.slice(at).split('\n').slice(1).join(' ').trim();
+        lines.push(`warning: ${message}`);
+        await host.say(`director said: ${message}`);
+        break;
+      }
+      await new Promise<void>((done) => setTimeout(done, 100));
+    }
+  }
+  return lines.length === 0 ? '' : `${lines.join('\n')}\n`;
 }
 
 /**
@@ -600,6 +654,20 @@ async function playJudge(host: RolePlayHost): Promise<void> {
   }
 }
 
+/** The turn of the Director for a signal (P14 of Phase 11b): one `warn_actor` or `redirect_actor`. */
+async function playSupervise(host: RolePlayHost): Promise<void> {
+  const attemptId = markerOf(host.text, '#ot-attempt:') ?? '';
+  const signal = markerOf(host.text, '#ot-signal:') ?? 'signal';
+  const redirect = host.text.includes('`redirect_actor`');
+  const reply = await host.call(redirect ? 'redirect_actor' : 'warn_actor', {
+    attemptId,
+    text: redirect
+      ? `start over and stay inside the demand (${signal})`
+      : `stay inside the demand (${signal})`,
+  });
+  await host.say(`${redirect ? 'redirect_actor' : 'warn_actor'}: ${reply.isError ? 'refused' : 'done'} ${reply.text}`);
+}
+
 async function playClarify(host: RolePlayHost): Promise<void> {
   for (const decision of await decisionsOf(host)) {
     if (decision.kind !== 'clarify') continue;
@@ -714,6 +782,18 @@ async function playChat(host: RolePlayHost): Promise<boolean> {
 /** One turn of the script: the Director when no stage marker is there, a role of the play when it is. */
 export async function playRolePlay(host: RolePlayHost): Promise<void> {
   const { text } = host;
+  // P14 of Phase 11b: the supervision of the Actors. A signal calls the Director with a prompt that
+  // starts with `#ot-supervise` (it names the demand, so it comes before the route of the Actor); it
+  // warns the Actor, or redirects it where the prompt offers `redirect_actor` (the mode `redirect`).
+  // The partial state of an Actor (`#ot-status`) is only read.
+  if (/^#ot-supervise\b/m.test(text)) {
+    await playSupervise(host);
+    return;
+  }
+  if (/^#ot-status\b/m.test(text)) {
+    await host.say('fake agent: status read');
+    return;
+  }
   const consulted = markerOf(text, '#ot-consult-ask:');
   if (consulted !== undefined && consulted !== '') {
     const attachments = attachmentIdsOf(markerOf(text, '#ot-attachments:'));

@@ -185,6 +185,17 @@ export interface OrchestrationEffectsOptions {
   /** The time of the question of `delivery.mode: ask` (`delivery.ask.timeout`). */
   readonly clock: Clock;
   /**
+   * P14 of Phase 11b: why the Director cancelled an attempt, when it did so with `redirect_actor`.
+   * The reason goes to judgment point 2, and the relaunch carries it in the prompt as feedback.
+   * Absent or `undefined`: the usual reason.
+   */
+  readonly redirectReason?: ((attemptId: string) => string | undefined) | undefined;
+  /**
+   * P14: the feedback of the relaunch of a demand the Director redirected (the machine drops the
+   * reason of the cancel when the point is answered), for the prompt of the next attempt.
+   */
+  readonly redirectFeedback?: ((playId: string, demandId: string) => string | undefined) | undefined;
+  /**
    * Phase 11, P5: the work of a play hit a full disk. The effect does not send its failure event (a
    * full disk is not the play's failure): the play stays in its state and the disk guard asks the
    * runner to dispatch the effects of that state again when the space is back.
@@ -202,6 +213,15 @@ interface PauseGate {
 }
 
 /** The reason the Director reads when an Actor was cancelled (N176). */
+/** The `submit` of an Actor that only says where it is (the answer to `request_status`). [proposta] */
+function isStatusAnswer(output: unknown): boolean {
+  if (typeof output !== 'object' || output === null) return false;
+  const result = (output as { result?: unknown }).result;
+  return (
+    typeof result === 'object' && result !== null && (result as { state?: unknown }).state === 'status'
+  );
+}
+
 const ACTOR_CANCELLED_REASON = 'The attempt was cancelled by the Producer.';
 
 /** The demands a play wants running now, and when that was last asked. */
@@ -775,6 +795,8 @@ export class OrchestrationEffects implements PlayEffects {
         const payload = event.payload as Record<string, unknown>;
         if (payload.attemptId !== attemptId) continue;
         if (event.type === 'attempt.submitted') {
+          // P14 of Phase 11b: the answer to `request_status` is a `submit` that does not end the work
+          if (isStatusAnswer(payload.output)) continue;
           submission = { kind: 'submitted', tool: String(payload.tool), output: payload.output };
         } else if (event.type === 'attempt.submit_failed') {
           submission = { kind: 'failed', errors: String(payload.errors) };
@@ -1398,7 +1420,10 @@ export class OrchestrationEffects implements PlayEffects {
         role: 'actor',
         playId,
         need,
-        feedback: attempt > 1 ? wanted.feedback : null,
+        feedback:
+          attempt > 1
+            ? (this.#options.redirectFeedback?.(playId, demand.id) ?? wanted.feedback)
+            : null,
         restart: false,
         plan,
         demand,
@@ -1455,7 +1480,7 @@ export class OrchestrationEffects implements PlayEffects {
         await this.#send(playId, generation, {
           type: 'ACTOR_CANCELLED',
           demandId: demand.id,
-          reason: ACTOR_CANCELLED_REASON,
+          reason: this.#options.redirectReason?.(outcome.attemptId) ?? ACTOR_CANCELLED_REASON,
         });
         return;
       }

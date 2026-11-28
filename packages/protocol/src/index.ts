@@ -25,6 +25,7 @@ export * from './quota-events.js';
 export * from './usage-events.js';
 export * from './atif-events.js';
 export * from './collab-events.js';
+export * from './supervision-events.js';
 export * from './selection-events.js';
 export * from './notice-events.js';
 export * from './telemetry-events.js';

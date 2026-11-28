@@ -302,6 +302,21 @@ const browserActionOutput = z.strictObject({
 });
 
 /**
+ * [proposta] The Director's supervision tools (N309, D8; plan of Phase 11b, P14). The text of a
+ * warning is capped at {@link SUPERVISION_TEXT_MAX_CHARS} characters. `queued` says the message
+ * waits for the next MCP tool call of the Actor (or goes in its next prompt, for `redirect_actor`
+ * and for `supervision.delivery: relaunch`).
+ */
+export const SUPERVISION_TEXT_MAX_CHARS = 2000;
+const supervisionText = z.string().min(1).max(SUPERVISION_TEXT_MAX_CHARS);
+const supervisionTextInput = z.strictObject({ attemptId: id, text: supervisionText });
+const supervisionDelivery = z.strictObject({
+  ok: z.boolean(),
+  noticeId: z.string().optional(),
+  via: z.enum(['tool_reply', 'next_turn', 'relaunch']).optional(),
+});
+
+/**
  * [proposta] The notes board of a play (N308, option 1; plan of Phase 11b, P13). The schema caps a
  * note at {@link NOTE_TEXT_MAX} characters; the daemon applies the smaller `collab.notes.max_chars`
  * of its configuration.
@@ -392,6 +407,19 @@ export const OFFICIAL_TOOLS: readonly ToolDefinition[] = [
   tool('pause', DIRECTOR, noInput, accepted),
   tool('resume', DIRECTOR, noInput, accepted),
   tool('cancel_actor', DIRECTOR, z.strictObject({ attemptId: id }), accepted),
+  // The supervision of the Actors (N309, D8; P14 of Phase 11b). The four are hidden when
+  // `supervision.mode` is `off` or `log`; `redirect_actor` needs the mode `redirect`, `broadcast`
+  // and `request_status` each have a switch. A message goes to the Actor in the reply of its next
+  // MCP tool, marked as the Director's.
+  tool('warn_actor', DIRECTOR, supervisionTextInput, supervisionDelivery),
+  tool('redirect_actor', DIRECTOR, supervisionTextInput, supervisionDelivery),
+  tool(
+    'broadcast',
+    DIRECTOR,
+    z.strictObject({ text: supervisionText, play: id.optional() }),
+    z.strictObject({ ok: z.boolean(), recipients: z.int().min(0) }),
+  ),
+  tool('request_status', DIRECTOR, z.strictObject({ attemptId: id }), supervisionDelivery),
   tool('ask_producer', DIRECTOR, askProducerInput, json),
   tool(
     'open_pr',

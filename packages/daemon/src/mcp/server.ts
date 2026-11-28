@@ -104,6 +104,17 @@ export interface FrameworkMcpOptions {
    * still reaches its handler, which refuses it.
    */
   readonly hiddenTools?: () => ReadonlySet<string>;
+  /**
+   * The messages of the Director's supervision (P14 of Phase 11b) waiting for an Actor attempt:
+   * called after each tool call of an Actor (not a `submit*`), it returns the text blocks to add
+   * to the reply, already marked as the Director's, and marks them delivered. [proposta] A failure
+   * only loses the attachment; the reply of the tool goes on untouched.
+   */
+  readonly notices?: (context: {
+    readonly attemptId: string;
+    readonly playId: string;
+    readonly demandId: string;
+  }) => Promise<readonly string[]>;
 }
 
 /**
@@ -428,7 +439,8 @@ export class FrameworkMcpServer implements McpAccess {
           server.registerTool(
             tool.name,
             { description: describe(tool), inputSchema: deferred(tool.input) },
-            async (args) => asResult(await this.#call(record, tool, args)),
+            async (args) =>
+              await this.#withNotices(record, tool, asResult(await this.#call(record, tool, args))),
           );
         }
         for (const binding of await this.#pluginTools(record)) {
@@ -604,6 +616,33 @@ export class FrameworkMcpServer implements McpAccess {
       );
     } catch (error) {
       this.#options.logger.warn({ err: error }, 'permission event of a plugin tool not recorded');
+    }
+  }
+
+  /**
+   * The reply of a tool of an Actor with the Director's pending messages added as text blocks
+   * (`supervision.delivery: tool_reply`). A `submit*` is left alone: it ends the work, and the
+   * attempt that gets here is still working.
+   */
+  async #withNotices(
+    record: GrantRecord,
+    tool: ToolDefinition,
+    result: CallToolResult,
+  ): Promise<CallToolResult> {
+    const { notices } = this.#options;
+    const { playId, demandId } = record.input.correlation;
+    if (notices === undefined || record.input.role !== 'actor') return result;
+    if (isSubmitTool(tool.name) || playId === undefined || demandId === undefined) return result;
+    try {
+      const blocks = await notices({ attemptId: record.input.attemptId, playId, demandId });
+      if (blocks.length === 0) return result;
+      return {
+        ...result,
+        content: [...result.content, ...blocks.map((text) => ({ type: 'text' as const, text }))],
+      };
+    } catch (error) {
+      this.#options.logger.warn({ err: error }, 'the supervision notices were not attached');
+      return result;
     }
   }
 

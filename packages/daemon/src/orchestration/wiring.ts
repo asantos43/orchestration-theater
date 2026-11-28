@@ -10,6 +10,7 @@ import type { QuotaService } from '../quota/service.js';
 import { PlayRunner } from '../pipeline/index.js';
 import { ConventionConfirmer } from '../project/confirm.js';
 import { PromptDispatcher } from '../prompt-dispatcher.js';
+import type { SupervisionService } from '../supervision/service.js';
 import { attachmentRootsPolicy } from '../scenarios/attachment-roots.js';
 import {
   AttachmentService,
@@ -52,6 +53,8 @@ export interface OrchestrationInput {
   readonly handoff?: LateHandoff;
   /** The absolute home of the account, for `security.secret_paths`. */
   readonly home?: string;
+  /** The Director's supervision (P14 of Phase 11b), bound here with the Director sessions. */
+  readonly supervision?: SupervisionService;
 }
 
 /** The plays of the daemon, running: what `startDaemon` builds once the execution exists (P8). */
@@ -194,6 +197,8 @@ export function startOrchestration(input: OrchestrationInput): Orchestration {
     logger,
     attended: ({ scenarioId }) => presence.attended(scenarioId),
     clock: composition.clock,
+    redirectReason: (attemptId) => input.supervision?.redirectReason(attemptId),
+    redirectFeedback: (playId, demandId) => input.supervision?.redirectFeedback(playId, demandId),
     onDiskFull: (playId) => {
       composition.disk.hit(playId);
     },
@@ -228,6 +233,18 @@ export function startOrchestration(input: OrchestrationInput): Orchestration {
     selection,
     disk: composition.disk,
   });
+  // P14 of Phase 11b: the supervision follows the log and speaks to the Director through its queue.
+  // The bind is not awaited: the follower starts at once, and a failure only costs the supervision.
+  void input.supervision
+    ?.bind({
+      directors,
+      dispatcher,
+      hub: composition.eventHub,
+      cancelAttempt: (attemptId) => execution.runner.cancelAttempt(attemptId),
+    })
+    .catch((error: unknown) => {
+      logger.warn({ err: error }, 'the supervision of the Director did not start');
+    });
   const scenarios = new ScenarioService({
     store,
     vcs: composition.vcs,
@@ -340,6 +357,7 @@ export function startOrchestration(input: OrchestrationInput): Orchestration {
       (quiet ??= (async () => {
         handlers.board.abortAll('The daemon is stopping.');
         handlers.bind(undefined);
+        await input.supervision?.unbind();
         scenarioHandlers.bind(undefined);
         selection.close();
         input.handoff?.bind(undefined);
