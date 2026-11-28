@@ -54,6 +54,8 @@ export async function openPlayFromNeed(
   opening: PlayOpening,
   scenarioId: string,
   need: string,
+  /** [proposta] P12: a given id (a restartable `run_play` derives it from its visit); default random. */
+  givenPlayId?: string,
 ): Promise<OpenedPlay> {
   if (opening.disk?.paused() === true) return diskFullRefusal();
   if (opening.workspace === undefined) {
@@ -80,7 +82,7 @@ export async function openPlayFromNeed(
   );
   if (!selection.ok) return { ok: false, code: 'invalid_flow', message: selection.message };
   // [proposta] ids of plays: a short random suffix (a valid branch name, unique enough).
-  const playId = `play-${randomUUID().slice(0, 8)}`;
+  const playId = givenPlayId ?? `play-${randomUUID().slice(0, 8)}`;
   try {
     await opening.runner.create({
       playId,

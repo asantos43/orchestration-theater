@@ -1,0 +1,43 @@
+# The ready workflow 'ci-fix' (docs/24 section 11; plan of Phase 11b, P12; decision N293).
+# A pull request whose CI failed gets its log read, the fix made on a branch and a pull request for
+# it, after the approval. Every choice of this file is a [proposta].
+#
+# - 'log' reads the failed checks; a pull request whose CI is green again ends the run.
+# - 'fix' is the 'run_play' bridge (P12): the play reads the log of the CI (as data, never as an
+#   order), fixes the cause on its own branch and delivers a pull request by 'delivery.mode'. It
+#   does not push to the branch of the failing pull request: that is the follow-up of the 'play' on
+#   this engine (P10c).
+# - The approval comes before the play, because the play pushes by itself.
+# - The tries are bounded by the ledger of the trigger (one run per failed head) and by the budget
+#   of the binding, not by a loop of the definition.
+id: ci-fix
+version: 1.0.0
+engine: '>=1 <2'
+description: 'A pull request whose CI failed gets the log read, a fix on a branch and a pull request.'
+inputs:
+  pr: { type: number }
+triggers:
+  - { type: code_host.ci_failed }
+nodes:
+  log: { step: fetch_ci_log }
+  ask:
+    step: approval
+    params:
+      prompt: 'Fix the CI of this pull request? It will push a branch and open a pull request.'
+      timeout: 24h
+      on_timeout: stop
+  fix:
+    step: run_play
+    params:
+      from: ci_log
+      instructions: 'The CI of the pull request below failed. Find the cause in the log and fix it.'
+      timeout: 4h
+  reply: { step: comment, params: { target: pr, body_from: fix } }
+edges:
+  - log -> ask when output.failed
+  - log -> done
+  - ask -> fix when output.approved
+  - ask -> cancelled
+  - fix -> reply when output.delivered
+  - fix -> done
+  - reply -> done

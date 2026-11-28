@@ -1,0 +1,40 @@
+# The ready workflow 'pr-review' (docs/24 section 11; plan of Phase 11b, P12; decision N293).
+# A pull request that someone else opened gets a review, and the review becomes a comment on it,
+# published only after the approval. Every choice of this file is a [proposta].
+#
+# - 'review' is the 'run_play' bridge (P12). There is no play of the Critic alone yet, so the play of
+#   today runs with the instruction of reviewing and changing nothing; what it left is what the
+#   comment says. A play with the Critic as its only step comes with the 'play' on this engine (P10c).
+# - The approval comes first, because the play of today may push (see 'github-issues').
+# - The text of the pull request reaches the play as data, never as an order.
+id: pr-review
+version: 1.0.0
+engine: '>=1 <2'
+description: 'A pull request of someone else gets a review, published as a comment after approval.'
+inputs:
+  pr: { type: number }
+triggers:
+  - { type: code_host.pr_opened }
+nodes:
+  read: { step: fetch_pr }
+  ask:
+    step: approval
+    params:
+      prompt: 'Review this pull request and comment the review on it?'
+      timeout: 24h
+      on_timeout: stop
+  review:
+    step: run_play
+    params:
+      from: pr
+      instructions: 'Review the pull request below as the Critic: say what is wrong, what is risky and what is good. Change no code and open no pull request.'
+      timeout: 2h
+  post: { step: comment, params: { target: pr, body_from: review } }
+edges:
+  - read -> ask when output.state == "open"
+  - read -> done
+  - ask -> review when output.approved
+  - ask -> cancelled
+  - review -> post when output.ended == "done"
+  - review -> done
+  - post -> done

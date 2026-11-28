@@ -14,6 +14,11 @@ import { WorkflowRuntime } from './runtime.js';
 import { workflowSecuritySettings } from './security-config.js';
 import { CODE_HOST_STEP_RUNNERS, GENERIC_STEP_RUNNERS } from './steps/index.js';
 import { registerCodeHostEffects } from './steps/codehost/index.js';
+import {
+  createLatePlayRunPort,
+  createRunPlayStep,
+  type LatePlayRunPort,
+} from './steps/play/run-play.js';
 import type { ActivePluginReader } from './triggers/plugin-events.js';
 import { createWorkflowTriggers, type WorkflowTriggers } from './triggers/service.js';
 import type { CollaboratorCheck, PullRequestLister } from './triggers/types.js';
@@ -32,7 +37,10 @@ import type { CollaboratorCheck, PullRequestLister } from './triggers/types.js';
  *   loop of the code host looks at nothing (`event_poll` is the key of the other one).
  *
  * The step types of the `play` (`createPlayStepRunners`) are not added here: the play still runs
- * by the machine of `pipeline/` (see the plan, P10a, "Como ficou").
+ * by the machine of `pipeline/` (see the plan, P10a, "Como ficou"). The bridge is `run_play` (P12):
+ * it opens a play through the runner of today. The orchestration exists only after the workflows
+ * are composed, so `plays` is a port the daemon binds (`plays.bind`) once it has the runner; a
+ * `run_play` that runs before that fails with `step_failed`.
  */
 
 export interface ComposeWorkflowsInput {
@@ -63,6 +71,8 @@ export interface ComposedWorkflows {
   readonly triggers: WorkflowTriggers;
   /** The verifiers of the effects of the workflows (and, later, of the plugins). */
   readonly pluginEffects: PluginEffectRegistry;
+  /** The door of `run_play` to the plays of the orchestration; the daemon binds it (P12). */
+  readonly plays: LatePlayRunPort;
 }
 
 export function composeWorkflows(input: ComposeWorkflowsInput): ComposedWorkflows {
@@ -84,6 +94,7 @@ export function composeWorkflows(input: ComposeWorkflowsInput): ComposedWorkflow
     if (scenario === undefined) throw new NotFound(`There is no scenario ${scenarioId}`);
     return scenario.folder;
   };
+  const plays = createLatePlayRunPort();
   const pluginEffects = new PluginEffectRegistry();
   registerWorkflowEffects(pluginEffects, store);
   // [proposta] No finder of comments yet (the `IssueTracker` port has no way to list them): a
@@ -93,7 +104,7 @@ export function composeWorkflows(input: ComposeWorkflowsInput): ComposedWorkflow
     store,
     clock,
     settings: workflowRuntimeSettings(settings),
-    steps: [...GENERIC_STEP_RUNNERS, ...CODE_HOST_STEP_RUNNERS],
+    steps: [...GENERIC_STEP_RUNNERS, ...CODE_HOST_STEP_RUNNERS, createRunPlayStep(plays.port)],
     tools: createPluginToolCaller(input.aggregator),
     ask: input.ask,
     pluginEffects,
@@ -125,5 +136,5 @@ export function composeWorkflows(input: ComposeWorkflowsInput): ComposedWorkflow
     ci: input.codeHost,
     collaborators: input.collaborators,
   });
-  return { library, bindings, runtime, triggers, pluginEffects };
+  return { library, bindings, runtime, triggers, pluginEffects, plays };
 }
