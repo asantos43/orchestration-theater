@@ -116,6 +116,7 @@ import {
   TELEMETRY_RETENTION_MODES,
 } from './telemetry/retention-config.js';
 import { IdeasConfigSchema } from './ideas/settings.js';
+import { WORKFLOW_APPROVAL_ON_TIMEOUT } from './workflows/runtime-config.js';
 import { DEFAULT_FAULT_PLAN_FILE, FAULT_INJECT_MODES } from './chaos/faults.js';
 import {
   DEFAULT_DISK_CHECK_EVERY,
@@ -2159,6 +2160,15 @@ export const DaemonConfigSchema = z
     /**
      * The workflow library and the bindings of the scenarios (docs/24 section 7 and 12, N296; Phase
      * 11b, P5; the keys are described at `WorkflowsSettings`). `budget.period` is [proposta].
+     * `runtime` (P2, every key [proposta]) holds the defaults of the generic step types; a node's
+     * own `timeout` or `on_timeout` wins.
+     * - `runtime.wait_event.poll`: how often the log is read while a `wait_event` waits for its event.
+     * - `runtime.approval.timeout`: the deadline of an `approval` that names none; `off` (default)
+     *   waits for ever.
+     * - `runtime.approval.on_timeout`: `stop` (default) ends the run as cancelled when the deadline
+     *   passes; `reject` gives `approved: false` and lets the edges decide.
+     * - `runtime.call_tool.timeout`: the deadline of a `call_tool` that names none; `off` (default)
+     *   leaves it to `plugins.call_timeout`.
      */
     workflows: z
       .strictObject({
@@ -2179,6 +2189,20 @@ export const DaemonConfigSchema = z
           .strictObject({
             concurrency: z.int().min(1).max(100).default(1),
             on_busy: z.enum(WORKFLOW_ON_BUSY).default('queue'),
+          })
+          .prefault({}),
+        runtime: z
+          .strictObject({
+            wait_event: z.strictObject({ poll: DurationSchema.prefault('2s') }).prefault({}),
+            approval: z
+              .strictObject({
+                timeout: OffOrDurationSchema.prefault('off'),
+                on_timeout: z.enum(WORKFLOW_APPROVAL_ON_TIMEOUT).default('stop'),
+              })
+              .prefault({}),
+            call_tool: z
+              .strictObject({ timeout: OffOrDurationSchema.prefault('off') })
+              .prefault({}),
           })
           .prefault({}),
       })

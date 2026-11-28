@@ -256,7 +256,31 @@ Todos **[proposta]** quanto ao nome. Cada um entra no catálogo do protocolo e n
 - `call_tool` chama uma ferramenta MCP de plugin fora do processo (N292); `wait_event` espera um evento do log com prazo; `approval` usa o `ask_producer`; `notify` usa o canal de notificação do chat e dos plugins.
 - **Aceite próprio:** um workflow pequeno de teste roda com o `fake-agent`; `kill -9` no meio de um `call_tool` retoma sem repetir o efeito (o harness da Fase 11).
 
-**Como ficou:** a preencher.
+**Como ficou** (2026-11-27, [V] com 39 testes locais de unidade e 4 de caos; as marcas [proposta] são escolhas do Claude, a confirmar com o dono):
+
+- Módulos novos em `daemon/src/workflows/`:
+  - `machine.ts`: monta a máquina XState a partir do `compileWorkflow` do P1, com as guardas e as ações do compilador como `assign` puros, para usar o `transition()` puro como o `PlayRunner`;
+  - `runtime.ts`: a classe `WorkflowRuntime` (`start`, `resume`, `resumeAll`, `cancel`, `isActive`, `idle`, `stop`);
+  - `steps/{call-tool,wait-event,branch,approval,notify}.ts`, mais `steps/index.ts` (`GENERIC_STEP_RUNNERS`);
+  - `effects.ts` (verificadores de `workflow.notify` e `workflow.approval`), `plugin-tool-caller.ts` (adaptador sobre o `PluginAggregator`) e `runtime-config.ts`.
+- Como uma execução fica gravada:
+  - é um registro de `plays` (`id` = id da execução, `flowId` = id da definição, `state` = nó ou estado final, `counters` = contagem das arestas com `limit`);
+  - o snapshot guarda `{workflow: {id, version, hash}, machine, runtime}`;
+  - cada transição é uma só transação: registro, snapshot, `workflow.step.finished` e, se terminou, `workflow.run.finished`.
+- Retomada: o runtime recalcula o hash da definição que a fonte devolve. Se ela sumiu ou mudou, recusa e grava `workflow.run.refused` (`definition_missing`, `hash_mismatch` e outros), sem mexer no registro. A migração entre versões é do P3/P4.
+- Efeitos: `call_tool` de ferramenta que escreve (`local_write`, `network`, `external_write`) e `notify` passam pelo `runEffect`, com a chave `<execução>:<nó>:<visita>` e o tipo `<plugin>.<ferramenta>` (o verificador é o que o plugin registra no `PluginEffectRegistry`). `approval` usa o `ask_producer`; depois de uma queda, a pergunta antiga não pode mais ser respondida, então o passo pergunta de novo.
+- Config: bloco `workflows.runtime` em `config.ts` (`wait_event.poll`, `approval.timeout`, `approval.on_timeout` com `stop` ou `reject`, `call_tool.timeout`).
+- Eventos novos no catálogo (bloco em `protocol/src/workflow-events.ts`): `workflow.run.started`, `workflow.step.started`, `workflow.step.finished`, `workflow.run.finished`, `workflow.run.refused` e `workflow.notified`.
+- Aceite próprio:
+  - unidade: um workflow com os cinco tipos de passo roda até o fim; queda simulada em cada ponto `effects.*` retoma sem repetir a escrita (o mundo de teste tem uma escrita só);
+  - caos, com `kill -9` de verdade (`workflows/call-tool.chaos.test.ts`, `vitest.chaos.config.ts`, exige `pnpm build`): um processo filho com o store SQLite em disco morre em `effects.after_intend`, `after_execute` e `after_resolve` no meio de um `call_tool`, e um segundo processo retoma; o efeito acontece uma vez só e a execução termina `done`;
+  - o `fake-agent` fica de fora: ele serve ao passo `play` (P3), então o aceite usa ferramentas falsas e o plugin de teste do agregador.
+- [proposta] Limites desta etapa:
+  - `max_steps`, `max_duration` e `budget_usd` ainda não são aplicados;
+  - os `args` do `call_tool` não são interpolados e a chave de idempotência não é repassada ao plugin;
+  - o runtime e o `registerWorkflowEffects` ainda não estão ligados à composição do daemon;
+  - o `PlayRunner.resumeAll` (P3) emitirá `play_not_resumed` para essas execuções até ser separado;
+  - uma aprovação que estoura o prazo deixa a entrada no quadro, e uma aberta logo antes de uma queda pode ficar pendente.
 
 ### P3. A definição `play` 2.0
 

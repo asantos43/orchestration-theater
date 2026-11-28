@@ -176,6 +176,12 @@ describe('daemon event registry', () => {
       'plugin.secret_missing',
       'plugin.panel_truncated',
       'daemon.update',
+      'workflow.run.started',
+      'workflow.step.started',
+      'workflow.step.finished',
+      'workflow.run.finished',
+      'workflow.run.refused',
+      'workflow.notified',
       'workflow.binding.changed',
       'workflow.budget_exhausted',
     ]);
