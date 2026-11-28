@@ -33,6 +33,12 @@ import { SIDE_EFFECTS_SPEC, TableSideEffectRegistry } from './side-effects.js';
 import { TableUsageRegistry, USAGE_SPEC } from './usage.js';
 import { SETUP_RUNS_SPEC, TableSetupRunRegistry } from './setup-runs.js';
 import { TableWakeupRegistry, WAKEUPS_SPEC } from './wakeups.js';
+import {
+  TableWorkflowBindingRegistry,
+  TableWorkflowDefinitionRegistry,
+  WORKFLOW_BINDINGS_SPEC,
+  WORKFLOW_DEFINITIONS_SPEC,
+} from './workflows.js';
 
 export * from './blackboard.js';
 export * from './directives.js';
@@ -53,6 +59,7 @@ export * from './support.js';
 export * from './usage.js';
 export * from './setup-runs.js';
 export * from './wakeups.js';
+export * from './workflows.js';
 
 /** Names of the tables the aggregates use (Phases 3 to 5), in the order the migrations create them. */
 export const AGGREGATE_TABLE_NAMES: readonly string[] = [
@@ -76,6 +83,8 @@ export const AGGREGATE_TABLE_NAMES: readonly string[] = [
   USAGE_SPEC.name,
   WAKEUPS_SPEC.name,
   SETUP_RUNS_SPEC.name,
+  WORKFLOW_DEFINITIONS_SPEC.name,
+  WORKFLOW_BINDINGS_SPEC.name,
 ];
 
 /**
@@ -108,6 +117,11 @@ export function createStoreAggregates(
     usage: new TableUsageRegistry(tables(USAGE_SPEC), clock),
     wakeups: new TableWakeupRegistry(tables(WAKEUPS_SPEC), clock),
     setupRuns: new TableSetupRunRegistry(tables(SETUP_RUNS_SPEC), clock),
+    workflowDefinitions: new TableWorkflowDefinitionRegistry(
+      tables(WORKFLOW_DEFINITIONS_SPEC),
+      clock,
+    ),
+    workflowBindings: new TableWorkflowBindingRegistry(tables(WORKFLOW_BINDINGS_SPEC), clock),
   };
 }
 
@@ -138,6 +152,8 @@ export const AGGREGATE_READ_METHODS: Readonly<Record<AggregateName, readonly str
   usage: ['get', 'list'],
   wakeups: ['get', 'list'],
   setupRuns: ['get', 'list'],
+  workflowDefinitions: ['get', 'list', 'active'],
+  workflowBindings: ['get', 'list'],
 };
 
 /** The methods of each aggregate that write: each one is a single-call transaction outside one. */
@@ -162,6 +178,8 @@ export const AGGREGATE_WRITE_METHODS: Readonly<Record<AggregateName, readonly st
   usage: ['record', 'update'],
   wakeups: ['create', 'update'],
   setupRuns: ['create', 'update'],
+  workflowDefinitions: ['put', 'activate', 'remove'],
+  workflowBindings: ['create', 'update', 'transition', 'recordSpend', 'rollPeriod'],
 };
 
 type AnyMethod = (...args: unknown[]) => Promise<unknown>;

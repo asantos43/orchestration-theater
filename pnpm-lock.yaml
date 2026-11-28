@@ -491,6 +491,9 @@ importers:
       '@otheater/tui':
         specifier: workspace:*
         version: link:../tui
+      '@otheater/workflows':
+        specifier: workspace:*
+        version: link:../workflows
       hono:
         specifier: 4.13.16
         version: 4.13.16
