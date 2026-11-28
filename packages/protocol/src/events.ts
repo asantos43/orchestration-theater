@@ -94,6 +94,7 @@ import {
   WorkflowStepFinishedPayloadSchema,
   WorkflowStepStartedPayloadSchema,
 } from './workflow-events.js';
+import {
   WorkflowBindingChangedPayloadSchema,
   WorkflowBudgetExhaustedPayloadSchema,
 } from './workflow-binding-events.js';

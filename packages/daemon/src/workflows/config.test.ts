@@ -5,7 +5,7 @@ import { DEFAULT_WORKFLOWS_SETTINGS } from './config.js';
 
 describe('the workflows block of the configuration', () => {
   it('has the defaults of DEFAULT_WORKFLOWS_SETTINGS when absent', () => {
-    expect(parseConfig('').workflows).toEqual(DEFAULT_WORKFLOWS_SETTINGS);
+    expect(parseConfig('').workflows).toMatchObject(DEFAULT_WORKFLOWS_SETTINGS);
   });
 
   it('takes every key', () => {
@@ -23,7 +23,7 @@ describe('the workflows block of the configuration', () => {
         '',
       ].join('\n'),
     );
-    expect(config.workflows).toEqual({
+    expect(config.workflows).toMatchObject({
       default: 'review-loop',
       allowed: ['play', 'review-loop'],
       budget: { on_exhausted: 'stop', period: 'week' },

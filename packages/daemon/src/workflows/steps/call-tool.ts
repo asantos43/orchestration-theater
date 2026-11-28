@@ -1,16 +1,9 @@
 // SPDX-License-Identifier: MPL-2.0
-import type { JsonObject, JsonValue } from '@otheater/core';
+import type { JsonObject } from '@otheater/core';
 import { durationMs } from '@otheater/workflows';
 import { EffectFailed, runEffect, type EffectVerdict } from '../../workspace/effects.js';
 import { toJsonValue, withDeadline } from './support.js';
-import type {
-  StepContext,
-  StepResult,
-  StepRunner,
-  ToolCaller,
-  ToolCallResult,
-  ToolRef,
-} from './types.js';
+import type { StepContext, StepResult, StepRunner, ToolCallResult, ToolRef } from './types.js';
 
 export type { ToolCaller, ToolCallResult, ToolEffectClass, ToolRef } from './types.js';
 

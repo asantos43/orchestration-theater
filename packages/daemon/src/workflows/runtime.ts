@@ -448,7 +448,7 @@ export class WorkflowRuntime {
     try {
       snapshot = createActor(machine, {
         snapshot: persisted as never,
-        input: undefined as never,
+        input: undefined,
       }).getSnapshot();
     } catch (error) {
       return refuse('snapshot_unreadable', situationText(error, 400) ?? 'The snapshot was refused');
