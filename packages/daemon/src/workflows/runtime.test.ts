@@ -684,3 +684,94 @@ describe('WorkflowRuntime: a crash in the middle of call_tool never repeats the 
     expect(finished?.payload).toMatchObject({ outcome: 'failed', reason: 'effect_ambiguous' });
   });
 });
+
+describe('WorkflowRuntime: the outputs of a node in the next ones', () => {
+  function reading(argId: string) {
+    return {
+      id: 'reading',
+      version: '1.0.0',
+      engine: '>=1 <2',
+      inputs: { doc: { type: 'string', default: 'doc-1' } },
+      nodes: {
+        status: { step: 'call_tool', params: { tool: 'demo__status', args: {} } },
+        save: { step: 'call_tool', params: { tool: 'demo__write', args: { id: argId } } },
+      },
+      edges: ['status -> save', 'save -> done'],
+    };
+  }
+
+  it('puts the output of an earlier node and an input in the params of the next one', async () => {
+    const world = makeWorld();
+    const runtime = runtimeOf(world);
+    const definition = reading('${nodes.status.result.status}-${inputs.doc}');
+    publish(world, definition);
+    await runtime.start({ runId: 'run-1', scenarioId: SCENARIO, definition });
+    await runtime.idle();
+    expect((await playOf(world)).state).toBe('done');
+    expect(world.tools.world).toEqual(['up-doc-1']);
+    // Only the node somebody reads is kept in the saved state.
+    const snapshot = (await playOf(world)).snapshot as {
+      runtime: { outputs: Record<string, unknown> };
+    };
+    expect(Object.keys(snapshot.runtime.outputs)).toEqual(['status']);
+  });
+
+  it('fails the step, with the reason in the event, when the value is not there', async () => {
+    const world = makeWorld();
+    const runtime = runtimeOf(world);
+    const definition = reading('${nodes.status.result.missing}');
+    publish(world, definition);
+    await runtime.start({ runId: 'run-1', scenarioId: SCENARIO, definition });
+    await runtime.idle();
+    expect((await playOf(world)).state).toBe('failed');
+    expect(world.tools.world).toEqual([]);
+    const finished = (await workflowEvents(world)).filter(
+      (event) => event.type === 'workflow.step.finished',
+    );
+    expect(finished.at(-1)?.payload).toMatchObject({
+      node: 'save',
+      outcome: 'failed',
+      reason: 'interpolation_unresolved',
+    });
+  });
+
+  it('keeps the outputs through a restart in the middle of the run', async () => {
+    const world = makeWorld();
+    const first = runtimeOf(world);
+    const definition = {
+      id: 'reading-wait',
+      version: '1.0.0',
+      engine: '>=1 <2',
+      nodes: {
+        status: { step: 'call_tool', params: { tool: 'demo__status', args: {} } },
+        wait: { step: 'wait_event', params: { event: 'demo.go', timeout: '1m' } },
+        save: {
+          step: 'call_tool',
+          params: { tool: 'demo__write', args: { id: '${nodes.status.result.status}' } },
+        },
+      },
+      edges: ['status -> wait', 'wait -> save', 'save -> done'],
+    };
+    publish(world, definition);
+    await first.start({ runId: 'run-1', scenarioId: SCENARIO, definition });
+    await vi.waitFor(() => {
+      expect(world.clock.pendingSleeps).toBeGreaterThan(0);
+    });
+    await first.stop();
+    const second = runtimeOf(world);
+    await second.resumeAll();
+    await vi.waitFor(() => {
+      expect(world.clock.pendingSleeps).toBeGreaterThan(0);
+    });
+    await world.store.events.append({
+      type: 'demo.go',
+      schemaVersion: 1,
+      payload: {},
+      scenarioId: SCENARIO,
+    });
+    await world.clock.advance(2_001);
+    await second.idle();
+    expect((await playOf(world)).state).toBe('done');
+    expect(world.tools.world).toEqual(['up']);
+  });
+});

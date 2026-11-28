@@ -90,21 +90,22 @@ O `@otheater/workflows` é pacote novo do monorepo, não dependência de fora. E
 | P1 | `@otheater/workflows`: schema da definição, linguagem de condição, compilador para XState, validador e hash | P0 | P7, P13 | feito (#359) |
 | P2 | Runtime do motor no daemon e tipos de passo genéricos (`call_tool`, `wait_event`, `branch`, `approval`, `notify`) | P1 | P5, P14 | feito (#413) |
 | P3 | A definição `play` 2.0: os tipos de passo da peça, a troca da máquina, o `flows.<id>` como parâmetro, o snapshot 1.x recusado | P2 | P6, P8, P9 | feito (#418) |
-| P4 | Versão de nascimento e migração em ponto seguro (N295), com a 2.0 → 2.1 de teste e o caos sobre workflows gerados | P10a | P12 | a fazer |
+| P4 | Versão de nascimento e migração em ponto seguro (N295), com a 2.0 → 2.1 de teste e o caos sobre workflows gerados | P10a | P12 | feito (#426) |
 | P5 | Biblioteca e vínculos (N296): tabelas, `workflows.default` e `allowed`, estados do vínculo, prazo, orçamento por período, concorrência | P1 | P2, P14 | feito (#412) |
 | P6 | Gatilhos: laço de sondagem mínimo (D3), eventos internos, eventos de plugin declarados (D6), filtro de autor | P5 | P3, P8, P9 | feito (#421) |
 | P7 | Porta `IssueTracker` (D4), adaptador GitHub, falso, conformidade; `fetchPullRequest` e `fetchCiLog` na `CodeHost` | P0 | P1, P13 | feito (#362) |
 | P8 | Tipos de passo do code host (`fetch_issue`, `fetch_pr`, `fetch_ci_log`, `comment`, `label`), aprovação antes de push e comentário, texto externo marcado | P2, P7 | P3, P6, P9 | feito (#416) |
 | P9 | Pacotes de workflow (N298): arquivo ou git com ref fixa, permissões na instalação, SSHSIG e chaves confiáveis (D5) | P1, P5 | P3, P6, P8 | feito (#417) |
 | P10a | Os gatilhos do P6 e o motor na composição do daemon e os leitores GitHub de PR, colaborador e CI (a troca da máquina passou ao P10c) | P3, P6, P8 | nada | feito (#423) |
-| P10c | A peça pela `play.yaml`: o `PlayStageHost` no runtime, as cinco diferenças do P3, o snapshot e a retomada da peça, e o `playMachine` sai (critério 4); a parte da N295 que vale só para a peça | P4, P12 | nada | a fazer |
-| P10b | API e CLI: validar, simular com o `fake-agent`, salvar, ativar, desativar, diff, listar, instalar (`ot flow ...`) | P4, P5, P9, P10a | P12, P10c | a fazer |
+| P10c | A peça pela `play.yaml`: o `PlayStageHost` no runtime, as cinco diferenças do P3, o snapshot e a retomada da peça, e o `playMachine` sai (critério 4); a parte da N295 que vale só para a peça | P4, P12 | nada | parcial (a troca passou ao P10d) |
+| P10d | A troca da máquina reescrita por estágio (opção A do dono): um redutor por estágio, o driver da peça sobre o runtime, um `Model` novo e a suíte da máquina substituída por uma equivalente; o `playMachine` sai; o caos I1 a I8 sobre a `play` 2.0, o I3 e o I6; os desvios do docs/24 §11 que dependem da peça; o `simulate` rodando o `fake-agent` e a triagem pelo Diretor no `github-issues` (decisões do dono sobre o P10b) | P10b, P10c | nada | a fazer |
+| P10b | API e CLI: validar, simular com o `fake-agent`, salvar, ativar, desativar, diff, listar, instalar (`ot flow ...`) | P4, P5, P9, P10a | P12, P10c | feito |
 | P11 | Editor do YAML na TUI, com o validador do P1 | P10b | P15, P16 (a parte automática) | a fazer |
-| P12 | Workflows prontos: `github-issues`, `pr-review` e `ci-fix` | P6, P8, P10a | P4, P10b | a fazer |
+| P12 | Workflows prontos: `github-issues`, `pr-review` e `ci-fix` | P6, P8, P10a | P4, P10b | feito (#425) |
 | P13 | Mural de recados da peça (N308, opção 1): `post_note`, `read_notes` | P0 | P1, P7 | feito (#360) |
 | P14 | Supervisão do Diretor (N309): sinais, `warn` e `redirect`, o canal pela resposta MCP (D8) e os três extras | P13 | P2, P5 | feito (#414) |
 | P15 | `ask_director` (N308, opção 2): o `blocked` que não encerra, com espera, prazo e o modo `relay` pelo canal do P14 | P14 | P3 a P12 | feito (#420) |
-| P16 | Aceite da fase | P1 a P15 (com P10a, P10b e P10c), P17, P18 | nada | a fazer |
+| P16 | Aceite da fase | P1 a P15 (com P10a, P10b, P10c e P10d), P17, P18 | nada | a fazer |
 | P17 | Testes da TUI num terminal real com o `@microsoft/tui-test` (N320) | P1, P7, P13 | os da onda 2 | feito (este PR) |
 | P18a | Nova detecção dos clientes (N321, itens 2 e 5): sem reiniciar o daemon, a cada abertura do assistente e ao criar uma conta; no Windows, o `Path` do registro; o motivo de cada cliente não achado na API | P7 | os da onda 2 | feito (#367) |
 | P18b | O assistente resolve na tela (N321, itens 1 e 4): as teclas I, R e A, o motivo na tela e as mensagens sem comandos `ot` | P18a | os da onda 2 | feito (#371) |
@@ -114,7 +115,7 @@ Ondas **[proposta, forma decidida na D9]**:
 - onda 1, logo depois do merge deste plano: **P1, P7 e P13**, em paralelo (três agentes);
 - onda 2: **P2, P5 e P14**, e o **P17** (N320, acrescentado em 2026-11-25), que mexe só nos testes da TUI e na CI;
 - onda 3: **P3, P8 e P9**, e depois **P6** e **P15**, assim que uma vaga abrir;
-- onda 4 (reordenada pelo dono em 2026-11-28, com a divisão do P10): primeiro o **P10a**, sozinho; depois **P4 e P12**, em paralelo; por fim o **P10b** e o **P10c** (a troca da máquina, acrescentada pelo dono em 2026-11-28);
+- onda 4 (reordenada pelo dono em 2026-11-28, com a divisão do P10): primeiro o **P10a**, sozinho; depois **P4 e P12**, em paralelo; por fim o **P10b** e o **P10c** (a troca da máquina, acrescentada pelo dono em 2026-11-28), e depois deles o **P10d** (a troca reescrita por estágio, dono, 2026-11-28);
 - onda 5: **P11** e **P16**.
 
 O P3 é o passo de maior risco, porque troca o núcleo mais testado. Ele corre sozinho na suíte completa: enquanto ele roda os e2e, os outros dois agentes da onda só rodam os testes do próprio pacote.
@@ -313,7 +314,7 @@ Todos **[proposta]** quanto ao nome. Cada um entra no catálogo do protocolo e n
 - O harness de caos ganha um gerador de definições pequenas e roda I1 a I8 sobre elas (docs/24 §6).
 - **Aceite próprio:** a parte 2 do critério de aceite.
 
-**Como ficou** (2026-11-28, [V] com os testes locais de protocol, workflows e daemon e com o caos de `kill -9` sobre o `pnpm build`; as escolhas marcadas [proposta] foram aceitas pelo dono em 2026-11-28, por múltipla escolha: "Aceitar todas"). Por ordem do dono de 2026-11-28, a troca da `playMachine` pela execução da `play.yaml` ficou para um passo próprio, o **P10c**: o P4 vale só para o motor genérico (`WorkflowRuntime`), e a `play` continua no `PlayRunner` (`pipeline/` e a máquina intactos).
+**Como ficou** (2026-11-28, PR #426; [V] com os testes locais de protocol, workflows e daemon e com o caos de `kill -9` sobre o `pnpm build`; as escolhas marcadas [proposta] foram aceitas pelo dono em 2026-11-28, por múltipla escolha: "Aceitar todas"). Por ordem do dono de 2026-11-28, a troca da `playMachine` pela execução da `play.yaml` ficou para um passo próprio, o **P10c**: o P4 vale só para o motor genérico (`WorkflowRuntime`), e a `play` continua no `PlayRunner` (`pipeline/` e a máquina intactos).
 - **Versão de nascimento:** o snapshot da execução guarda `born: {id, version, hash}` (a definição em que ela nasceu) ao lado de `workflow` (a de agora). Sem migração, as duas são iguais. [V] Teste: uma execução nascida na 2.0 continua na 2.0 depois de a 2.1 ser ativada, com `pin`.
 - **`workflows.running_on_change`:** `pin` (padrão) ou `migrate_at_safe_point`. A biblioteca avisa o runtime depois de ativar uma versão (gancho `onActivated`, com `runtime.onActivated`). Com `pin`, o runtime não pede nada e as execuções vivas ficam onde nasceram. Com `migrate_at_safe_point`, ele pede a migração das execuções abertas do workflow à versão ativada (só se for maior que a delas). [V] O Produtor também pode pedir uma migração explícita (`runtime.requestMigration(runId, versão)`), nos dois modos [proposta].
 - **Ponto seguro:** a migração só se aplica entre dois passos, com `inFlight === null`, sem efeito aberto no diário (`pending` ou `ambiguous`; `not_done` é veredito fechado) e com `safePoint` no tipo de passo do nó que a execução está para entrar. Uma execução parada em `approval` ou `wait_event` não está em ponto seguro. O pedido fica gravado no snapshot (`runtime.migration`), então sobrevive a uma queda; um pedido novo substitui o antigo [proposta]. [V]
@@ -574,6 +575,37 @@ Depois, o P4 e o P12 correm em paralelo. O **P10b** vem por último, com o resto
   - as 16 escolhas [proposta] acima foram aceitas ("Aceitar todas");
   - o `simulate` rodando o `fake-agent` (em vez do passeio seco) e a triagem pelo Diretor no `github-issues` passam ao **P10d**.
 
+**Como ficou (P10c)** (2026-11-28; [V] com tsc, lint e prettier nos arquivos tocados e os testes locais de `workflows`, `protocol` e `daemon`; sem rede e sem cliente real; **a troca da máquina NÃO foi feita**, por causa do critério 4, e o passo ficou parcial):
+- **Troca da `playMachine` pela `play.yaml`: parada e relatada, como o roteiro manda.** O critério 4 (a suíte da máquina e os e2e da peça passam sem mudar o que conferem) não pode ser cumprido por uma troca direta. Os motivos [V], lendo o código:
+  - a peça é dirigida por **evento no tempo** (`PlayRunner.send`, os handlers, a API e os comandos de barra, a pausa, os prazos), e o `WorkflowRuntime` roda **passos que bloqueiam** e devolvem uma saída. O `PlayStageHost` roda os efeitos de **um** estágio; o que a máquina faz **dentro** do estágio existe só nela: as tentativas, os pontos de julgamento do Diretor, o menu e o `limitBonus`, os reinícios estruturais, a pausa e as decisões. Passar isso para os passos é reescrever a lógica que a suíte da máquina afirma;
+  - a tabela `plays` e todos os consumidores (API, TUI, cliente, caos) usam `flowId: 'play'` e o `PlayState` em maiúsculas; o runtime guarda estados em minúsculas e o snapshot `{workflow, born, machine, runtime}`. A suíte (`machine.test.ts`) e o `Model` afirmam direto sobre o `playMachine`, então tirar a máquina muda o que elas conferem;
+  - as cinco transições que a máquina tem e a definição não tem (`CRITIQUING -> PLANNING`, `DECIDING -> PLANNING`, `DELIVERING -> SCRIPTING`, `PLANNING -> AWAITING_PRODUCER`, `REVIEWING_SCRIPT -> INTEGRATING`) pedem saídas novas nos tipos de passo, uma decisão de desenho que é do dono.
+  - **Perguntas ao dono (a decidir; marcadas [proposta], nada foi decidido por mim):**
+    1. **A) Reescrever por estágio:** um redutor por estágio (a lógica de dentro do estágio sai da máquina e vai para o passo), um driver da peça sobre o runtime e um `Model` novo; a suíte da máquina é substituída por uma equivalente, com o dono aceitando que o critério 4 vira "mesmos casos, novo alvo". É o caminho mais fiel à D2 e o maior.
+    2. **B) Passo híbrido:** um único tipo de passo (`play`) que roda a máquina atual por dentro, e a `play.yaml` descreve só as quatro ou cinco fases visíveis. Mantém o critério 4 como está, mas a `play.yaml` deixa de ser a definição de cada estado e a D2 (N311) fica pela metade.
+    3. **C) Ficar com a ponte** (o `run_play` do P12) e a máquina para a 1.0 do produto, revendo a D2.
+  - [V] Nada da suíte da máquina nem dos e2e da peça mudou. O `assertPlayFlowLinked`, os ganchos do P14, o `ask_director` do P15 e o `workflows.legacy_snapshot` ficaram como estavam, porque a máquina continua no lugar.
+- **A saída de um nó nos nós seguintes (interpolação)** [V]: `packages/workflows/src/interpolation.ts` (novo) e `validate.ts`.
+  - [proposta] A sintaxe: `${nodes.<nó>.<campo...>}` e `${inputs.<nome>}` em parâmetros de texto; `$${` escreve um `${` literal. Uma referência sozinha mantém o tipo do valor; com texto em volta, só texto, número ou booleano.
+  - O validador ganhou os códigos `interpolation_syntax` e `interpolation_ref` (o nó existe e chega antes do que o lê por alguma aresta, o campo existe no tipo de saída do passo, a entrada é declarada). Em execução, valor ausente falha o passo com `interpolation_unresolved` no `workflow.step.finished`, nunca vira texto vazio.
+  - O runtime guarda no snapshot (`runtime.outputs`, `default({})`, então snapshots antigos leem) só a saída dos nós que algum parâmetro lê, e mantém o valor na retomada depois de uma queda.
+  - [V] 167 testes do pacote `workflows` (interpolação, validador) e 3 novos em `runtime.test.ts` (o valor passa, a falha tem o motivo, sobrevive a reinício). O `body_from` do `comment` continua valendo; os workflows prontos **não** foram trocados por `${nodes.<nó>.summary}` [proposta: trocar depois, com o dono].
+- **Cancelar a execução cancela a peça que o `run_play` abriu** [V]:
+  - [proposta] O `StepRunner` ganha o gancho opcional `onCancel(ctx)`; o runtime o chama quando a execução é **cancelada** (não quando o daemon só para: o sinal `stop` é outro) e também quando o `cancel` pega uma execução que a retomada ainda não assumiu. `PlayRunPort` ganhou `cancel(playId, reason)` (`cancelled`, `already_final` ou `not_found`), que o adaptador faz por `runner.send(playId, {type: 'CANCEL'})`.
+  - Pela regra de situações viram eventos, o novo evento `workflow.play.cancelled` (`runId`, `node`, `play`, `outcome` = `cancelled`, `already_final` ou `failed`, `detail`) é escrito quando o cancelamento da peça é pedido, falha ou a peça já tinha acabado. O catálogo foi de 184 para 185 tipos do protocolo (187 no registro do daemon). Uma falha do cancelamento não impede a execução de terminar `cancelled`; a peça que seguiu rodando fica com o Produtor, e o evento é como ele (e os ganchos) ficam sabendo.
+  - [V] 6 testes novos em `run-play.test.ts` (cancelada, já terminada, falha, nó que nunca abriu peça, parada do daemon sem cancelar a peça, cancelamento depois de um reinício) e 2 de payload em `workflow-play-events.test.ts`.
+- **N295 sobre a peça (parcial):**
+  - [V] A fixture de teste `daemon/src/workflows/fixtures/play-2.1.yaml` (não é definição entregue): a `play.yaml` 2.0 com `plan_reviews: 3` e o `migrate_from` de cada nó.
+  - [V] `workflows/play-migration.test.ts` (4 testes) roda a `play.yaml` **de verdade**, no runtime genérico, com um `PlayStageHost` **falso** que responde cada estágio: a nascida na 2.0 fica na 2.0 com `pin`; com `migrate_at_safe_point` o pedido espera o estágio em curso, migra entre dois estágios (do `scripting` para o `scripting`), termina na 2.1 nascida na 2.0, cada estágio uma vez, e um reinício antes do ponto seguro mantém o pedido. [N] Isso prova a definição, o mapa e o runtime, **não** o código dos estágios.
+  - [N] **Não feito:** o caos I1 a I8 sobre a `play` 2.0 e o complemento do I3 e do I6 (docs/26, P4). Eles dependem de a peça rodar pelo runtime, ou seja, da troca acima; sobre o `PlayRunner` eles já rodam, como na Fase 11. O `workflows/migration.chaos.test.ts` do P4 segue sobre o par gerado do fluxo genérico.
+- **Desvios do docs/24 (seção 11) que dependem da peça: ficam pendentes** (`ci-fix` na mesma branch, `pr-review` só com o Crítico, a aprovação depois do trabalho, `Fixes #N`), todos atrás da troca da máquina. Não comecei esta parte: o roteiro a pede só com 1 a 3 verdes, e o item 1 não está.
+- **Docs tocados:** docs/24 (a seção 5 ganha a interpolação e dois códigos de validação) e docs/27 (a observação sobre as saídas de um nó). A linha do P10c na tabela **não** foi mexida.
+- **Perguntas ao dono (resumo):** (1) A, B ou C para a troca da máquina; (2) aceitar a sintaxe `${nodes...}` e `$${`; (3) aceitar o gancho `onCancel` e o evento `workflow.play.cancelled`; (4) trocar o `body_from` dos workflows prontos pela interpolação; (5) como completar I3 e I6 e o caos da 2.0 (junto com a troca).
+- **Decisões do dono (2026-11-28, por múltipla escolha):**
+  - a troca da máquina segue pela **opção A, reescrever por estágio**, num passo próprio, o **P10d**, depois do P10b e antes do P16. O critério 4 passa a ser "os mesmos casos, com novo alvo": a suíte da máquina e o `Model` são substituídos por equivalentes. O caos I1 a I8 sobre a `play` 2.0, o I3, o I6 e os desvios do docs/24 §11 que dependem da peça vão junto;
+  - as escolhas [proposta] deste bloco foram aceitas ("Todas acima"): a sintaxe `${nodes...}` e `$${`, o gancho `onCancel` com o `PlayRunPort.cancel` e o evento `workflow.play.cancelled`, e a troca do `body_from` dos workflows prontos pela interpolação (num passo seguinte);
+  - o que foi feito aqui vai à main agora, como passo parcial.
+
 ### P11. Editor do YAML na TUI
 
 **Arquivos:** `tui/src/` (uma tela nova de workflows e o editor), os catálogos `en` e `pt-BR`.
@@ -592,7 +624,7 @@ Depois, o P4 e o P12 correm em paralelo. O **P10b** vem por último, com o resto
 - `ci-fix`: a CI que falhou num PR vira a leitura do log, a correção numa branch e um PR, com aprovação.
 - **Aceite próprio:** a parte 1 do critério de aceite, menos o pacote e o editor.
 
-**Como ficou:** [V] feito, na branch `fase11b/p12-workflows-prontos` (2026-11-28). O guia de uso é o [docs/27](27-GUIA-DOS-WORKFLOWS-PRONTOS.md).
+**Como ficou:** [V] feito (2026-11-28, PR #425; as escolhas do Claude e os desvios foram aceitos pelo dono em 2026-11-28). O guia de uso é o [docs/27](27-GUIA-DOS-WORKFLOWS-PRONTOS.md).
 - **Decisões do dono (2026-11-28) que o passo seguiu:**
   - o `run_play` é a ponte para a peça de **hoje** (o `PlayRunner`); a troca da `playMachine` por `play.yaml` fica no P10c;
   - a demanda sai da issue, do PR ou do log, espera um estado final, retoma sem abrir uma segunda peça e marca o texto de fora como dado;
@@ -612,7 +644,11 @@ Depois, o P4 e o P12 correm em paralelo. O **P10b** vem por último, com o resto
   - `ready-workflows.e2e.test.ts`, com o motor montado por `composeWorkflows`, o `fake` do code host e do rastreador, o relógio falso e a peça falsa;
   - o e2e prova que a peça, o comentário e o `label` só saem depois da aprovação, e que um autor de fora da lista não inicia nada e gera `workflow.trigger.skipped`.
 - **Nada real foi rodado:** nenhum cliente, nenhuma rede, nenhum GitHub. [N] O efeito de uma peça de verdade, com um modelo, fica para o roteiro do dono.
-- **[proposta]** (a forma do `run_play` e das definições; vão ao dono):
+- **Decisões do dono sobre este passo (2026-11-28, por múltipla escolha, iguais à recomendação):**
+  - as escolhas [proposta] abaixo ficam como estão ("Aceitar todas"), com o guia como docs/27;
+  - os desvios do docs/24 (seção 11) ficam aceitos por agora e se completam no P10b ou no P10c: a peça só com o Crítico, a peça que para antes do push, o push na branch do PR que falhou, o `Fixes #N` e a triagem pelo Diretor;
+  - o `require_approval` que a composição não passa aos validadores se corrige no **P10b** (o validador hoje só recusa a mais, nunca a menos).
+- **[proposta, aceitas]** (a forma do `run_play` e das definições):
   - parâmetros `from` (`issue`, `pr`, `ci_log`), `number`, `instructions` e `timeout`; saída `ended`, `delivered`, `branch`, `pr_number`, `pr_url`, `summary` e `play_id`;
   - a aprovação vem **antes** do trabalho, e não só antes do comentário;
   - o rótulo `otheater` do `github-issues`;

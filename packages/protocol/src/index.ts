@@ -28,6 +28,7 @@ export * from './collab-events.js';
 export * from './supervision-events.js';
 export * from './workflow-events.js';
 export * from './workflow-migration-events.js';
+export * from './workflow-play-events.js';
 export * from './workflow-snapshot-events.js';
 export * from './workflow-binding-events.js';
 export * from './workflow-codehost-events.js';

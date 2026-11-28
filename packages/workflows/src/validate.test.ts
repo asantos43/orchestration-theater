@@ -210,6 +210,26 @@ describe('validateWorkflow: one failure per code', () => {
     ],
     ['migration_version', (d) => ({ ...d, migrate_from: { '1.0.0': { read: 'read' } } })],
     ['migration_target', (d) => ({ ...d, migrate_from: { '0.9.0': { read: 'nowhere' } } })],
+    [
+      'interpolation_syntax',
+      (d) => ({
+        ...d,
+        nodes: {
+          ...d.nodes,
+          answer: { step: 'comment', params: { target: 'issue', body: '${x' } },
+        },
+      }),
+    ],
+    [
+      'interpolation_ref',
+      (d) => ({
+        ...d,
+        nodes: {
+          ...d.nodes,
+          answer: { step: 'comment', params: { target: 'issue', body: '${nodes.read.nope}' } },
+        },
+      }),
+    ],
   ];
 
   it('covers every code', () => {
@@ -236,6 +256,42 @@ describe('validateWorkflow: the migration map (N295)', () => {
     expect(compareVersions('2.0.0', '1.9.9')).toBeGreaterThan(0);
     expect(compareVersions('1.2.0', '1.2.0')).toBe(0);
     expect(compareVersions('1.0.0-rc.1', '1.0.0')).toBeLessThan(0);
+  });
+});
+
+describe('validateWorkflow: the outputs of a node in the next ones', () => {
+  const reading = (body: string): WorkflowDefinition => ({
+    ...base(),
+    nodes: {
+      ...base().nodes,
+      answer: { step: 'comment', params: { target: 'issue', body } },
+    },
+  });
+  const messages = (body: string): string[] => errorsOf(reading(body)).map((e) => e.message);
+
+  it('accepts a field of an earlier node and an input', () => {
+    expect(errorsOf(reading('Issue ${nodes.read.title} (strict: ${inputs.strict})'))).toEqual([]);
+  });
+
+  it('refuses a node that does not come before, one that does not exist and an undeclared input', () => {
+    expect(messages('${nodes.answer.url}')).toEqual([
+      'nodes.answer.url: answer never runs before answer',
+    ]);
+    expect(messages('${nodes.ghost.x}')).toEqual(['nodes.ghost.x: no node ghost']);
+    expect(messages('${inputs.nope}')).toEqual(['inputs.nope: no input nope']);
+    expect(messages('${nodes.read.nope}')).toEqual([
+      'nodes.read.nope: read has no output field nope',
+    ]);
+  });
+
+  it('says where the reference is, and refuses a bad syntax', () => {
+    const [error] = errorsOf(reading('a ${nodes.read} b'));
+    expect(error?.code).toBe('interpolation_syntax');
+    expect(error?.path).toBe('nodes.answer.params.body');
+  });
+
+  it('leaves a doubled dollar as a literal', () => {
+    expect(errorsOf(reading('cost: $' + '${nodes.read.nope}'))).toEqual([]);
   });
 });
 

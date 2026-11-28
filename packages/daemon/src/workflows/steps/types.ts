@@ -86,6 +86,15 @@ export interface StepRunner {
    * logged and ends the step as `failed` with the reason `step_error`.
    */
   run(ctx: StepContext): Promise<StepResult>;
+  /**
+   * Called by the runtime, once, when the RUN is cancelled (not when the daemon only stops) while
+   * a visit of this step type was in flight or about to start: the step cleans up what it started
+   * outside the run (`run_play` cancels the play it opened). It may be called after `run` ended as
+   * cancelled, or instead of it (a run cancelled after a restart). It must be safe to repeat, and
+   * a failure of its own is its to record (an event); what it throws is only logged. [proposta]
+   * The `params` it gets are the raw ones of the node, with no interpolation.
+   */
+  onCancel?(ctx: StepContext): Promise<void>;
 }
 
 /** The empty output, for a step that returns nothing a condition can read. */

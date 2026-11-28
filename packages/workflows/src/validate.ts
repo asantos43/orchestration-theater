@@ -24,6 +24,7 @@ import {
   type WorkflowTrigger,
 } from './definition.js';
 import type { FieldType } from './field-types.js';
+import { checkInterpolationRef, findInterpolations } from './interpolation.js';
 import {
   BUILTIN_STEP_TYPES,
   PUBLIC_WRITES,
@@ -60,6 +61,8 @@ export const VALIDATION_CODES = [
   'approval_missing',
   'migration_version',
   'migration_target',
+  'interpolation_syntax',
+  'interpolation_ref',
 ] as const;
 export type ValidationCode = (typeof VALIDATION_CODES)[number];
 
@@ -528,6 +531,48 @@ export function validateWorkflow(input: unknown, options: ValidateOptions = {}):
     color.set(id, 'black');
   };
   for (const id of nodeIds) if (!color.has(id)) visit(id);
+
+  // The outputs of a node read by a later one (`${nodes.x.field}`, `${inputs.name}`): the syntax, the
+  // node, the field and the input are checked here (plan of Phase 11b, P10c).
+  const successors = new Map<string, Set<string>>();
+  const reachableFrom = (id: string): ReadonlySet<string> => {
+    const cached = successors.get(id);
+    if (cached !== undefined) return cached;
+    const seen = new Set<string>();
+    const open = [id];
+    while (open.length > 0) {
+      const current = open.shift() ?? id;
+      for (const edge of outEdges.get(current) ?? []) {
+        for (const target of targets(edge)) {
+          if (nodeSet.has(target) && !seen.has(target)) {
+            seen.add(target);
+            open.push(target);
+          }
+        }
+      }
+    }
+    successors.set(id, seen);
+    return seen;
+  };
+  for (const [id, node] of Object.entries(definition.nodes)) {
+    for (const found of findInterpolations(node.params ?? {})) {
+      const where = ['nodes', id, 'params', ...found.segments] as const;
+      if (!found.parsed.ok) {
+        fail(where, 'interpolation_syntax', found.parsed.message);
+        continue;
+      }
+      for (const part of found.parsed.parts) {
+        if (typeof part === 'string') continue;
+        for (const problem of checkInterpolationRef(part, id, {
+          outputOf: (name) => specs.get(name)?.output,
+          inputs: inputTypes,
+          canPrecede: (from, to) => reachableFrom(from).has(to),
+        })) {
+          fail(where, 'interpolation_ref', `${part.text}: ${problem}`);
+        }
+      }
+    }
+  }
 
   // Required plugins and tools.
   if (options.installed !== undefined) {
