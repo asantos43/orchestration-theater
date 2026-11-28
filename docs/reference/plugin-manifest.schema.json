@@ -168,6 +168,16 @@
         "pattern": "^[a-z0-9][a-z0-9_-]*(\\.[a-z0-9][a-z0-9_-]*)*$"
       }
     },
+    "triggers": {
+      "description": "The events (names from \"events\") a workflow binding may ask for as a trigger. An event that is not listed here never starts a workflow, whatever the binding says.",
+      "maxItems": 64,
+      "type": "array",
+      "items": {
+        "type": "string",
+        "maxLength": 64,
+        "pattern": "^[a-z0-9][a-z0-9_-]*(\\.[a-z0-9][a-z0-9_-]*)*$"
+      }
+    },
     "panel": {
       "default": [],
       "maxItems": 64,
