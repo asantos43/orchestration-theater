@@ -39,7 +39,7 @@ import type { PluginEffectRegistry } from '../workspace/plugin-effects.js';
 import { buildWorkflowMachine, type RunContext, type RunEvent } from './machine.js';
 import { DEFAULT_WORKFLOW_RUNTIME, type WorkflowRuntimeSettings } from './runtime-config.js';
 import type { ToolCaller } from './steps/call-tool.js';
-import type { CodeHostStepDeps } from './steps/codehost/support.js';
+import type { CodeHostStepDeps } from './steps/codehost/deps.js';
 import { GENERIC_STEP_RUNNERS } from './steps/index.js';
 import type { StepContext, StepDeps, StepResult, StepRunner } from './steps/types.js';
 

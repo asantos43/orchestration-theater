@@ -4,7 +4,7 @@ import type { AskApproval } from '../../browser/approval.js';
 import type { PluginEffectRegistry } from '../../workspace/plugin-effects.js';
 import type { EffectOrigin } from '../../workspace/effects.js';
 import type { WorkflowRuntimeSettings } from '../runtime-config.js';
-import type { CodeHostStepDeps } from './codehost/support.js';
+import type { CodeHostStepDeps } from './codehost/deps.js';
 
 /**
  * What a step type needs to run, besides the node it runs (plan of Phase 11b, P2). The engine of a
