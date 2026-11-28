@@ -109,6 +109,7 @@ import {
   TELEMETRY_RETENTION_MODES,
 } from './telemetry/retention-config.js';
 import { IdeasConfigSchema } from './ideas/settings.js';
+import { WORKFLOW_APPROVAL_ON_TIMEOUT } from './workflows/runtime-config.js';
 import { DEFAULT_FAULT_PLAN_FILE, FAULT_INJECT_MODES } from './chaos/faults.js';
 import {
   DEFAULT_DISK_CHECK_EVERY,
@@ -2272,6 +2273,34 @@ export const DaemonConfigSchema = z
              * daemon's `node`) or of an npm program.
              */
             npm: z.string().trim().min(1).default('auto'),
+          })
+          .prefault({}),
+      })
+      .prefault({}),
+    /**
+     * The workflow engine (docs/24; plan of Phase 11b). Every key is [proposta]. `runtime` holds the
+     * defaults of the generic step types (P2): a node's own `timeout` or `on_timeout` wins.
+     * - `wait_event.poll`: how often the log is read while a `wait_event` waits for its event.
+     * - `approval.timeout`: the deadline of an `approval` that names none; `off` (default) waits for ever.
+     * - `approval.on_timeout`: `stop` (default) ends the run as cancelled when the deadline passes;
+     *   `reject` gives `approved: false` and lets the edges decide.
+     * - `call_tool.timeout`: the deadline of a `call_tool` that names none; `off` (default) leaves
+     *   it to `plugins.call_timeout`.
+     */
+    workflows: z
+      .strictObject({
+        runtime: z
+          .strictObject({
+            wait_event: z.strictObject({ poll: DurationSchema.prefault('2s') }).prefault({}),
+            approval: z
+              .strictObject({
+                timeout: OffOrDurationSchema.prefault('off'),
+                on_timeout: z.enum(WORKFLOW_APPROVAL_ON_TIMEOUT).default('stop'),
+              })
+              .prefault({}),
+            call_tool: z
+              .strictObject({ timeout: OffOrDurationSchema.prefault('off') })
+              .prefault({}),
           })
           .prefault({}),
       })

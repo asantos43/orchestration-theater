@@ -87,6 +87,14 @@ import {
 import { AtifExportFailedPayloadSchema, AtifExportedPayloadSchema } from './atif-events.js';
 import { CollabLimitReachedPayloadSchema, NotePostedPayloadSchema } from './collab-events.js';
 import {
+  WorkflowNotifiedPayloadSchema,
+  WorkflowRunFinishedPayloadSchema,
+  WorkflowRunRefusedPayloadSchema,
+  WorkflowRunStartedPayloadSchema,
+  WorkflowStepFinishedPayloadSchema,
+  WorkflowStepStartedPayloadSchema,
+} from './workflow-events.js';
+import {
   TelemetryBatchRejectedPayloadSchema,
   TelemetryExportFailedPayloadSchema,
   TelemetryPurgedPayloadSchema,
@@ -1007,6 +1015,37 @@ export const DAEMON_EVENT_DEFINITIONS = [
     type: 'daemon.update',
     schemaVersion: 1,
     payload: DaemonUpdatePayloadSchema,
+  }),
+  // The workflow engine at run time (docs/24 §6; plan of Phase 11b, P2).
+  defineEventType({
+    type: 'workflow.run.started',
+    schemaVersion: 1,
+    payload: WorkflowRunStartedPayloadSchema,
+  }),
+  defineEventType({
+    type: 'workflow.step.started',
+    schemaVersion: 1,
+    payload: WorkflowStepStartedPayloadSchema,
+  }),
+  defineEventType({
+    type: 'workflow.step.finished',
+    schemaVersion: 1,
+    payload: WorkflowStepFinishedPayloadSchema,
+  }),
+  defineEventType({
+    type: 'workflow.run.finished',
+    schemaVersion: 1,
+    payload: WorkflowRunFinishedPayloadSchema,
+  }),
+  defineEventType({
+    type: 'workflow.run.refused',
+    schemaVersion: 1,
+    payload: WorkflowRunRefusedPayloadSchema,
+  }),
+  defineEventType({
+    type: 'workflow.notified',
+    schemaVersion: 1,
+    payload: WorkflowNotifiedPayloadSchema,
   }),
 ] as const;
 
