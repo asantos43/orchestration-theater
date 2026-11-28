@@ -114,6 +114,11 @@ import {
   WorkflowWriteRefusedPayloadSchema,
 } from './workflow-codehost-events.js';
 import {
+  WorkflowPollFailedPayloadSchema,
+  WorkflowTriggerFiredPayloadSchema,
+  WorkflowTriggerSkippedPayloadSchema,
+} from './workflow-trigger-events.js';
+import {
   WorkflowPackageInstalledPayloadSchema,
   WorkflowPackageRemovedPayloadSchema,
   WorkflowPackageSignatureFailedPayloadSchema,
@@ -1152,6 +1157,22 @@ export const DAEMON_EVENT_DEFINITIONS = [
     schemaVersion: 1,
     payload: WorkflowPackageSignatureFailedPayloadSchema,
   }),
+  // The triggers of the bindings and the poll loop (docs/24 §8; plan of Phase 11b, P6).
+  defineEventType({
+    type: 'workflow.trigger.fired',
+    schemaVersion: 1,
+    payload: WorkflowTriggerFiredPayloadSchema,
+  }),
+  defineEventType({
+    type: 'workflow.trigger.skipped',
+    schemaVersion: 1,
+    payload: WorkflowTriggerSkippedPayloadSchema,
+  }),
+  defineEventType({
+    type: 'workflow.poll.failed',
+    schemaVersion: 1,
+    payload: WorkflowPollFailedPayloadSchema,
+  }),
 ] as const;
 
 type DaemonEventDefinition = (typeof DAEMON_EVENT_DEFINITIONS)[number];
@@ -1298,6 +1319,9 @@ export type WorkflowPackageInstalledPayload = DaemonEventPayloads['workflow.pack
 export type WorkflowPackageRemovedPayload = DaemonEventPayloads['workflow.package.removed'];
 export type WorkflowPackageSignatureFailedPayload =
   DaemonEventPayloads['workflow.package.signature_failed'];
+export type WorkflowTriggerFiredPayload = DaemonEventPayloads['workflow.trigger.fired'];
+export type WorkflowTriggerSkippedPayload = DaemonEventPayloads['workflow.trigger.skipped'];
+export type WorkflowPollFailedPayload = DaemonEventPayloads['workflow.poll.failed'];
 export type ProfileWarningPayload = DaemonEventPayloads['profile.warning'];
 export type ProfileExecStartedPayload = DaemonEventPayloads['profile.exec.started'];
 export type ProfileExecEndedPayload = DaemonEventPayloads['profile.exec.ended'];

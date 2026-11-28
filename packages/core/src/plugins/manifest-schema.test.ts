@@ -28,7 +28,8 @@ describe('the JSON Schema of the plugin manifest', () => {
     });
     const required = schema.required as string[];
     // Defaults make a field optional for the author.
-    for (const name of ['secrets', 'events', 'panel', 'i18n']) expect(required).not.toContain(name);
+    for (const name of ['secrets', 'events', 'triggers', 'panel', 'i18n'])
+      expect(required).not.toContain(name);
     const properties = schema.properties as Record<string, unknown>;
     const toolProperties = (
       properties.tools as {

@@ -10766,11 +10766,14 @@
               "events": {
                 "$ref": "#/$defs/__schema19"
               },
-              "panel": {
+              "triggers": {
                 "$ref": "#/$defs/__schema22"
               },
+              "panel": {
+                "$ref": "#/$defs/__schema25"
+              },
               "i18n": {
-                "$ref": "#/$defs/__schema27"
+                "$ref": "#/$defs/__schema30"
               }
             },
             "required": [
@@ -11154,14 +11157,30 @@
             "pattern": "^[a-z0-9][a-z0-9_-]*(\\.[a-z0-9][a-z0-9_-]*)*$"
           },
           "__schema22": {
+            "description": "The events (names from \"events\") a workflow binding may ask for as a trigger. An event that is not listed here never starts a workflow, whatever the binding says.",
+            "$ref": "#/$defs/__schema23"
+          },
+          "__schema23": {
+            "maxItems": 64,
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/__schema24"
+            }
+          },
+          "__schema24": {
+            "type": "string",
+            "maxLength": 64,
+            "pattern": "^[a-z0-9][a-z0-9_-]*(\\.[a-z0-9][a-z0-9_-]*)*$"
+          },
+          "__schema25": {
             "default": [],
             "maxItems": 64,
             "type": "array",
             "items": {
-              "$ref": "#/$defs/__schema23"
+              "$ref": "#/$defs/__schema26"
             }
           },
-          "__schema23": {
+          "__schema26": {
             "oneOf": [
               {
                 "type": "object",
@@ -11171,17 +11190,17 @@
                     "const": "table"
                   },
                   "title": {
-                    "$ref": "#/$defs/__schema24"
+                    "$ref": "#/$defs/__schema27"
                   },
                   "source": {
-                    "$ref": "#/$defs/__schema25"
+                    "$ref": "#/$defs/__schema28"
                   },
                   "columns": {
                     "minItems": 1,
                     "maxItems": 32,
                     "type": "array",
                     "items": {
-                      "$ref": "#/$defs/__schema26"
+                      "$ref": "#/$defs/__schema29"
                     }
                   }
                 },
@@ -11200,10 +11219,10 @@
                     "const": "list"
                   },
                   "title": {
-                    "$ref": "#/$defs/__schema24"
+                    "$ref": "#/$defs/__schema27"
                   },
                   "source": {
-                    "$ref": "#/$defs/__schema25"
+                    "$ref": "#/$defs/__schema28"
                   }
                 },
                 "required": [
@@ -11221,10 +11240,10 @@
                     "const": "metrics"
                   },
                   "title": {
-                    "$ref": "#/$defs/__schema24"
+                    "$ref": "#/$defs/__schema27"
                   },
                   "source": {
-                    "$ref": "#/$defs/__schema25"
+                    "$ref": "#/$defs/__schema28"
                   }
                 },
                 "required": [
@@ -11242,7 +11261,7 @@
                     "const": "action"
                   },
                   "label": {
-                    "$ref": "#/$defs/__schema24"
+                    "$ref": "#/$defs/__schema27"
                   },
                   "tool": {
                     "type": "string",
@@ -11258,23 +11277,23 @@
               }
             ]
           },
-          "__schema24": {
+          "__schema27": {
             "type": "string",
             "maxLength": 128,
             "pattern": "^[a-z][a-z0-9_]*(\\.[a-z0-9_]+)*$"
           },
-          "__schema25": {
+          "__schema28": {
             "type": "string",
             "description": "A tool of this plugin with effects: read; its result fills the block."
           },
-          "__schema26": {
+          "__schema29": {
             "type": "object",
             "properties": {
               "key": {
                 "$ref": "#/$defs/__schema14"
               },
               "label": {
-                "$ref": "#/$defs/__schema24"
+                "$ref": "#/$defs/__schema27"
               }
             },
             "required": [
@@ -11283,32 +11302,32 @@
             ],
             "additionalProperties": false
           },
-          "__schema27": {
+          "__schema30": {
             "type": "object",
             "properties": {
               "en": {
-                "$ref": "#/$defs/__schema28"
+                "$ref": "#/$defs/__schema31"
               }
             },
             "required": [
               "en"
             ],
             "additionalProperties": {
-              "$ref": "#/$defs/__schema28"
+              "$ref": "#/$defs/__schema31"
             },
             "description": "One catalog per language; \"en\" is required, and what a language lacks shows in \"en\"."
           },
-          "__schema28": {
+          "__schema31": {
             "type": "object",
             "propertyNames": {
-              "$ref": "#/$defs/__schema24"
+              "$ref": "#/$defs/__schema27"
             },
             "additionalProperties": {
-              "$ref": "#/$defs/__schema29"
+              "$ref": "#/$defs/__schema32"
             },
             "description": "Screen texts by key, with \"{{name}}\" placeholders where the text has variables."
           },
-          "__schema29": {
+          "__schema32": {
             "type": "string",
             "minLength": 1,
             "maxLength": 500

@@ -61,6 +61,13 @@ function only(problems: readonly PluginManifestProblem[]): PluginManifestProblem
 }
 
 describe('the manifest of a plugin', () => {
+  it('keeps the optional triggers, which are events of the manifest (P6, D6)', () => {
+    const none = parsePluginManifest(postgres());
+    expect(none.ok && none.manifest.triggers).toBeUndefined();
+    const some = parsePluginManifest({ ...postgres(), triggers: ['migration_applied'] });
+    expect(some.ok && some.manifest.triggers).toEqual(['migration_applied']);
+  });
+
   it('accepts the postgres-db example of architecture 5.14 and fills the defaults', () => {
     const result = parsePluginManifest(postgres());
     expect(result.ok).toBe(true);
@@ -313,6 +320,19 @@ describe('the manifest of a plugin', () => {
       expect(prefixed.message).toContain('plugin.postgres-db.<name>');
       expect(only(refused((m) => (m.events = ['a', 'a']))).path).toBe('events[1]');
       expect(only(refused((m) => (m.events = ['Bad Name']))).path).toBe('events[0]');
+    });
+
+    it('a trigger that is not an event of the manifest, is repeated or is badly named (P6, D6)', () => {
+      const unknown = only(refused((m) => (m.triggers = ['other'])));
+      expect(unknown.path).toBe('triggers[0]');
+      expect(unknown.message).toContain('is not in "events"');
+      expect(
+        only(refused((m) => (m.triggers = ['migration_applied', 'migration_applied']))).path,
+      ).toBe('triggers[1]');
+      // A bad name is also not one of the events, so two problems, both on the same item.
+      const badName = refused((m) => (m.triggers = ['Bad Name']));
+      expect(badName.length).toBeGreaterThan(0);
+      expect(badName.every((problem) => problem.path === 'triggers[0]')).toBe(true);
     });
 
     it('a secret that is not a variable name, or that is repeated', () => {

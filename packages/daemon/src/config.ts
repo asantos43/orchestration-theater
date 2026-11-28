@@ -132,6 +132,14 @@ import {
   WORKFLOW_PACKAGE_UNSIGNED_MODES,
 } from './workflows/packages/config.js';
 import {
+  WORKFLOW_PLUGIN_EVENT_MODES,
+  WORKFLOW_POLL_MAX_LIMIT,
+  WORKFLOW_POLL_MIN_INTERVAL_MS,
+  WORKFLOW_POLL_MODES,
+  WORKFLOW_POLL_ON_ERROR_MODES,
+  WORKFLOW_TRIGGER_AUTHOR_MODES,
+} from './workflows/triggers/config.js';
+import {
   REQUIRE_APPROVAL_NONE,
   WORKFLOW_COMMENT_MARKER_MODES,
   WORKFLOW_UNTRUSTED_TEXT_MODES,
@@ -2234,6 +2242,15 @@ export const DaemonConfigSchema = z
      * - `packages.activate`: `when_none` (default), `always` or `never`.
      * - `packages.fetch_timeout`, `packages.verify_timeout`, `packages.max_workflows` and
      *   `packages.ssh_keygen` (`auto`, or the path of the program).
+     * `triggers` (P6, D3, D6; the keys are described in `workflows/triggers/config.ts`; `authors`,
+     * `authors_list`, `plugin_events` and `poll.mode`, `.interval` and `.on_error` are the plan's,
+     * `poll.backoff_max`, `poll.limit` and `event_poll` are [proposta]):
+     * - `triggers.authors`: `allowlist` (default), `collaborators` or `any`; `triggers.authors_list`
+     *   holds the logins of the `allowlist`.
+     * - `triggers.plugin_events`: `declared` (default) or `off`.
+     * - `triggers.poll.mode`: `loop` (default) or `off`; `poll.interval` (`5m`, at least `1m`);
+     *   `poll.on_error`: `backoff` (default) or `pause_binding`.
+     * - `triggers.event_poll`: how often the log is read for the event triggers (`2s`), or `off`.
      */
     workflows: z
       .strictObject({
@@ -2288,6 +2305,32 @@ export const DaemonConfigSchema = z
             verify_timeout: DurationSchema.prefault('15s'),
             max_workflows: z.int().min(1).max(500).default(50),
             ssh_keygen: z.string().min(1).default('auto'),
+          })
+          .prefault({}),
+        triggers: z
+          .strictObject({
+            authors: z.enum(WORKFLOW_TRIGGER_AUTHOR_MODES).default('allowlist'),
+            authors_list: z
+              .array(z.string().regex(/^\S{1,100}$/, 'a login has no spaces'))
+              .max(500)
+              .default([]),
+            plugin_events: z.enum(WORKFLOW_PLUGIN_EVENT_MODES).default('declared'),
+            poll: z
+              .strictObject({
+                mode: z.enum(WORKFLOW_POLL_MODES).default('loop'),
+                interval: DurationSchema.refine((value) => value >= WORKFLOW_POLL_MIN_INTERVAL_MS, {
+                  message: 'the shortest interval is 1m (every look is a call to the code host)',
+                }).prefault('5m'),
+                on_error: z.enum(WORKFLOW_POLL_ON_ERROR_MODES).default('backoff'),
+                backoff_max: DurationSchema.refine((value) => value >= 1000, {
+                  message: 'the shortest backoff_max is 1s',
+                }).prefault('1h'),
+                limit: z.int().min(1).max(WORKFLOW_POLL_MAX_LIMIT).default(30),
+              })
+              .prefault({}),
+            event_poll: OffOrDurationSchema.refine((value) => value === null || value >= 100, {
+              message: 'the shortest event_poll is 100ms',
+            }).prefault('2s'),
           })
           .prefault({}),
         /**
