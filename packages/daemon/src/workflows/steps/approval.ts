@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 import type { JsonValue } from '@otheater/core';
+import { buildDaemonEvent } from '@otheater/protocol';
 import { durationMs } from '@otheater/workflows';
 import { APPROVE_LABEL, DENY_LABEL, isApproval } from '../../browser/approval.js';
 import { runEffect } from '../../workspace/effects.js';
@@ -127,24 +128,59 @@ export const approvalStep: StepRunner = {
         continue;
       }
       await ctx.memo.set('decision', opened.decisionId);
+      await emitApproval(ctx, 'workflow.approval.requested', {
+        node: ctx.node,
+        ordinal: ctx.ordinal,
+        prompt: question.slice(0, 500),
+      });
       const waited = await waitFor(ctx, opened.answer, deadline);
       await ctx.memo.set('decision', null);
       if (waited.kind === 'answered') {
-        return {
-          kind: 'done',
-          output: { approved: isApproval(waited.answer) },
-          effect: outcome.origin,
-        };
+        const approved = isApproval(waited.answer);
+        await emitApproval(ctx, 'workflow.approval.resolved', {
+          node: ctx.node,
+          ordinal: ctx.ordinal,
+          approved,
+          by: 'answered',
+        });
+        return { kind: 'done', output: { approved }, effect: outcome.origin };
       }
       if (waited.kind === 'aborted') return { kind: 'cancelled', reason: 'aborted' };
-      if (waited.kind === 'cancelled') return { kind: 'failed', reason: 'approval_cancelled' };
+      if (waited.kind === 'cancelled') {
+        await emitApproval(ctx, 'workflow.approval.resolved', {
+          node: ctx.node,
+          ordinal: ctx.ordinal,
+          approved: false,
+          by: 'cancelled',
+        });
+        return { kind: 'failed', reason: 'approval_cancelled' };
+      }
       // The deadline: the question is withdrawn, so a late answer finds nothing to answer.
       await store.decisions.cancel(opened.decisionId).catch(() => undefined);
+      await emitApproval(ctx, 'workflow.approval.resolved', {
+        node: ctx.node,
+        ordinal: ctx.ordinal,
+        approved: false,
+        by: 'timeout',
+      });
       if (onTimeout === 'stop') return { kind: 'cancelled', reason: 'approval_timeout' };
       return { kind: 'done', output: { approved: false }, effect: outcome.origin };
     }
   },
 };
+
+/** The events of the question and of its end, for hooks and plugins (P8). [proposta] */
+async function emitApproval<T extends 'workflow.approval.requested' | 'workflow.approval.resolved'>(
+  ctx: StepContext,
+  type: T,
+  payload: Parameters<typeof buildDaemonEvent<T>>[1],
+): Promise<void> {
+  await ctx.deps.store.events.append({
+    ...buildDaemonEvent(type, payload),
+    scenarioId: ctx.scenarioId,
+    playId: ctx.runId,
+  });
+}
 
 /** The first of the answer, the deadline and the abort of the run. */
 async function waitFor(

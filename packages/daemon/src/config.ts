@@ -122,7 +122,13 @@ import {
   TELEMETRY_RETENTION_MODES,
 } from './telemetry/retention-config.js';
 import { IdeasConfigSchema } from './ideas/settings.js';
+import { PUBLIC_WRITES } from '@otheater/workflows';
 import { WORKFLOW_APPROVAL_ON_TIMEOUT } from './workflows/runtime-config.js';
+import {
+  REQUIRE_APPROVAL_NONE,
+  WORKFLOW_COMMENT_MARKER_MODES,
+  WORKFLOW_UNTRUSTED_TEXT_MODES,
+} from './workflows/security-config.js';
 import { DEFAULT_FAULT_PLAN_FILE, FAULT_INJECT_MODES } from './chaos/faults.js';
 import {
   DEFAULT_DISK_CHECK_EVERY,
@@ -2247,6 +2253,34 @@ export const DaemonConfigSchema = z
             call_tool: z
               .strictObject({ timeout: OffOrDurationSchema.prefault('off') })
               .prefault({}),
+          })
+          .prefault({}),
+        /**
+         * The security of the code host steps (docs/24 section 9; Phase 11b, P8; see
+         * `workflows/security-config.ts`). `require_approval` is the key of docs/24 section 12;
+         * `untrusted_text` and `untrusted_max_chars` are [proposta].
+         * - `require_approval`: the public writes that need an `approval` first: `[push, comment,
+         *   label]` (default), `none`, or a list of those.
+         * - `untrusted_text`: `mark_and_truncate` (default) marks the external text as not trusted
+         *   and cuts it to `untrusted_max_chars`; `mark` only marks it.
+         */
+        security: z
+          .strictObject({
+            require_approval: z
+              .union([z.literal(REQUIRE_APPROVAL_NONE), z.array(z.enum(PUBLIC_WRITES)).min(1)])
+              .default(() => [...PUBLIC_WRITES]),
+            untrusted_text: z.enum(WORKFLOW_UNTRUSTED_TEXT_MODES).default('mark_and_truncate'),
+            untrusted_max_chars: z.int().min(200).max(1_000_000).default(20_000),
+          })
+          .prefault({}),
+        /**
+         * The code host steps (Phase 11b, P8; [proposta]). `comment_marker`: `on` (default) ends the
+         * body of a comment with a hidden marker holding the idempotency key, so a restart can find
+         * the comment and not post it twice; `off` posts the body as it is.
+         */
+        codehost: z
+          .strictObject({
+            comment_marker: z.enum(WORKFLOW_COMMENT_MARKER_MODES).default('on'),
           })
           .prefault({}),
       })
