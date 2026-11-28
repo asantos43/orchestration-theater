@@ -95,6 +95,10 @@ import {
   SupervisionWarningPayloadSchema,
 } from './supervision-events.js';
 import {
+  WorkflowBindingChangedPayloadSchema,
+  WorkflowBudgetExhaustedPayloadSchema,
+} from './workflow-binding-events.js';
+import {
   TelemetryBatchRejectedPayloadSchema,
   TelemetryExportFailedPayloadSchema,
   TelemetryPurgedPayloadSchema,
@@ -1046,6 +1050,16 @@ export const DAEMON_EVENT_DEFINITIONS = [
     schemaVersion: 1,
     payload: DaemonUpdatePayloadSchema,
   }),
+  defineEventType({
+    type: 'workflow.binding.changed',
+    schemaVersion: 1,
+    payload: WorkflowBindingChangedPayloadSchema,
+  }),
+  defineEventType({
+    type: 'workflow.budget_exhausted',
+    schemaVersion: 1,
+    payload: WorkflowBudgetExhaustedPayloadSchema,
+  }),
 ] as const;
 
 type DaemonEventDefinition = (typeof DAEMON_EVENT_DEFINITIONS)[number];
@@ -1181,6 +1195,8 @@ export type SupervisionRedirectPayload = DaemonEventPayloads['supervision.redire
 export type SupervisionBroadcastPayload = DaemonEventPayloads['supervision.broadcast'];
 export type SupervisionStatusRequestedPayload = DaemonEventPayloads['supervision.status_requested'];
 export type SupervisionLimitReachedPayload = DaemonEventPayloads['supervision.limit_reached'];
+export type WorkflowBindingChangedPayload = DaemonEventPayloads['workflow.binding.changed'];
+export type WorkflowBudgetExhaustedPayload = DaemonEventPayloads['workflow.budget_exhausted'];
 export type ProfileWarningPayload = DaemonEventPayloads['profile.warning'];
 export type ProfileExecStartedPayload = DaemonEventPayloads['profile.exec.started'];
 export type ProfileExecEndedPayload = DaemonEventPayloads['profile.exec.ended'];

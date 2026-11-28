@@ -128,6 +128,8 @@ export class SqliteStore implements Store, StoreMaintenance {
   readonly usage: StoreAggregates['usage'];
   readonly wakeups: StoreAggregates['wakeups'];
   readonly setupRuns: StoreAggregates['setupRuns'];
+  readonly workflowDefinitions: StoreAggregates['workflowDefinitions'];
+  readonly workflowBindings: StoreAggregates['workflowBindings'];
   readonly config: SqliteStoreConfig;
   readonly #clock: Pick<Clock, 'now'>;
   readonly #writerRaw: RawDatabase;
@@ -196,6 +198,8 @@ export class SqliteStore implements Store, StoreMaintenance {
     this.usage = aggregates.usage;
     this.wakeups = aggregates.wakeups;
     this.setupRuns = aggregates.setupRuns;
+    this.workflowDefinitions = aggregates.workflowDefinitions;
+    this.workflowBindings = aggregates.workflowBindings;
   }
 
   /**

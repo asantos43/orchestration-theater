@@ -623,6 +623,68 @@ export const MIGRATIONS: Readonly<Record<string, Migration>> = {
       `.execute(db);
     }),
   },
+  // The workflow library and the bindings of the scenarios (Phase 11b, P5, N296). No foreign
+  // keys, like the other aggregates. [proposta] Every column.
+  '0011_workflows': {
+    up: transactional(async (db) => {
+      await db.schema
+        .createTable('workflow_definitions')
+        .ifNotExists()
+        .addColumn('workflow_id', 'text', notNull)
+        .addColumn('version', 'text', notNull)
+        .addColumn('seq', 'integer', (col) => col.notNull().unique())
+        .addColumn('hash', 'text', notNull)
+        .addColumn('definition', 'text', jsonColumn('definition'))
+        .addColumn('source', 'text', notNull)
+        .addColumn('package_id', 'text')
+        .addColumn('state', 'text', notNull)
+        .addColumn('created_at', 'integer', notNull)
+        .addColumn('updated_at', 'integer', notNull)
+        .addColumn('activated_at', 'integer')
+        .addPrimaryKeyConstraint('workflow_definitions_pk', ['workflow_id', 'version'])
+        .execute();
+      // At most one active version per workflow (the registry checks it too).
+      await sql`
+        create unique index if not exists workflow_definitions_one_active
+        on workflow_definitions (workflow_id) where state = 'active'
+      `.execute(db);
+
+      await db.schema
+        .createTable('workflow_bindings')
+        .ifNotExists()
+        .addColumn('id', 'text', (col) => col.primaryKey())
+        .addColumn('seq', 'integer', (col) => col.notNull().unique())
+        .addColumn('scenario_id', 'text', notNull)
+        .addColumn('workflow_id', 'text', notNull)
+        .addColumn('version_range', 'text', notNull)
+        .addColumn('params', 'text', jsonColumn('params'))
+        .addColumn('triggers', 'text', jsonColumn('triggers'))
+        .addColumn('state', 'text', notNull)
+        .addColumn('state_reason', 'text')
+        .addColumn('until', 'integer')
+        .addColumn('budget_usd', 'real')
+        .addColumn('budget_period', 'text', notNull)
+        .addColumn('spent_usd', 'real', notNull)
+        .addColumn('period_started_at', 'integer', notNull)
+        .addColumn('concurrency', 'integer', notNull)
+        .addColumn('on_busy', 'text', notNull)
+        .addColumn('created_at', 'integer', notNull)
+        .addColumn('updated_at', 'integer', notNull)
+        .addColumn('state_changed_at', 'integer', notNull)
+        .execute();
+      // At most one live binding per scenario and workflow (the registry checks it too).
+      await sql`
+        create unique index if not exists workflow_bindings_one_live
+        on workflow_bindings (scenario_id, workflow_id) where state in ('active', 'paused')
+      `.execute(db);
+      await db.schema
+        .createIndex('workflow_bindings_scenario')
+        .ifNotExists()
+        .on('workflow_bindings')
+        .columns(['scenario_id', 'state'])
+        .execute();
+    }),
+  },
 };
 
 /** Applies every pending migration; returns the names applied now (empty when up to date). */

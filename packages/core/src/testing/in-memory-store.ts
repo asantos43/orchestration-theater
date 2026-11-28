@@ -51,6 +51,8 @@ export class InMemoryStore implements Store {
   readonly usage: Store['usage'];
   readonly wakeups: Store['wakeups'];
   readonly setupRuns: Store['setupRuns'];
+  readonly workflowDefinitions: Store['workflowDefinitions'];
+  readonly workflowBindings: Store['workflowBindings'];
   readonly #clock: Pick<Clock, 'now'>;
   readonly #committed: InMemoryEventLog;
   readonly #committedAttempts: InMemoryAttemptRegistry;
@@ -92,6 +94,8 @@ export class InMemoryStore implements Store {
     this.usage = aggregates.usage;
     this.wakeups = aggregates.wakeups;
     this.setupRuns = aggregates.setupRuns;
+    this.workflowDefinitions = aggregates.workflowDefinitions;
+    this.workflowBindings = aggregates.workflowBindings;
   }
 
   transaction<T>(fn: (tx: StoreTransaction) => Promise<T>): Promise<T> {

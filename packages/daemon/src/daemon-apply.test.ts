@@ -45,7 +45,7 @@ import {
 
 const TEST_TIMEOUT_MS = 60_000;
 const NEW_BODY = Buffer.from('#!/bin/sh\necho ok\n# new\n');
-const SAME_SCHEMAS = { schemas: { store: 10, telemetry: 3 } };
+const SAME_SCHEMAS = { schemas: { store: 11, telemetry: 3 } };
 
 afterAll(disposeTestGitIsolation);
 

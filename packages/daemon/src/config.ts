@@ -19,6 +19,7 @@ import {
   SecretKeySchema,
   SHARED_CANCEL_MODES,
   TRUNCATE_MODES,
+  WORKFLOW_ID_PATTERN,
 } from '@otheater/core';
 import { DEFAULT_UI_REGISTRY, resolveKeymap } from '@otheater/client';
 import {
@@ -98,6 +99,12 @@ import {
   SUPERVISION_MODES,
   SUPERVISION_SWITCHES,
 } from './supervision/config.js';
+import {
+  WORKFLOW_BUDGET_ON_EXHAUSTED_MODES,
+  WORKFLOW_BUDGET_PERIODS,
+  WORKFLOW_ON_BUSY,
+  WORKFLOWS_ALL_INSTALLED,
+} from './workflows/config.js';
 import {
   exportsOtlp,
   HEADER_NAME_PATTERN,
@@ -2187,6 +2194,33 @@ export const DaemonConfigSchema = z
         director_budget: z.number().min(0).max(1).default(0.1),
         broadcast: z.enum(SUPERVISION_SWITCHES).default('on'),
         status_request: z.enum(SUPERVISION_SWITCHES).default('on'),
+      })
+      .prefault({}),
+    /**
+     * The workflow library and the bindings of the scenarios (docs/24 section 7 and 12, N296; Phase
+     * 11b, P5; the keys are described at `WorkflowsSettings`). `budget.period` is [proposta].
+     */
+    workflows: z
+      .strictObject({
+        default: z.string().regex(WORKFLOW_ID_PATTERN).default('play'),
+        allowed: z
+          .union([
+            z.literal(WORKFLOWS_ALL_INSTALLED),
+            z.array(z.string().regex(WORKFLOW_ID_PATTERN)).min(1),
+          ])
+          .default(WORKFLOWS_ALL_INSTALLED),
+        budget: z
+          .strictObject({
+            on_exhausted: z.enum(WORKFLOW_BUDGET_ON_EXHAUSTED_MODES).default('pause'),
+            period: z.enum(WORKFLOW_BUDGET_PERIODS).default('day'),
+          })
+          .prefault({}),
+        binding: z
+          .strictObject({
+            concurrency: z.int().min(1).max(100).default(1),
+            on_busy: z.enum(WORKFLOW_ON_BUSY).default('queue'),
+          })
+          .prefault({}),
       })
       .prefault({}),
     /**
