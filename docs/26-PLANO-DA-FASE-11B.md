@@ -525,7 +525,7 @@ Depois, o P4 e o P12 correm em paralelo. O **P10b** vem por último, com o resto
 - `ci-fix`: a CI que falhou num PR vira a leitura do log, a correção numa branch e um PR, com aprovação.
 - **Aceite próprio:** a parte 1 do critério de aceite, menos o pacote e o editor.
 
-**Como ficou:** [V] feito, na branch `fase11b/p12-workflows-prontos` (2026-11-28). O guia de uso é o [docs/27](27-GUIA-DOS-WORKFLOWS-PRONTOS.md).
+**Como ficou:** [V] feito (2026-11-28, PR #425; as escolhas do Claude e os desvios foram aceitos pelo dono em 2026-11-28). O guia de uso é o [docs/27](27-GUIA-DOS-WORKFLOWS-PRONTOS.md).
 - **Decisões do dono (2026-11-28) que o passo seguiu:**
   - o `run_play` é a ponte para a peça de **hoje** (o `PlayRunner`); a troca da `playMachine` por `play.yaml` fica no P10c;
   - a demanda sai da issue, do PR ou do log, espera um estado final, retoma sem abrir uma segunda peça e marca o texto de fora como dado;
@@ -545,7 +545,11 @@ Depois, o P4 e o P12 correm em paralelo. O **P10b** vem por último, com o resto
   - `ready-workflows.e2e.test.ts`, com o motor montado por `composeWorkflows`, o `fake` do code host e do rastreador, o relógio falso e a peça falsa;
   - o e2e prova que a peça, o comentário e o `label` só saem depois da aprovação, e que um autor de fora da lista não inicia nada e gera `workflow.trigger.skipped`.
 - **Nada real foi rodado:** nenhum cliente, nenhuma rede, nenhum GitHub. [N] O efeito de uma peça de verdade, com um modelo, fica para o roteiro do dono.
-- **[proposta]** (a forma do `run_play` e das definições; vão ao dono):
+- **Decisões do dono sobre este passo (2026-11-28, por múltipla escolha, iguais à recomendação):**
+  - as escolhas [proposta] abaixo ficam como estão ("Aceitar todas"), com o guia como docs/27;
+  - os desvios do docs/24 (seção 11) ficam aceitos por agora e se completam no P10b ou no P10c: a peça só com o Crítico, a peça que para antes do push, o push na branch do PR que falhou, o `Fixes #N` e a triagem pelo Diretor;
+  - o `require_approval` que a composição não passa aos validadores se corrige no **P10b** (o validador hoje só recusa a mais, nunca a menos).
+- **[proposta, aceitas]** (a forma do `run_play` e das definições):
   - parâmetros `from` (`issue`, `pr`, `ci_log`), `number`, `instructions` e `timeout`; saída `ended`, `delivered`, `branch`, `pr_number`, `pr_url`, `summary` e `play_id`;
   - a aprovação vem **antes** do trabalho, e não só antes do comentário;
   - o rótulo `otheater` do `github-issues`;
