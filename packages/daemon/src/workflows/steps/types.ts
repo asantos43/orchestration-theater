@@ -4,6 +4,7 @@ import type { AskApproval } from '../../browser/approval.js';
 import type { PluginEffectRegistry } from '../../workspace/plugin-effects.js';
 import type { EffectOrigin } from '../../workspace/effects.js';
 import type { WorkflowRuntimeSettings } from '../runtime-config.js';
+import type { CodeHostStepDeps } from './codehost/support.js';
 
 /**
  * What a step type needs to run, besides the node it runs (plan of Phase 11b, P2). The engine of a
@@ -23,6 +24,8 @@ export interface StepDeps {
   readonly ask?: AskApproval | undefined;
   /** The verifiers of the effects the plugins declared; `call_tool` uses the one of its tool when there is one. */
   readonly pluginEffects?: PluginEffectRegistry | undefined;
+  /** The ports and the settings of the code host steps (P8); absent, they fail with `code_host_unavailable`. */
+  readonly codeHost?: CodeHostStepDeps | undefined;
 }
 
 /** What a step keeps across a restart (the `memo` of the run): a small JSON value by name. */
@@ -59,6 +62,8 @@ export interface StepContext {
   /** True when the daemon restarted with this visit in flight. */
   readonly resumed: boolean;
   readonly memo: StepMemo;
+  /** How many `approval` steps of the run ended approved so far (P8: a public write checks it). */
+  readonly approvals: number;
   readonly deps: StepDeps;
 }
 

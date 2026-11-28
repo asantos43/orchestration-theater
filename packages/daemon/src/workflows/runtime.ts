@@ -39,6 +39,7 @@ import type { PluginEffectRegistry } from '../workspace/plugin-effects.js';
 import { buildWorkflowMachine, type RunContext, type RunEvent } from './machine.js';
 import { DEFAULT_WORKFLOW_RUNTIME, type WorkflowRuntimeSettings } from './runtime-config.js';
 import type { ToolCaller } from './steps/call-tool.js';
+import type { CodeHostStepDeps } from './steps/codehost/support.js';
 import { GENERIC_STEP_RUNNERS } from './steps/index.js';
 import type { StepContext, StepDeps, StepResult, StepRunner } from './steps/types.js';
 
@@ -95,6 +96,8 @@ export interface WorkflowRuntimeOptions {
   readonly ask?: AskApproval | undefined;
   /** The verifiers of the effects of the plugins (`call_tool` uses the one of its tool). */
   readonly pluginEffects?: PluginEffectRegistry | undefined;
+  /** The ports and the security settings of the code host steps (P8); without it they fail with `code_host_unavailable`. */
+  readonly codeHost?: CodeHostStepDeps | undefined;
   /** The definitions of the saved runs; without it a run cannot be resumed. */
   readonly source?: WorkflowSource | undefined;
   /** The rest of the options of the validator (roles, installed plugins and tools, the approval rule...). */
@@ -132,6 +135,8 @@ const RuntimeStateSchema = z.strictObject({
   steps: z.int().min(0),
   /** The visit whose `workflow.step.started` was written and whose end was not. */
   inFlight: z.strictObject({ node: z.string().min(1), ordinal: z.int().min(1) }).nullable(),
+  /** How many `approval` steps ended approved (P8: a public write checks it again). */
+  approvals: z.int().min(0).default(0),
 });
 type RuntimeState = z.infer<typeof RuntimeStateSchema>;
 
@@ -243,6 +248,7 @@ export class WorkflowRuntime {
       tools: options.tools,
       ask: options.ask,
       pluginEffects: options.pluginEffects,
+      codeHost: options.codeHost,
     };
     this.#steps = new Map(
       (options.steps ?? GENERIC_STEP_RUNNERS).map((runner) => [runner.type, runner]),
@@ -274,7 +280,13 @@ export class WorkflowRuntime {
     }
     const machine = buildWorkflowMachine(workflow);
     const [snapshot] = initialTransition(machine, { inputs: resolved.inputs });
-    const runtime: RuntimeState = { visits: {}, memo: {}, steps: 0, inFlight: null };
+    const runtime: RuntimeState = {
+      visits: {},
+      memo: {},
+      steps: 0,
+      inFlight: null,
+      approvals: 0,
+    };
     const record = await this.#store.transaction(async (tx) => {
       const created = await tx.plays.create({
         id: input.runId,
@@ -600,6 +612,7 @@ export class WorkflowRuntime {
           await this.#store.plays.update(run.runId, { snapshot: this.#snapshotOf(loaded) });
         },
       },
+      approvals: loaded.runtime.approvals,
       deps: this.#deps,
     };
     let result: StepResult;
@@ -645,6 +658,15 @@ export class WorkflowRuntime {
       memo: {},
       steps,
       inFlight: null,
+      // [proposta] An `approval` that ended approved counts for every public write after it.
+      approvals:
+        loaded.runtime.approvals +
+        (step === 'approval' &&
+        !cancelled &&
+        result.kind === 'done' &&
+        result.output.approved === true
+          ? 1
+          : 0),
     };
     const outcome = cancelled || result.kind === 'cancelled' ? 'cancelled' : result.kind;
     const reason =
