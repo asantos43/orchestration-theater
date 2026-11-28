@@ -413,7 +413,27 @@ Todos **[proposta]** quanto ao nome. Cada um entra no catálogo do protocolo e n
 - Assinatura SSHSIG, conferida com `ssh-keygen -Y verify` contra `workflows.packages.trusted_keys`. Sem `ssh-keygen` no `PATH`, um pacote assinado conta como não conferido e segue `workflows.packages.unsigned`.
 - **Aceite próprio:** com chaves geradas no teste, a assinatura válida instala, a inválida é recusada, a ausente pede confirmação (`confirm`) ou é recusada (`reject`); a ref muda no remoto e o pacote instalado não muda.
 
-**Como ficou:** a preencher.
+**Como ficou** (2026-11-28, [V] com 83 testes locais do pacote, os de protocol e o `ssh-keygen` real; PR a abrir):
+
+- Módulos novos em `daemon/src/workflows/packages/`:
+  - `install.ts`: `WorkflowPackageInstaller` (`preview`, `install`, `remove`, `list`, `get`), com a política `decidePolicy`;
+  - `source.ts` (pasta ou arquivo), `git-source.ts` (git com ref fixa, sobre o `fetchGit` dos plugins: sem hooks, ref resolvida para o commit, `.git` apagado), `manifest.ts`, `sshsig.ts`, `permissions.ts`, `registry.ts` (o arquivo `workflow-packages.json` no diretório de dados) e `config.ts`.
+- Formato **[proposta]**:
+  - uma pasta tem `package.yaml` (id, versão e, por arquivo de workflow, o sha256) e a assinatura `package.yaml.sshsig`: uma só assinatura sobre os bytes do manifesto cobre todos os arquivos;
+  - um arquivo de workflow sozinho é um pacote de um workflow, com a assinatura em `<arquivo>.sshsig`;
+  - o namespace SSHSIG é `otheater-workflow-package`.
+- Assinatura: o JS só lê o SSHSIG para separar a inválida (malformada, outro namespace) da não conferida (chave fora de `trusted_keys`, sem `ssh-keygen`, tempo esgotado). O `verified` vem sempre do `ssh-keygen -Y verify` (código 0 e `Good "` na saída). Estados: `verified`, `invalid`, `unverified`, `absent`, `skipped` (`signature: off`).
+- Política: a `invalid` é sempre recusada (evento `workflow.package.signature_failed`); `signature: require` recusa a ausente e a não conferida; com `unsigned: reject` também; com `unsigned: confirm` a instalação pede a confirmação `unsigned`. Uma atualização que traz permissão nova pede ainda `new_permissions`.
+- Permissões mostradas na pré-visualização: ferramentas, plugins exigidos e efeitos externos (escritas públicas e ferramentas que escrevem). O registro guarda as permissões da versão atual (troca, não soma).
+- Instalação: tudo ou nada (valida todos os workflows antes de gravar). Versão igual com conteúdo igual é `unchanged` e não escreve nada; versão igual com outro conteúdo, ou workflow que já é de outro pacote, é `Conflict`. Grava com `activate: false` e ativa conforme `workflows.packages.activate`. Se algo falha no meio, desfaz: apaga o que criou e reativa as versões que estavam ativas. As instalações são serializadas.
+- A ref que muda no remoto não muda o instalado: a definição fica na biblioteca, e o registro guarda `{url, ref, commit}`. Ver o novo estado é uma nova instalação.
+- Config: bloco `workflows.packages` em `config.ts`: `sources`, `signature`, `trusted_keys`, `unsigned` (as do plano) e, **[proposta]**, `activate` (`when_none`, `always`, `never`), `fetch_timeout` (2m), `verify_timeout` (15s), `max_workflows` (50) e `ssh_keygen` (`auto`, ou o caminho do programa).
+- Eventos novos no catálogo (`protocol/src/workflow-package-events.ts`): `workflow.package.installed`, `workflow.package.removed` e `workflow.package.signature_failed`. Sozinho, este PR leva o daemon a 171 eventos e o registro a 173; com o P8 já na main, somam 175 e 177.
+- Aceite próprio (`install.test.ts`, com chaves Ed25519 geradas no teste e o `ssh-keygen` real, `describe.skipIf` se ele faltar): a assinatura válida instala sem confirmação; a adulterada e a de outro namespace são recusadas, mesmo com `confirm`; a ausente pede confirmação (`confirm`) ou é recusada (`reject`); a chave não confiável e a falta do `ssh-keygen` seguem `unsigned`; a branch que anda no remoto não muda o pacote instalado, a biblioteca nem o registro, e uma nova pré-visualização já mostra a versão nova.
+- Limites desta etapa:
+  - o instalador não está ligado à composição do daemon nem às rotas (`ot flow install` é do P10);
+  - o store não tem desativar: um pacote com versão ativa não sai (`Conflict`); o P10 deveria acrescentar o desativar **[proposta]**;
+  - `npm` não é fonte (recusada).
 
 ### P10. API e CLI (N297)
 
