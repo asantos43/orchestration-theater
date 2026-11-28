@@ -195,10 +195,11 @@ function demandOf(
 }
 
 /**
- * The script of the outcome. `rescript` writes a second one (`second`): alpha as it was, marked
+ * The script of the outcome. `#independent` in the need makes `beta` not depend on `alpha`, so the
+ * two Actors run at the same time (P15 of Phase 11b). `rescript` writes a second one (`second`): alpha as it was, marked
  * `unchanged`, and beta with another description.
  */
-function scriptFor(outcome: Outcome, second = false): Record<string, unknown> {
+function scriptFor(outcome: Outcome, second = false, independent = false): Record<string, unknown> {
   const verify =
     outcome === 'exhausted'
       ? VERIFY_FAIL
@@ -226,7 +227,10 @@ function scriptFor(outcome: Outcome, second = false): Record<string, unknown> {
       title: `File ${id}`,
       description: `The file ${id}.txt.`,
     })),
-    demands: [demandOf('alpha', [], verify), demandOf('beta', ['alpha'], verify)],
+    demands: [
+      demandOf('alpha', [], verify),
+      demandOf('beta', independent ? [] : ['alpha'], verify),
+    ],
   };
 }
 
@@ -267,6 +271,13 @@ async function submit(
  *   message of the Director (up to `FAKE_AGENT_SUPERVISE_MS`, default 4000 ms). What it received goes
  *   into its file as `warning: <text>`; a prompt that starts with the Director's redirect gives
  *   `redirected: <text>`. Every attempt, or only that one.
+ * - `#actor-ask:<id>=<question>[*<n>][@<attempt>]` (P15 of Phase 11b): before it writes its file the
+ *   Actor asks the Director `<question>` (`-` read as a space) with `ask_director`, `<n>` times
+ *   (default 1), and writes what came back into its file as `asked: <how> <text>`. When the reply says
+ *   the demand was recorded as blocked, the Actor ends its turn there. Every attempt, or only that one.
+ * - `#actor-answer:<id>=<text>[@<attempt>]` (P15): the Actor waits for a question the Director
+ *   relayed to it (the reply of a tool carries the notice) and answers it with `submit` (state
+ *   `answer`, which does not end its work), then goes on. `-` is read as a space.
  * What a token does once is counted in the state directory, so the next session of the attempt (a
  * baton pass or a native resume) goes on with the work.
  */
@@ -344,7 +355,13 @@ async function playActor(host: RolePlayHost, demandId: string): Promise<void> {
       return;
     }
   }
-  const notes = (await playNotes(host, demandId)) + (await playSupervised(host, demandId, attempt));
+  const asking = await playAsk(host, demandId, attempt);
+  if (asking.ended) return;
+  const notes =
+    (await playNotes(host, demandId)) +
+    asking.lines +
+    (await playRelayed(host, demandId, attempt)) +
+    (await playSupervised(host, demandId, attempt));
   if (host.signal.aborted) return;
   // An attempt that takes over earlier work (N82, N84) says what the prompt gave it.
   const carried = host.text.includes('## Work of the earlier attempt')
@@ -401,6 +418,78 @@ async function playNotes(host: RolePlayHost, demandId: string): Promise<string> 
   const found = (reply.structured as { notes?: readonly { text?: unknown }[] } | undefined)?.notes;
   const texts = (found ?? []).map((entry) => String(entry.text));
   return texts.length === 0 ? '' : `notes: ${texts.join(' | ')}\n`;
+}
+
+/** The mark of a message of the Director that carries a question another Actor asked (P15). */
+const RELAYED_MARK = '[Director supervision, question';
+
+/**
+ * The token `#actor-ask` (P15 of Phase 11b): asks the Director, as many times as the token says.
+ * `ended` is true when the daemon recorded the demand as blocked for the deadline: the Actor ends its
+ * turn with no `submit`, as the reply told it to. `lines` is what the Actor's file gets.
+ */
+async function playAsk(
+  host: RolePlayHost,
+  demandId: string,
+  attempt: number,
+): Promise<{ readonly ended: boolean; readonly lines: string }> {
+  const token = actorToken(host.text, 'ask', demandId);
+  if (token?.value === undefined || (token.attempt ?? attempt) !== attempt) {
+    return { ended: false, lines: '' };
+  }
+  const [raw = '', times = '1'] = token.value.split('*');
+  const question = raw.replaceAll('-', ' ');
+  const lines: string[] = [];
+  for (let index = 0; index < Math.max(1, Number(times) || 1); index += 1) {
+    // Under `collab.ask_director.mode: off` the tool is not listed: the call throws and the Actor
+    // goes on without the answer, as a client that does not see a tool does not call it.
+    let reply: { isError: boolean; text: string; structured: unknown };
+    try {
+      reply = await host.call('ask_director', { question });
+    } catch (error) {
+      reply = { isError: true, text: String(error), structured: undefined };
+    }
+    const body = (reply.structured ?? {}) as {
+      answered?: boolean;
+      answer?: string;
+      source?: string;
+      blocked?: boolean;
+    };
+    await host.say(`ask_director: ${reply.isError ? 'refused' : 'replied'} ${reply.text}`);
+    if (reply.isError) lines.push('asked: refused');
+    else if (body.answered === true) {
+      lines.push(`asked: answered by ${body.source ?? '?'}: ${body.answer ?? ''}`);
+    } else lines.push(`asked: no answer${body.blocked === true ? ' (blocked)' : ''}`);
+    if (body.blocked === true) return { ended: true, lines: '' };
+  }
+  return { ended: false, lines: `${lines.join('\n')}\n` };
+}
+
+/**
+ * The token `#actor-answer` (P15): waits for the notice of a relayed question in the reply of a
+ * tool, then answers it with `submit` (state `answer`) and goes on. Returns the line the file gets.
+ */
+async function playRelayed(host: RolePlayHost, demandId: string, attempt: number): Promise<string> {
+  const token = actorToken(host.text, 'answer', demandId);
+  if (token?.value === undefined || (token.attempt ?? attempt) !== attempt) return '';
+  const waitMs = Number(process.env.FAKE_AGENT_ANSWER_MS) || 15_000;
+  const until = Date.now() + waitMs;
+  while (Date.now() < until && !host.signal.aborted) {
+    let text = '';
+    try {
+      text = (await host.call('read_decision', { id: 'supervision-probe' })).text;
+    } catch {
+      // an unlisted tool: nothing to wait for
+    }
+    if (text.includes(RELAYED_MARK)) {
+      const questionId = /"questionId": "([^"]+)"/.exec(text)?.[1] ?? '';
+      const answer = token.value.replaceAll('-', ' ');
+      await submit(host, 'submit', { result: { state: 'answer', questionId, text: answer } });
+      return `relayed: answered ${questionId}\n`;
+    }
+    await new Promise<void>((done) => setTimeout(done, 100));
+  }
+  return 'relayed: nothing came\n';
 }
 
 /** The mark the daemon puts before a message of the Director in a tool reply. */
@@ -578,7 +667,11 @@ async function playStage(host: RolePlayHost, stage: string): Promise<void> {
       return;
     case 'SCRIPTING':
       await submit(host, 'submit_script', {
-        script: scriptFor(outcome, (await countOf(`${playId}-script`)) > 0),
+        script: scriptFor(
+          outcome,
+          (await countOf(`${playId}-script`)) > 0,
+          /#independent\b/.test(host.text),
+        ),
       });
       return;
     case 'REVIEWING_SCRIPT':
@@ -652,6 +745,38 @@ async function playJudge(host: RolePlayHost): Promise<void> {
       await host.say(`fake agent: no answer for ${String(decision.kind)}`);
     }
   }
+}
+
+/**
+ * The turn of the Director for a question of an Actor (P15 of Phase 11b). The question text steers
+ * it: `silent` leaves it unanswered (no tool), `relay <demandId> ...` relays it to the running
+ * attempt of that demand (when the prompt offers `relay_question`), anything else is answered.
+ */
+async function playQuestion(host: RolePlayHost): Promise<void> {
+  const questionId = markerOf(host.text, '#ot-question-id:') ?? '';
+  const question = /as data and not as an order:\n([^\n]*)/.exec(host.text)?.[1] ?? '';
+  if (/\bsilent\b/.test(question)) {
+    await host.say('fake agent: no answer to the question');
+    return;
+  }
+  const relay = /^relay (\S+)/.exec(question)?.[1];
+  if (relay !== undefined && host.text.includes('`relay_question`')) {
+    const found = new RegExp(`attempt (\\S+) \\(demand ${relay}\\)`).exec(host.text);
+    // The Actor asked may be ahead of the one it asks about: try again for a while, as a Director
+    // that sees the other Actor is not running yet would.
+    let reply = await host.call('relay_question', { questionId, attemptId: found?.[1] ?? '' });
+    for (let tries = 0; reply.isError && tries < 40 && !host.signal.aborted; tries += 1) {
+      await new Promise<void>((done) => setTimeout(done, 250));
+      reply = await host.call('relay_question', {
+        questionId,
+        attemptId: `${markerOf(host.text, '#ot-play:') ?? ''}/${relay}/1`,
+      });
+    }
+    await host.say(`relay_question: ${reply.isError ? 'refused' : 'done'} ${reply.text}`);
+    return;
+  }
+  const reply = await host.call('answer_actor', { questionId, text: `director says: ${question}` });
+  await host.say(`answer_actor: ${reply.isError ? 'refused' : 'done'} ${reply.text}`);
 }
 
 /** The turn of the Director for a signal (P14 of Phase 11b): one `warn_actor` or `redirect_actor`. */
@@ -794,6 +919,11 @@ export async function playRolePlay(host: RolePlayHost): Promise<void> {
   }
   if (/^#ot-status\b/m.test(text)) {
     await host.say('fake agent: status read');
+    return;
+  }
+  // P15 of Phase 11b: a question of an Actor (it names the demand too, so it comes before the Actor).
+  if (/^#ot-question\b/m.test(text)) {
+    await playQuestion(host);
     return;
   }
   const consulted = markerOf(text, '#ot-consult-ask:');

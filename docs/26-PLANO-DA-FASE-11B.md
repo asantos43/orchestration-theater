@@ -568,7 +568,27 @@ Todos **[proposta]** quanto ao nome. Cada um entra no catálogo do protocolo e n
 - No prazo vencido, segue `on_timeout`: `blocked` encerra como hoje, `continue` devolve "sem resposta" e o Ator segue.
 - **Aceite próprio:** a pergunta respondida, a pergunta que estoura o prazo nos dois modos e o limite `max_per_demand`.
 
-**Como ficou:** a preencher.
+**Como ficou** (2026-11-28, [V] com 24 testes de unidade e 6 e2e locais, mais os de protocol, core, daemon e fake-agent; PR a abrir):
+
+- **Serviço (`collab/ask-director.ts`, `ask-director-config.ts`):** o `AskDirectorService` registra os handlers das três ferramentas na cadeia do `daemon.ts` e liga ao runtime (sessões do Diretor, fila de prompts, hub de eventos) junto com a supervisão (`orchestration/wiring.ts`). A pergunta vai ao Diretor pela fila de prompts da sessão dele, como prompt `#ot-question`; o texto do Ator vai marcado como dado a pesar, não como ordem.
+- **Espera:** a chamada `ask_director` espera até `collab.ask_director.timeout` (`10m`), pelo `Clock`. É cancelável: pelo sinal da requisição MCP (`mcp/server.ts` agora repassa `ctx.mcpReq.signal` em `ToolCaller.signal`), por `attempt.cancelled`, `attempt.aborted` e `session.closed` (menos `interrupted`) da tentativa, por uma peça que chega a estado final e pelo `unbind` do serviço. Em todos os casos o timer é solto.
+- **Modos:** `answer` (padrão): o Diretor responde com `answer_actor`. `relay`: o Diretor chama `relay_question` e o aviso (tipo `question`) vai pelo canal do P14 ao Ator dono da informação, que responde com `submit {result: {state: 'answer', questionId, text}}`; esse `submit` não encerra a tentativa (`isStatusAnswer`, em `orchestration/play-effects.ts`, passou a aceitar também `answer`), e a resposta volta ao Ator que perguntou, marcada como vinda de outro Ator. `off`: as três ferramentas ficam ocultas e também são recusadas (`collab_off`) se forem chamadas.
+- **Prazo (`on_timeout`):** `continue` devolve `{answered: false, reason: 'timeout'}` e o Ator segue; `blocked` grava um `attempt.submitted` de estado `blocked` em nome do Ator e a resposta manda encerrar o turno. A pergunta some no prazo: uma resposta tardia é recusada (`not_found`).
+- **Limite:** `collab.ask_director.max_per_demand` (3), contado pelas versões da chave `questions/<demanda>` do blackboard (`core/src/blackboard-keys.ts`). Acima dele a chamada é recusada (`limit_reached`) e grava `collab.limit_reached` (do P13) com `feature: 'ask_director'` e `limit: 'max_per_demand'`; o Diretor nem é chamado.
+- **Eventos novos:** `actor.question`, `actor.answer`, `actor.question_timeout` (`protocol/src/collab-events.ts`, `events.ts`; o registro de eventos passou de 179 para 182 depois do P6 (184 no registro com os 2 de play)). O tipo de aviso `question` entrou em `SUPERVISION_NOTICE_KINDS`.
+- **Chaves novas:** `collab.ask_director.mode` (`answer` padrão, `relay`, `off`), `.timeout` (`10m`), `.on_timeout` (`blocked` padrão, `continue`), `.max_per_demand` (3, de 1 a 100).
+- **Prompts e fake-agent:** `prompts/actor.md` ganhou "Asking the Director" e `prompts/director.md` ganhou "Questions from the Actors" (snapshots do `prompts-files` atualizados). O fake-agent ganhou `#actor-ask:<id>=<pergunta>[*<n>][@<tentativa>]`, `#actor-answer:<id>=<texto>`, o turno do Diretor para `#ot-question` (a pergunta `silent` fica sem resposta; `relay <demanda> ...` repassa) e `#independent` no pedido, que tira a dependência do `beta` para os dois Atores rodarem juntos.
+- **Aceite próprio:** `collab/ask-director.test.ts` (24 testes: resposta, os dois `on_timeout` com o `FakeClock`, relay, limite, cancelamento, modo `off`) e `orchestration/ask-director-e2e.test.ts` (6 testes com o fake-agent: pergunta respondida, prazo em `continue` e em `blocked`, relay entre dois Atores, limite e modo `off`).
+- **Não coberto:** [N] não foi verificado com Claude Code, Codex ou OpenCode reais que a chamada MCP longa (até 10 minutos) sobrevive ao tempo limite de chamada de ferramenta de cada cliente, nem que um Ator real responde a pergunta repassada pelo `submit` com `state: 'answer'`. [N] A pergunta pendente vive em memória: um reinício do daemon perde a espera (a pergunta fica no blackboard, mas a chamada do Ator já terá caído com a sessão).
+- **Escolhas do Claude ([proposta], a confirmar pelo dono):**
+  - o serviço fica em `collab/ask-director.ts` e a pergunta pendente fica só em memória;
+  - os nomes `ask_director` (Ator), `answer_actor` e `relay_question` (Diretor), e o tipo de aviso `question` no canal do P14;
+  - o modo `off` oculta e também recusa as três ferramentas; `relay_question` fica oculta fora do modo `relay` e exige `supervision.mode` diferente de `off` e `log`;
+  - a resposta repassada é o `submit` com `state: 'answer'`, que não encerra a tentativa;
+  - a contagem do limite é o número de versões de `questions/<demanda>`, e o `collab.limit_reached` do P13 é reaproveitado;
+  - no `blocked` o daemon grava um `attempt.submitted` de estado `blocked` em nome do Ator;
+  - as respostas (do Diretor e de outro Ator) vão marcadas como dado, e o prompt `#ot-question` e as seções novas dos prompts;
+  - as quatro chaves `collab.ask_director.*`, a faixa de 1 a 100 do limite e os três eventos novos.
 
 ### P16. Aceite da fase
 

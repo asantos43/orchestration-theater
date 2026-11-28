@@ -85,7 +85,13 @@ import {
   ScenarioNoticePayloadSchema,
 } from './notice-events.js';
 import { AtifExportFailedPayloadSchema, AtifExportedPayloadSchema } from './atif-events.js';
-import { CollabLimitReachedPayloadSchema, NotePostedPayloadSchema } from './collab-events.js';
+import {
+  ActorAnswerPayloadSchema,
+  ActorQuestionPayloadSchema,
+  ActorQuestionTimeoutPayloadSchema,
+  CollabLimitReachedPayloadSchema,
+  NotePostedPayloadSchema,
+} from './collab-events.js';
 import {
   SupervisionBroadcastPayloadSchema,
   SupervisionLimitReachedPayloadSchema,
@@ -986,6 +992,21 @@ export const DAEMON_EVENT_DEFINITIONS = [
     payload: CollabLimitReachedPayloadSchema,
   }),
   defineEventType({
+    type: 'actor.question',
+    schemaVersion: 1,
+    payload: ActorQuestionPayloadSchema,
+  }),
+  defineEventType({
+    type: 'actor.answer',
+    schemaVersion: 1,
+    payload: ActorAnswerPayloadSchema,
+  }),
+  defineEventType({
+    type: 'actor.question_timeout',
+    schemaVersion: 1,
+    payload: ActorQuestionTimeoutPayloadSchema,
+  }),
+  defineEventType({
     type: 'supervision.signal',
     schemaVersion: 1,
     payload: SupervisionSignalPayloadSchema,
@@ -1302,6 +1323,9 @@ export type AtifExportedPayload = DaemonEventPayloads['atif.exported'];
 export type AtifExportFailedPayload = DaemonEventPayloads['atif.export_failed'];
 export type NotePostedPayload = DaemonEventPayloads['note.posted'];
 export type CollabLimitReachedPayload = DaemonEventPayloads['collab.limit_reached'];
+export type ActorQuestionPayload = DaemonEventPayloads['actor.question'];
+export type ActorAnswerPayload = DaemonEventPayloads['actor.answer'];
+export type ActorQuestionTimeoutPayload = DaemonEventPayloads['actor.question_timeout'];
 export type SupervisionSignalPayload = DaemonEventPayloads['supervision.signal'];
 export type SupervisionWarningPayload = DaemonEventPayloads['supervision.warning'];
 export type SupervisionRedirectPayload = DaemonEventPayloads['supervision.redirect'];

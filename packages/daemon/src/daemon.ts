@@ -89,6 +89,7 @@ import { ToolHandlers } from './mcp/handlers.js';
 import { registerBrowserTools, secretPathCheck, type BrowserTools } from './browser/index.js';
 import { nodePathHost, registerWorkTools, type ToolsDeps } from './tools/index.js';
 import { registerReadTools } from './mcp/read-tools.js';
+import { AskDirectorService, hiddenAskDirectorTools } from './collab/ask-director.js';
 import { NOTE_TOOL_NAMES, registerNoteTools } from './collab/notes.js';
 import { hiddenSupervisionTools } from './supervision/config.js';
 import { SupervisionService } from './supervision/service.js';
@@ -464,6 +465,16 @@ export async function startDaemon(options: StartDaemonOptions): Promise<DaemonHa
       clock: composition.clock,
       logger: composition.logger,
     });
+    // Phase 11b, P15: the questions of the Actors to the Director (N308, option 2). It is bound with
+    // the same runtime as the supervision, and relays through the channel of the supervision.
+    const askDirector = new AskDirectorService({
+      store: composition.store,
+      settings: () => config.collab.ask_director,
+      supervision: () => config.supervision,
+      channel: supervision.channel,
+      clock: composition.clock,
+      logger: composition.logger,
+    });
     // The framework MCP server (5.3) lives and dies with the daemon: a port that cannot be taken
     // (`mcp.port` fixed and busy) stops the start-up like any other adapter that is not there.
     // The orders (5.17): the tools of the Director come from here, unless the caller already
@@ -638,10 +649,12 @@ export async function startDaemon(options: StartDaemonOptions): Promise<DaemonHa
         orchestrationHandlers.register(
           supervision.register(
             registerWorkTools(
-              registerNoteTools(registerReadTools(handlers, composition.store), {
-                store: composition.store,
-                settings: () => config.collab.notes,
-              }),
+              askDirector.register(
+                registerNoteTools(registerReadTools(handlers, composition.store), {
+                  store: composition.store,
+                  settings: () => config.collab.notes,
+                }),
+              ),
               workDeps,
             ),
           ),
@@ -655,6 +668,7 @@ export async function startDaemon(options: StartDaemonOptions): Promise<DaemonHa
         new Set<string>([
           ...(config.collab.notes.mode === 'off' ? NOTE_TOOL_NAMES : []),
           ...hiddenSupervisionTools(config.supervision),
+          ...hiddenAskDirectorTools(config.collab.ask_director),
         ]),
       logger: composition.logger,
       version,
@@ -687,6 +701,7 @@ export async function startDaemon(options: StartDaemonOptions): Promise<DaemonHa
       orchestrationHandlers,
       scenarioHandlers,
       supervision,
+      askDirector,
       gate,
       apiRef,
     });
@@ -737,6 +752,7 @@ interface RunInput {
   readonly orchestrationHandlers: OrchestrationHandlers;
   readonly scenarioHandlers: ScenarioHandlers;
   readonly supervision: SupervisionService;
+  readonly askDirector: AskDirectorService;
   readonly gate: RecoveryGate;
   /** Where `run` leaves the API server it started, so a failure of the start-up can stop it. */
   readonly apiRef: { server?: ApiServer };
@@ -1042,6 +1058,7 @@ async function run(input: RunInput): Promise<DaemonHandle> {
       handlers: input.orchestrationHandlers,
       scenarioHandlers: input.scenarioHandlers,
       supervision: input.supervision,
+      askDirector: input.askDirector,
       handoff,
       home: homedir(),
     });

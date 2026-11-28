@@ -609,8 +609,34 @@ export class IdeaQueueService {
           play.state === 'DONE'
             ? 'the play ended without delivering'
             : `the play ended ${play.state.toLowerCase()}`;
-        for (const idea of members) await this.#giveBack(idea, play.id, reason);
-        await this.#hold(play.scenarioId, 'play_ended', reason, play.id);
+        // One transaction: the ideas go back to `queued` and the log says so (and says the queue is
+        // held) in the same commit. Seen from outside, an idea is never `queued` before its
+        // `idea.returned` and the `idea.queue_held` are in the log, however busy the log readers are.
+        this.#held.add(play.scenarioId);
+        const held: IdeaQueueHeldPayload = {
+          scenarioId: play.scenarioId,
+          cause: 'play_ended',
+          reason: reason === '' ? 'play_ended' : reason,
+          playId: play.id,
+        };
+        await store.transaction(async (tx) => {
+          for (const idea of members) {
+            await tx.ideas.transition(idea.id, 'queued', { reason });
+            await tx.events.append({
+              ...buildDaemonEvent('idea.returned', {
+                ideaId: idea.id,
+                playId: play.id,
+                reason,
+              }),
+              scenarioId: idea.scenarioId,
+            });
+          }
+          await tx.events.append({
+            ...buildDaemonEvent('idea.queue_held', held),
+            scenarioId: play.scenarioId,
+          });
+        });
+        this.#options.onHeld?.(held);
         return;
       }
       for (const idea of members) {

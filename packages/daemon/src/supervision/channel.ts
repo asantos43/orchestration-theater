@@ -104,6 +104,8 @@ export function noticeLabel(kind: SupervisionNoticeKind): string {
       return 'contract change';
     case 'status_request':
       return 'status request';
+    case 'question':
+      return 'question from another Actor, relayed';
   }
 }
 

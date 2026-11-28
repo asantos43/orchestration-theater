@@ -14,6 +14,11 @@ export interface ToolCaller {
   readonly networkAllow?: readonly string[];
   /** Appends an event of the attempt to the log. */
   readonly record: (event: NewEvent) => Promise<void>;
+  /**
+   * Aborts when the client gives up on this call (the MCP request is cancelled or its connection
+   * closes). A handler that waits (`ask_director`, P15 of Phase 11b) stops waiting on it.
+   */
+  readonly signal?: AbortSignal | undefined;
 }
 
 /** One call of a tool, already validated against its schema and allowed for the role. */

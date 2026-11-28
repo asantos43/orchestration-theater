@@ -10,6 +10,7 @@ import type { QuotaService } from '../quota/service.js';
 import { PlayRunner } from '../pipeline/index.js';
 import { ConventionConfirmer } from '../project/confirm.js';
 import { PromptDispatcher } from '../prompt-dispatcher.js';
+import type { AskDirectorService } from '../collab/ask-director.js';
 import type { SupervisionService } from '../supervision/service.js';
 import { attachmentRootsPolicy } from '../scenarios/attachment-roots.js';
 import {
@@ -55,6 +56,8 @@ export interface OrchestrationInput {
   readonly home?: string;
   /** The Director's supervision (P14 of Phase 11b), bound here with the Director sessions. */
   readonly supervision?: SupervisionService;
+  /** The questions of the Actors to the Director (P15 of Phase 11b), bound with the same runtime. */
+  readonly askDirector?: AskDirectorService;
 }
 
 /** The plays of the daemon, running: what `startDaemon` builds once the execution exists (P8). */
@@ -247,6 +250,12 @@ export function startOrchestration(input: OrchestrationInput): Orchestration {
     .catch((error: unknown) => {
       logger.warn({ err: error }, 'the supervision of the Director did not start');
     });
+  // P15 of Phase 11b: the questions of the Actors reach the Director through the same queue.
+  void input.askDirector
+    ?.bind({ directors, dispatcher, hub: composition.eventHub })
+    .catch((error: unknown) => {
+      logger.warn({ err: error }, 'the questions of the Actors to the Director did not start');
+    });
   const scenarios = new ScenarioService({
     store,
     vcs: composition.vcs,
@@ -360,6 +369,7 @@ export function startOrchestration(input: OrchestrationInput): Orchestration {
         handlers.board.abortAll('The daemon is stopping.');
         handlers.bind(undefined);
         await input.supervision?.unbind();
+        await input.askDirector?.unbind();
         scenarioHandlers.bind(undefined);
         selection.close();
         input.handoff?.bind(undefined);
