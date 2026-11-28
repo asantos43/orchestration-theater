@@ -312,7 +312,7 @@ Todos **[proposta]** quanto ao nome. Cada um entra no catálogo do protocolo e n
 - O harness de caos ganha um gerador de definições pequenas e roda I1 a I8 sobre elas (docs/24 §6).
 - **Aceite próprio:** a parte 2 do critério de aceite.
 
-**Como ficou** (2026-11-28, [V] com os testes locais de protocol, workflows e daemon e com o caos de `kill -9` sobre o `pnpm build`; sem PR ainda; as escolhas marcadas [proposta] esperam o ok do dono). Por ordem do dono de 2026-11-28, a troca da `playMachine` pela execução da `play.yaml` ficou para um passo próprio, o **P10c**: o P4 vale só para o motor genérico (`WorkflowRuntime`), e a `play` continua no `PlayRunner` (`pipeline/` e a máquina intactos).
+**Como ficou** (2026-11-28, [V] com os testes locais de protocol, workflows e daemon e com o caos de `kill -9` sobre o `pnpm build`; as escolhas marcadas [proposta] foram aceitas pelo dono em 2026-11-28, por múltipla escolha: "Aceitar todas"). Por ordem do dono de 2026-11-28, a troca da `playMachine` pela execução da `play.yaml` ficou para um passo próprio, o **P10c**: o P4 vale só para o motor genérico (`WorkflowRuntime`), e a `play` continua no `PlayRunner` (`pipeline/` e a máquina intactos).
 - **Versão de nascimento:** o snapshot da execução guarda `born: {id, version, hash}` (a definição em que ela nasceu) ao lado de `workflow` (a de agora). Sem migração, as duas são iguais. [V] Teste: uma execução nascida na 2.0 continua na 2.0 depois de a 2.1 ser ativada, com `pin`.
 - **`workflows.running_on_change`:** `pin` (padrão) ou `migrate_at_safe_point`. A biblioteca avisa o runtime depois de ativar uma versão (gancho `onActivated`, com `runtime.onActivated`). Com `pin`, o runtime não pede nada e as execuções vivas ficam onde nasceram. Com `migrate_at_safe_point`, ele pede a migração das execuções abertas do workflow à versão ativada (só se for maior que a delas). [V] O Produtor também pode pedir uma migração explícita (`runtime.requestMigration(runId, versão)`), nos dois modos [proposta].
 - **Ponto seguro:** a migração só se aplica entre dois passos, com `inFlight === null`, sem efeito aberto no diário (`pending` ou `ambiguous`; `not_done` é veredito fechado) e com `safePoint` no tipo de passo do nó que a execução está para entrar. Uma execução parada em `approval` ou `wait_event` não está em ponto seguro. O pedido fica gravado no snapshot (`runtime.migration`), então sobrevive a uma queda; um pedido novo substitui o antigo [proposta]. [V]
@@ -325,7 +325,11 @@ Todos **[proposta]** quanto ao nome. Cada um entra no catálogo do protocolo e n
   - I1, I2, I4, I5, I7 e I8 conferidos de fato (I4 pelo arquivo do mundo, que faz de diário externo; I8 com `workflow.migrated`, `workflow.migration_refused` e `workflow.notified` entre os eventos que ocorrem uma vez);
   - [proposta] I3 (clientes) e I6 (subida do daemon inteiro) não se aplicam a esse processo filho, que só tem store, runtime e ferramentas falsas; foram trocados por asserções diretas (versão final, `born`, `runtime.migration` nulo, um `workflow.migrated`, nenhuma recusa, nenhum efeito `pending` ou `ambiguous`).
 - **Aceite próprio:** a parte 2 do critério, no motor genérico: a nascida na 2.0 fica na 2.0 depois de a 2.1 entrar; o pedido espera o ponto seguro; sem mapa é recusado; o caos I1 a I8 passa sobre as definições geradas.
-- **Escolhas do Claude [proposta]:**
+- **Decisões do dono (2026-11-28, por múltipla escolha, iguais à recomendação):**
+  - as escolhas abaixo ficam como estão;
+  - a ligação da chave e do gancho na composição do daemon entra no **P10b**, junto com o `require_approval` que a composição ainda não passa aos validadores (achado no P12);
+  - os desvios (I3 e I6 por asserções diretas; fluxo genérico no lugar do `play-2.1.yaml`) ficam aceitos e se completam no **P10c**.
+- **Escolhas do Claude [proposta, aceitas]:**
   - o mapa na definição nova (`migrate_from`);
   - a regra do ponto seguro (`safePoint` do nó a entrar mais nenhum efeito aberto);
   - o pedido guardado no snapshot e a substituição por um pedido novo;
@@ -340,7 +344,7 @@ Todos **[proposta]** quanto ao nome. Cada um entra no catálogo do protocolo e n
   - o desenho do caos (portão que pede a migração, morte na transação da migração por um invólucro da transação, I4 pelo mundo, I3 e I6 fora).
 - **Fica para o P10c** (a `play` na definição):
   - a peça nascida na `play` 2.0 continuar nela depois da 2.1, e a migração da peça pelo `playMachine` e pelo snapshot dela;
-  - ligar na composição do daemon (`compose.ts`, fora do escopo do P4) a opção `runningOnChange` do runtime à chave `workflows.running_on_change` e o gancho `library.onActivated` a `runtime.onActivated`; [N] até lá, o gancho existe e está testado, mas o daemon não o liga;
+  - (passou ao P10b, por decisão do dono de 2026-11-28) ligar na composição do daemon (`compose.ts`, fora do escopo do P4) a opção `runningOnChange` do runtime à chave `workflows.running_on_change` e o gancho `library.onActivated` a `runtime.onActivated`; [N] até lá, o gancho existe e está testado, mas o daemon não o liga;
   - o `play-2.1.yaml` de teste e o caos I1 a I8 sobre a `play` 2.0 rodando pela definição.
 
 ### P5. Biblioteca e vínculos (N296)
