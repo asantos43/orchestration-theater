@@ -94,6 +94,8 @@ describe('WorkflowRuntime: the generic steps', () => {
       'started route#1',
       'finished route#1 done -> ask',
       'started ask#1',
+      'workflow.approval.requested',
+      'workflow.approval.resolved',
       'finished ask#1 done -> wait',
       'started wait#1',
       'finished wait#1 done -> done',
