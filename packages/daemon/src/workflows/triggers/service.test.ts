@@ -521,3 +521,27 @@ describe('the loop on the clock', () => {
     expect(r.clock.pendingSleeps).toBe(0);
   });
 });
+
+describe('event_poll: off', () => {
+  it('does not start the event loop: only the code host loop holds a timer', async () => {
+    const r = await triggerRig({ event_poll: null });
+    r.triggers.start();
+    await vi.waitFor(() => {
+      expect(r.clock.pendingSleeps).toBe(1);
+    });
+    await r.clock.advance(10_000);
+    expect(r.clock.pendingSleeps).toBe(1);
+    await r.triggers.stop();
+    expect(r.clock.pendingSleeps).toBe(0);
+  });
+
+  it('starts both loops with the default event_poll', async () => {
+    const r = await triggerRig();
+    r.triggers.start();
+    await vi.waitFor(() => {
+      expect(r.clock.pendingSleeps).toBe(2);
+    });
+    await r.triggers.stop();
+    expect(r.clock.pendingSleeps).toBe(0);
+  });
+});
