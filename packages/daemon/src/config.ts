@@ -108,6 +108,7 @@ import {
   WORKFLOW_BUDGET_ON_EXHAUSTED_MODES,
   WORKFLOW_BUDGET_PERIODS,
   WORKFLOW_ON_BUSY,
+  WORKFLOW_RUNNING_ON_CHANGE_MODES,
   WORKFLOWS_ALL_INSTALLED,
 } from './workflows/config.js';
 import {
@@ -2246,6 +2247,9 @@ export const DaemonConfigSchema = z
      * 11b, P5; the keys are described at `WorkflowsSettings`). `budget.period` is [proposta].
      * `legacy_snapshot` (P3, [proposta]): `reject` (default) or `cancel` a play saved by the
      * hand-written machine (1.x); see `WorkflowsSettings`.
+     * `running_on_change` (P4, N295, [proposta] the name of the second mode): `pin` (default) keeps a
+     * run in the version it was born in; `migrate_at_safe_point` asks the migration of the open runs
+     * when a new version is activated; see `WorkflowsSettings`.
      * `runtime` (P2, every key [proposta]) holds the defaults of the generic step types; a node's
      * own `timeout` or `on_timeout` wins.
      * - `runtime.wait_event.poll`: how often the log is read while a `wait_event` waits for its event.
@@ -2296,6 +2300,7 @@ export const DaemonConfigSchema = z
           })
           .prefault({}),
         legacy_snapshot: z.enum(WORKFLOW_LEGACY_SNAPSHOT_MODES).default('reject'),
+        running_on_change: z.enum(WORKFLOW_RUNNING_ON_CHANGE_MODES).default('pin'),
         runtime: z
           .strictObject({
             wait_event: z.strictObject({ poll: DurationSchema.prefault('2s') }).prefault({}),

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-import { Conflict, InvalidInput, NotFound } from '@otheater/core';
+import { Conflict, InvalidInput, NotFound, type JsonObject } from '@otheater/core';
 import { FakeClock, InMemoryStore } from '@otheater/core/testing';
 import { PLAY_WORKFLOW } from '@otheater/workflows';
 import { describe, expect, it } from 'vitest';
@@ -176,6 +176,52 @@ describe('WorkflowLibrary.remove', () => {
     await expect(library.remove('play', '1.0.0')).rejects.toBeInstanceOf(Conflict);
     await library.remove('play', '1.1.0');
     expect(seen).toEqual(['play@1.0.0', 'play@1.1.0']);
+  });
+});
+
+describe('the activation and the live runs by version (N295)', () => {
+  it('tells the hook of the activation: the one that install makes and the one of activate', async () => {
+    const told: string[] = [];
+    const library = newLibrary(newStore(), DEFAULT_WORKFLOWS_SETTINGS, {
+      onActivated: (workflowId, version) => {
+        told.push(`${workflowId}@${version}`);
+      },
+    });
+    await library.install(play('1.0.0'), { source: 'user' });
+    await library.install(play('1.1.0'), { source: 'user', activate: false });
+    expect(told).toEqual(['play@1.0.0']);
+    await library.install(play('1.2.0'), { source: 'user', activate: true });
+    await library.activate('play', '1.1.0');
+    expect(told).toEqual(['play@1.0.0', 'play@1.2.0', 'play@1.1.0']);
+  });
+
+  it('keeps the activation when the hook fails', async () => {
+    const library = newLibrary(newStore(), DEFAULT_WORKFLOWS_SETTINGS, {
+      onActivated: () => Promise.reject(new Error('the runtime is stopped')),
+    });
+    await library.install(play('1.0.0'), { source: 'user' });
+    await library.install(play('1.1.0'), { source: 'user' });
+    await library.activate('play', '1.1.0');
+    expect(await library.active('play')).toMatchObject({ version: '1.1.0' });
+  });
+
+  it('counts a run of the engine only in the version it is in now', async () => {
+    const store = newStore();
+    const library = newLibrary(store);
+    await library.install(play('1.0.0'), { source: 'user' });
+    await library.install(play('1.1.0'), { source: 'user', activate: true });
+    await openPlay(store, 'play');
+    const inVersion = (version: string): { snapshot: JsonObject } => ({
+      snapshot: { workflow: { id: 'play', version, hash: 'sha256:x' } },
+    });
+    await store.plays.update('p1', inVersion('1.1.0'));
+    // Born in 1.0.0 and migrated to 1.1.0: the old version is free.
+    await library.remove('play', '1.0.0');
+    expect((await library.list()).map((r) => r.version)).toEqual(['1.1.0']);
+
+    await library.install(play('1.2.0'), { source: 'user' });
+    await store.plays.update('p1', inVersion('1.2.0'));
+    await expect(library.remove('play', '1.2.0')).rejects.toBeInstanceOf(Conflict);
   });
 });
 

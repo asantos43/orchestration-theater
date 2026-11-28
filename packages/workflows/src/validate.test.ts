@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 import { describe, expect, it } from 'vitest';
-import type { WorkflowDefinition } from './definition.js';
+import { compareVersions, type WorkflowDefinition } from './definition.js';
 import {
   engineInRange,
   formatPath,
@@ -208,6 +208,8 @@ describe('validateWorkflow: one failure per code', () => {
         ],
       }),
     ],
+    ['migration_version', (d) => ({ ...d, migrate_from: { '1.0.0': { read: 'read' } } })],
+    ['migration_target', (d) => ({ ...d, migrate_from: { '0.9.0': { read: 'nowhere' } } })],
   ];
 
   it('covers every code', () => {
@@ -216,6 +218,24 @@ describe('validateWorkflow: one failure per code', () => {
 
   it.each(cases)('%s', (code, change, options) => {
     expect(codes(change(base()), options)).toContain(code);
+  });
+});
+
+describe('validateWorkflow: the migration map (N295)', () => {
+  it('accepts a map from older versions to nodes of this definition', () => {
+    const def = {
+      ...base(),
+      version: '1.1.0',
+      migrate_from: { '1.0.0': { read: 'read', ask: 'ask' } },
+    };
+    expect(errorsOf(def)).toEqual([]);
+  });
+
+  it('compares versions the way semver does', () => {
+    expect(compareVersions('1.0.0', '1.0.1')).toBeLessThan(0);
+    expect(compareVersions('2.0.0', '1.9.9')).toBeGreaterThan(0);
+    expect(compareVersions('1.2.0', '1.2.0')).toBe(0);
+    expect(compareVersions('1.0.0-rc.1', '1.0.0')).toBeLessThan(0);
   });
 });
 

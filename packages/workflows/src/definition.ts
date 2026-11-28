@@ -184,6 +184,40 @@ export const RequiresSchema = z.strictObject({
   tools: z.array(z.string().min(1)).optional(),
 });
 
+/**
+ * The migration map of a version (N295; Phase 11b, P4): for each older version a run can be
+ * migrated from, the node the run is in there -> the node of this version it moves to. A run in a
+ * node the map does not name is not migrated ("without a mapping the migration is refused").
+ * [proposta] The map lives in the NEW definition, so the compiler can check it against the nodes it
+ * knows; the check against the old definition is made when a migration is asked
+ * (`daemon/src/workflows/migrate.ts`).
+ */
+export const MigrateFromSchema = z.record(
+  z.string().regex(SEMVER_PATTERN, 'a version is semver (1.0.0)'),
+  z.record(
+    z.string().regex(ID_PATTERN, 'a node id is lowercase snake case'),
+    z.string().regex(ID_PATTERN, 'a node id is lowercase snake case'),
+  ),
+);
+
+/** Compares two semantic versions (`major.minor.patch[-pre]`): negative, 0 or positive. */
+export function compareVersions(a: string, b: string): number {
+  const split = (version: string): { core: number[]; pre: string } => {
+    const [core = '', ...rest] = version.split('-');
+    return { core: core.split('.').map((part) => Number(part)), pre: rest.join('-') };
+  };
+  const left = split(a);
+  const right = split(b);
+  for (let i = 0; i < 3; i++) {
+    const diff = (left.core[i] ?? 0) - (right.core[i] ?? 0);
+    if (diff !== 0) return diff;
+  }
+  if (left.pre === right.pre) return 0;
+  if (left.pre === '') return 1;
+  if (right.pre === '') return -1;
+  return left.pre < right.pre ? -1 : 1;
+}
+
 export const WorkflowDefinitionSchema = z.strictObject({
   id: z.string().regex(DEFINITION_ID_PATTERN, 'an id is lowercase, with _ or -'),
   version: z.string().regex(SEMVER_PATTERN, 'a version is semver (1.0.0)'),
@@ -210,6 +244,8 @@ export const WorkflowDefinitionSchema = z.strictObject({
   edges: z.array(EdgeSchema),
   limits: LimitsSchema.optional(),
   requires: RequiresSchema.optional(),
+  /** Which runs of an older version can be migrated here, and where they go (N295). */
+  migrate_from: MigrateFromSchema.optional(),
 });
 
 /** A definition as written (the edges in any of their forms). */
