@@ -8,6 +8,7 @@ import { GithubCodeHost } from './code-host.js';
 import type { GithubCodeHostConfigInput } from './config.js';
 import { FAKE_GH_SOURCE } from './fake-gh.fixture.js';
 import { GithubIssueTracker } from './issue-tracker.js';
+import { GithubRepoReader } from './repo-reader.js';
 import { SpawnLauncher } from './spawn-launcher.fixture.js';
 
 export interface GhCall {
@@ -26,6 +27,15 @@ export interface GithubRig {
   readonly codeHost: GithubCodeHost;
   /** An `IssueTracker` over the same fake `gh` and configuration. */
   readonly issueTracker: GithubIssueTracker;
+  /** The pull request lister and the collaborator check of the triggers, over the same fake `gh`. */
+  readonly reader: GithubRepoReader;
+  /** Makes `login` a user of the fake host with this permission (`admin`, `write`, `read`, `none`). */
+  readonly seedCollaborator: (login: string, permission: string) => Promise<void>;
+  /** Sets who opened a pull request, its labels and its update time (ISO), as the fake host keeps them. */
+  readonly touchPullRequest: (
+    number: number,
+    change: { author?: string; labels?: string[]; updatedAt?: string },
+  ) => Promise<void>;
   /** Adds one commit to the local `branch` (created from `main`); nothing is pushed. */
   readonly commit: (branch: string) => Promise<string>;
   /** Rewrites the (pushed) local branch so it no longer descends from the remote's. */
@@ -93,6 +103,7 @@ export async function makeGithubRig(options: RigOptions = {}): Promise<GithubRig
   };
   const codeHost = new GithubCodeHost(hostOptions);
   const issueTracker = new GithubIssueTracker(hostOptions);
+  const reader = new GithubRepoReader(hostOptions);
 
   const readState = async <T>(name: string): Promise<T[]> => {
     try {
@@ -141,6 +152,26 @@ export async function makeGithubRig(options: RigOptions = {}): Promise<GithubRig
     launcher,
     codeHost,
     issueTracker,
+    reader,
+    async seedCollaborator(login, permission) {
+      const known = await readState<{ login: string; permission: string }>('collaborators.json');
+      known.push({ login, permission });
+      await writeFile(join(ghDir, 'collaborators.json'), JSON.stringify(known));
+    },
+    async touchPullRequest(number, change) {
+      const pulls = await readState<Record<string, unknown> & { number: number }>('prs.json');
+      const next = pulls.map((entry) =>
+        entry.number === number
+          ? {
+              ...entry,
+              ...(change.author === undefined ? {} : { author: change.author }),
+              ...(change.labels === undefined ? {} : { labels: change.labels }),
+              ...(change.updatedAt === undefined ? {} : { updatedAt: change.updatedAt }),
+            }
+          : entry,
+      );
+      await writeFile(join(ghDir, 'prs.json'), JSON.stringify(next));
+    },
     commit,
     async diverge(branch) {
       await checkout(branch);

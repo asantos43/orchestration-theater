@@ -187,6 +187,10 @@ function api() {
   }
   if (method === 'GET' && (match = /^pulls\\/(\\d+)$/.exec(rest))) return pullJson(match[1]);
   if (method === 'GET' && rest === 'actions/runs') return listRuns();
+  if (method === 'GET' && rest === 'pulls') return listPulls();
+  if (method === 'GET' && (match = /^collaborators\\/([^\\/]+)\\/permission$/.exec(rest))) {
+    return permission(match[1]);
+  }
   fail('fake gh: unsupported api endpoint: ' + method + ' ' + endpoint, 2);
 }
 
@@ -308,6 +312,31 @@ function pullJson(number) {
     head: { ref: v.headRefName, sha: sha(v.headRefName) || '0'.repeat(40) },
     base: { ref: v.baseRefName },
   });
+}
+
+function listPulls() {
+  const f = fields();
+  const perPage = Number(f.per_page || 30);
+  const page = Number(f.page || 1);
+  const all = loadPulls()
+    .filter((p) => p.state === 'OPEN')
+    .map((v) => ({
+      number: v.number,
+      user: { login: v.author || 'fake-user' },
+      labels: labelsJson(v.labels || []),
+      head: { sha: sha(v.headRefName) || '0'.repeat(40) },
+      created_at: v.createdAt,
+      updated_at: v.updatedAt || v.createdAt,
+    }))
+    .sort((a, b) => Date.parse(b.updated_at) - Date.parse(a.updated_at) || b.number - a.number);
+  out(all.slice((page - 1) * perPage, page * perPage));
+}
+
+/** collaborators.json: [{ login, permission }]; a login that is not there is not a user (404). */
+function permission(login) {
+  const found = load('collaborators.json').find((c) => c.login === login);
+  if (!found) return notFound();
+  out({ permission: found.permission, user: { login } });
 }
 
 function listRuns() {

@@ -351,6 +351,11 @@ export class AutoCodeHost implements CodeHost {
     return this.#pick(repo, remote);
   }
 
+  /** Why the repository got the local host (after `hostFor`); a default text when nothing was recorded. */
+  reasonFor(repo: string): string {
+    return this.#options.reasons.get(repo) ?? 'it is not on GitHub or has no credential';
+  }
+
   #pick(repo: string, remote: string | undefined): Promise<CodeHost> {
     const name = remote ?? DEFAULT_REMOTE;
     const key = `${repo}\0${name}`;

@@ -17,7 +17,10 @@ import { makeTempDataDir, NO_CLIENTS } from '../test-helpers.js';
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
 const T0 = Date.UTC(2026, 10, 17, 12, 0, 0);
-const CONFIG = parseConfig('backup:\n  when: manual\n');
+// The loops of the triggers of the workflows (P10a) lap once a day here: their laps (2 s by default) on a fake clock of days are not what this file tests.
+const CONFIG = parseConfig(
+  'backup:\n  when: manual\nworkflows:\n  triggers:\n    poll:\n      mode: off\n      interval: 1d\n    event_poll: 1d\n',
+);
 
 function start(dataDir: string, clock: FakeClock, handlers?: ToolHandlers): Promise<DaemonHandle> {
   return startDaemon({
