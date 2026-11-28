@@ -89,13 +89,13 @@ O `@otheater/workflows` é pacote novo do monorepo, não dependência de fora. E
 | P0 | Plano e decisões (este documento) | nada | todos os que dependem só dele | feito (este PR) |
 | P1 | `@otheater/workflows`: schema da definição, linguagem de condição, compilador para XState, validador e hash | P0 | P7, P13 | feito (#359) |
 | P2 | Runtime do motor no daemon e tipos de passo genéricos (`call_tool`, `wait_event`, `branch`, `approval`, `notify`) | P1 | P5, P14 | feito (#413) |
-| P3 | A definição `play` 2.0: os tipos de passo da peça, a troca da máquina, o `flows.<id>` como parâmetro, o snapshot 1.x recusado | P2 | P6, P8, P9 | a fazer |
+| P3 | A definição `play` 2.0: os tipos de passo da peça, a troca da máquina, o `flows.<id>` como parâmetro, o snapshot 1.x recusado | P2 | P6, P8, P9 | feito (#418) |
 | P4 | Versão de nascimento e migração em ponto seguro (N295), com a 2.0 → 2.1 de teste e o caos sobre workflows gerados | P3 | P10, P12 | a fazer |
 | P5 | Biblioteca e vínculos (N296): tabelas, `workflows.default` e `allowed`, estados do vínculo, prazo, orçamento por período, concorrência | P1 | P2, P14 | feito (#412) |
 | P6 | Gatilhos: laço de sondagem mínimo (D3), eventos internos, eventos de plugin declarados (D6), filtro de autor | P5 | P3, P8, P9 | a fazer |
 | P7 | Porta `IssueTracker` (D4), adaptador GitHub, falso, conformidade; `fetchPullRequest` e `fetchCiLog` na `CodeHost` | P0 | P1, P13 | feito (#362) |
-| P8 | Tipos de passo do code host (`fetch_issue`, `fetch_pr`, `fetch_ci_log`, `comment`, `label`), aprovação antes de push e comentário, texto externo marcado | P2, P7 | P3, P6, P9 | a fazer |
-| P9 | Pacotes de workflow (N298): arquivo ou git com ref fixa, permissões na instalação, SSHSIG e chaves confiáveis (D5) | P1, P5 | P3, P6, P8 | a fazer |
+| P8 | Tipos de passo do code host (`fetch_issue`, `fetch_pr`, `fetch_ci_log`, `comment`, `label`), aprovação antes de push e comentário, texto externo marcado | P2, P7 | P3, P6, P9 | feito (#416) |
+| P9 | Pacotes de workflow (N298): arquivo ou git com ref fixa, permissões na instalação, SSHSIG e chaves confiáveis (D5) | P1, P5 | P3, P6, P8 | feito (#417) |
 | P10 | API e CLI: validar, simular com o `fake-agent`, salvar, ativar, diff, listar, instalar (`ot flow ...`) | P4, P5, P9 | P12 | a fazer |
 | P11 | Editor do YAML na TUI, com o validador do P1 | P10 | P15, P16 (a parte automática) | a fazer |
 | P12 | Workflows prontos: `github-issues`, `pr-review` e `ci-fix` | P6, P8 | P10 | a fazer |
@@ -292,15 +292,16 @@ Todos **[proposta]** quanto ao nome. Cada um entra no catálogo do protocolo e n
 - Snapshot 1.x: `workflows.legacy_snapshot` (`reject`, com `workflow.snapshot_rejected` e um aviso no chat; `cancel`, que cancela a peça e a registra). D2 tira a migração.
 - **Aceite próprio:** a suíte da máquina e os e2e da peça passam sem mudar o que conferem (critério 4); o caos da Fase 11 passa sobre a `play` 2.0.
 
-**Como ficou (2026-11-27):**
-- **A máquina escrita à mão ficou, e a definição a confere [proposta].** O plano manda a máquina sair. Para não trocar o núcleo mais testado, e porque o critério 4 pede a mesma suíte sem mudar o que ela confere, o P3 manteve o `playMachine` e fez do `play.yaml` a fonte que o daemon valida, estado a estado, na subida (`assertPlayFlowLinked`) e nos testes. A troca da máquina pela execução da definição fica para um passo próprio (o P10 liga o `PlayStageHost`). [V] O desvio é de risco, não de arquitetura; é do dono aceitar ou pedir a troca já.
+**Como ficou** (2026-11-27, [V] com os testes locais de core, protocol e daemon; PR #418; o desvio e as escolhas do Claude foram aceitos pelo dono em 2026-11-28):
+- **A máquina escrita à mão ficou, e a definição a confere.** O plano manda a máquina sair. Para não trocar o núcleo mais testado, e porque o critério 4 pede a mesma suíte sem mudar o que ela confere, o P3 manteve o `playMachine` e fez do `play.yaml` a fonte que o daemon valida, estado a estado, na subida (`assertPlayFlowLinked`) e nos testes. A troca da máquina pela execução da definição fica para o P10, que liga o `PlayStageHost`. O desvio é de risco, não de arquitetura, e o dono o aceitou em 2026-11-28, por múltipla escolha ("Aceitar, troca no P10").
 - **`play.yaml` 2.0.0** (`daemon/src/workflows/definitions/`): 11 nós, um por estado da peça (menos `NEED` e os finais), parâmetro `skip` e as arestas de `plan_review` e `critique` condicionadas a ele. O texto é embutido em `play-yaml.ts` (cópia conferida por teste contra o arquivo) para o binário único não depender do disco [proposta]. `PLAY_FLOW_VERSION` e a versão do `flow` `play` no `core` passaram a 2.
 - **Diferenças fixadas em teste [proposta]:** a definição tem `EXECUTING -> PLANNING` que a máquina não tem como alvo estático; a máquina tem cinco transições que a definição deixa de fora (`CRITIQUING -> PLANNING`, `DECIDING -> PLANNING`, `DELIVERING -> SCRIPTING`, `PLANNING -> AWAITING_PRODUCER`, `REVIEWING_SCRIPT -> INTEGRATING`), por precisarem de saídas que os tipos de passo ainda não têm. Mudar um dos lados quebra o teste. `limits.producer_rounds` e os papéis do YAML (`author`) não são impostos pela máquina.
 - **Tipos de passo** (`workflows/steps/play/`): módulos que embrulham `entryEffects` (sem reescrever a etapa) para `plan`, `clarify`, `review`, `script`, `execute_dag`, `integrate`, `critique`, `decide`, `deliver` e `await_producer`; `createPlayStepRunners(host)` os expõe como `StepRunner` por uma porta `PlayStageHost` [proposta]. Nada ficou ligado ao runtime (`runtime.ts` e `steps/index.ts` intactos): quem liga é o P10.
 - **`flows.<id>` como parâmetro:** `playParamsOfFlow` e `flowsAsPlayParams` (`pipeline/flow-selection.ts`) dão a forma `{workflow: 'play', params: {skip, limits}}`, e `flowRefOf` usa o mesmo `skip`; o efeito na máquina é o de antes (teste com o fluxo `quick`). [N] Não achei no repositório a superfície do `ot config` que mostra os fluxos, então a forma nova só existe como função; ligá-la fica para quem tocar essa superfície [proposta].
 - **Snapshot 1.x:** `workflows.legacy_snapshot` (`reject` por padrão, `cancel`), com o evento `workflow.snapshot_rejected` (`flowId`, `savedVersion`, `currentVersion`, `mode`) e o aviso `play_not_resumed` (detalhe `legacy_snapshot`) no chat, em vez de um tipo de aviso novo [proposta]. No `cancel` a peça vira `CANCELLED` e o fim é notificado. Sem migração (D2/N311). `resumeAll` passou a ignorar registros de outro `flowId` (são execuções do motor genérico, que o runtime do P2 retoma) [proposta].
 - **Os ganchos do P14** (`redirectReason`/`redirectFeedback`) ficaram como estavam; só o `wiring.ts` ganhou `legacySnapshot`.
-- **Testes novos:** `play-definition.test.ts`, `play-steps.test.ts`, `runner-legacy.test.ts`, `flow-params.test.ts`, `legacy-snapshot-config.test.ts` e o do payload do evento; ajustes de versão em `flows.test.ts` e `flow-machine.test.ts` (sem mudar o que conferem) e a contagem do catálogo (169).
+- **Escolhas do Claude (decidido pelo dono em 2026-11-28, "Aceitar todas"):** as marcadas acima, que valem como estão: o texto embutido em `play-yaml.ts`; as diferenças entre a máquina e a definição fixadas em teste; a porta `PlayStageHost` e o `createPlayStepRunners`; a forma `{workflow, params}` só como função, até alguém tocar a superfície do `ot config`; o aviso `play_not_resumed` com o detalhe `legacy_snapshot`, em vez de um tipo novo; os modos de `workflows.legacy_snapshot`; e o `resumeAll` que ignora os registros de outro `flowId`.
+- **Testes novos:** `play-definition.test.ts`, `play-steps.test.ts`, `runner-legacy.test.ts`, `flow-params.test.ts`, `legacy-snapshot-config.test.ts` e o do payload do evento; ajustes de versão em `flows.test.ts` e `flow-machine.test.ts` (sem mudar o que conferem) e a contagem do catálogo (169 com o P3 sozinho; 176 na main, com P8 e P9).
 
 ### P4. Versão de nascimento e migração em ponto seguro (N295)
 
@@ -385,7 +386,7 @@ Todos **[proposta]** quanto ao nome. Cada um entra no catálogo do protocolo e n
 - O texto que vem de fora (corpo de issue, comentário, log) chega marcado como não confiável no prompt do Ator (docs/24 §9), e o modo `mark_and_truncate` corta pelo tamanho.
 - **Aceite próprio:** um comentário sem aprovação não sai; um `kill -9` entre a aprovação e o comentário não comenta duas vezes.
 
-**Como ficou** (2026-11-27, [V] com os testes locais de protocol e daemon; o `kill -9` roda sobre o build, com `vitest.chaos.config.ts`):
+**Como ficou** (2026-11-27, [V] com os testes locais de protocol e daemon; o `kill -9` roda sobre o build, com `vitest.chaos.config.ts`; PR #416; as escolhas do Claude foram aceitas pelo dono em 2026-11-28):
 
 - Os cinco passos estão em `workflows/steps/codehost/`. Eles leem as portas `CodeHost` e `IssueTracker` pelo `StepDeps.codeHost` (opcional; sem ele os passos falham com `code_host_unavailable`). Quem monta o runtime junta `CODE_HOST_STEP_RUNNERS` à lista genérica e chama `registerCodeHostEffects`; a lista padrão continua `GENERIC_STEP_RUNNERS`.
 - `fetch_issue`, `fetch_pr` e `fetch_ci_log` só leem, sem efeito no diário. A saída tem os campos tipados, para as condições das arestas, e `text` e `log`, que são o que vai ao prompt. O número vem de `params.number` ou da entrada `issue` ou `pr` da execução. O `fetch_ci_log` dá `failed` e `checks` (os nomes das rodadas que falharam) e guarda o fim do log.
@@ -395,7 +396,8 @@ Todos **[proposta]** quanto ao nome. Cada um entra no catálogo do protocolo e n
 - Chaves novas: `workflows.security.require_approval` (`[push, comment, label]`, `none` ou lista), `untrusted_text` (`mark_and_truncate`, `mark`), `untrusted_max_chars` (20000) e `workflows.codehost.comment_marker` (`on`, `off`).
 - Aceite: [V] sem aprovação o comentário não sai, nem com a definição que passou pelo validador; [V] com `kill -9` em `after_intend`, `after_execute` e `after_resolve` entre a aprovação e o comentário, o tracker fica com um comentário só e a execução termina `done` (`comment.chaos.test.ts`, processo filho e SQLite em disco); [V] os mesmos pontos em processo (`codehost.test.ts`).
 - Limite: a porta `IssueTracker` não lista comentários. A busca do comentário pelo marcador é um gancho (`findComment`) que o daemon liga; sem ele, depois de uma queda no meio do comentário o passo falha com `effect_ambiguous` (um comentário, nunca dois), e [V] isso também está testado.
-- Escolhas [proposta], que vão ao dono:
+- Os tipos dos passos (`CodeHostStepDeps`, `CommentFinder`, `FoundComment`) ficam em `steps/codehost/deps.ts`, para o `steps/types.ts` não importar o `support.ts` (a CI pegou o ciclo no `no-circular`).
+- **Escolhas do Claude (decidido pelo dono em 2026-11-28, "Aceitar todas"):**
   - o `approvals` no estado da execução (o log não se consulta por execução);
   - o marcador oculto no comentário e o gancho `findComment` (e, como seguimento, um `listComments` na porta, no P7);
   - o formato do bloco `<untrusted-text>` e do corte, e os nomes `text`, `log`, `url` e `head_sha` na saída;
@@ -413,12 +415,12 @@ Todos **[proposta]** quanto ao nome. Cada um entra no catálogo do protocolo e n
 - Assinatura SSHSIG, conferida com `ssh-keygen -Y verify` contra `workflows.packages.trusted_keys`. Sem `ssh-keygen` no `PATH`, um pacote assinado conta como não conferido e segue `workflows.packages.unsigned`.
 - **Aceite próprio:** com chaves geradas no teste, a assinatura válida instala, a inválida é recusada, a ausente pede confirmação (`confirm`) ou é recusada (`reject`); a ref muda no remoto e o pacote instalado não muda.
 
-**Como ficou** (2026-11-28, [V] com 83 testes locais do pacote, os de protocol e o `ssh-keygen` real; PR a abrir):
+**Como ficou** (2026-11-28, [V] com 83 testes locais do pacote, os de protocol e o `ssh-keygen` real; PR #417; as escolhas do Claude foram aceitas pelo dono em 2026-11-28):
 
 - Módulos novos em `daemon/src/workflows/packages/`:
   - `install.ts`: `WorkflowPackageInstaller` (`preview`, `install`, `remove`, `list`, `get`), com a política `decidePolicy`;
   - `source.ts` (pasta ou arquivo), `git-source.ts` (git com ref fixa, sobre o `fetchGit` dos plugins: sem hooks, ref resolvida para o commit, `.git` apagado), `manifest.ts`, `sshsig.ts`, `permissions.ts`, `registry.ts` (o arquivo `workflow-packages.json` no diretório de dados) e `config.ts`.
-- Formato **[proposta]**:
+- Formato:
   - uma pasta tem `package.yaml` (id, versão e, por arquivo de workflow, o sha256) e a assinatura `package.yaml.sshsig`: uma só assinatura sobre os bytes do manifesto cobre todos os arquivos;
   - um arquivo de workflow sozinho é um pacote de um workflow, com a assinatura em `<arquivo>.sshsig`;
   - o namespace SSHSIG é `otheater-workflow-package`.
@@ -427,13 +429,14 @@ Todos **[proposta]** quanto ao nome. Cada um entra no catálogo do protocolo e n
 - Permissões mostradas na pré-visualização: ferramentas, plugins exigidos e efeitos externos (escritas públicas e ferramentas que escrevem). O registro guarda as permissões da versão atual (troca, não soma).
 - Instalação: tudo ou nada (valida todos os workflows antes de gravar). Versão igual com conteúdo igual é `unchanged` e não escreve nada; versão igual com outro conteúdo, ou workflow que já é de outro pacote, é `Conflict`. Grava com `activate: false` e ativa conforme `workflows.packages.activate`. Se algo falha no meio, desfaz: apaga o que criou e reativa as versões que estavam ativas. As instalações são serializadas.
 - A ref que muda no remoto não muda o instalado: a definição fica na biblioteca, e o registro guarda `{url, ref, commit}`. Ver o novo estado é uma nova instalação.
-- Config: bloco `workflows.packages` em `config.ts`: `sources`, `signature`, `trusted_keys`, `unsigned` (as do plano) e, **[proposta]**, `activate` (`when_none`, `always`, `never`), `fetch_timeout` (2m), `verify_timeout` (15s), `max_workflows` (50) e `ssh_keygen` (`auto`, ou o caminho do programa).
+- Config: bloco `workflows.packages` em `config.ts`: `sources`, `signature`, `trusted_keys`, `unsigned` (as do plano) e, escolhas do Claude, `activate` (`when_none`, `always`, `never`), `fetch_timeout` (2m), `verify_timeout` (15s), `max_workflows` (50) e `ssh_keygen` (`auto`, ou o caminho do programa).
 - Eventos novos no catálogo (`protocol/src/workflow-package-events.ts`): `workflow.package.installed`, `workflow.package.removed` e `workflow.package.signature_failed`. Sozinho, este PR leva o daemon a 171 eventos e o registro a 173; com o P8 já na main, somam 175 e 177.
 - Aceite próprio (`install.test.ts`, com chaves Ed25519 geradas no teste e o `ssh-keygen` real, `describe.skipIf` se ele faltar): a assinatura válida instala sem confirmação; a adulterada e a de outro namespace são recusadas, mesmo com `confirm`; a ausente pede confirmação (`confirm`) ou é recusada (`reject`); a chave não confiável e a falta do `ssh-keygen` seguem `unsigned`; a branch que anda no remoto não muda o pacote instalado, a biblioteca nem o registro, e uma nova pré-visualização já mostra a versão nova.
 - Limites desta etapa:
   - o instalador não está ligado à composição do daemon nem às rotas (`ot flow install` é do P10);
-  - o store não tem desativar: um pacote com versão ativa não sai (`Conflict`); o P10 deveria acrescentar o desativar **[proposta]**;
+  - o store não tem desativar: um pacote com versão ativa não sai (`Conflict`); o P10 acrescenta o desativar;
   - `npm` não é fonte (recusada).
+- **Escolhas do Claude (decidido pelo dono em 2026-11-28, "Aceitar todas"):** o formato do pacote (`package.yaml` com o sha256 de cada arquivo e uma assinatura só, o arquivo sozinho com `<arquivo>.sshsig`, o namespace `otheater-workflow-package`); os cinco estados da assinatura; as confirmações `unsigned` e `new_permissions`; o registro em `workflow-packages.json`, que guarda as permissões da versão atual; a instalação tudo ou nada, com `unchanged` e `Conflict`; as chaves `activate`, `fetch_timeout`, `verify_timeout`, `max_workflows` e `ssh_keygen`, com os padrões acima; e o desativar no P10.
 
 ### P10. API e CLI (N297)
 
@@ -443,6 +446,9 @@ Todos **[proposta]** quanto ao nome. Cada um entra no catálogo do protocolo e n
 - A CLI é `ot flow validate|simulate|save|activate|diff|list|install|bind|pause|resume|stop`.
 - Ativar não reinicia o daemon.
 - **Aceite próprio:** os comandos de ponta a ponta contra o daemon de teste; `activate` com uma peça em curso segue a N295.
+- **Herdado do P3 e do P9 (dono, 2026-11-28):**
+  - a troca da máquina da peça pela definição: ligar o `PlayStageHost` e o `createPlayStepRunners` ao runtime, a peça passar a rodar pela `play.yaml` e o `playMachine` escrito à mão sair; o critério 4 continua valendo (a suíte da máquina e os e2e da peça passam sem mudar o que conferem);
+  - o desativar de uma versão na biblioteca, para um pacote com versão ativa poder sair (`ot flow` e a rota).
 
 **Como ficou:** a preencher.
 
