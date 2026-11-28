@@ -90,7 +90,7 @@ O `@otheater/workflows` é pacote novo do monorepo, não dependência de fora. E
 | P1 | `@otheater/workflows`: schema da definição, linguagem de condição, compilador para XState, validador e hash | P0 | P7, P13 | feito (#359) |
 | P2 | Runtime do motor no daemon e tipos de passo genéricos (`call_tool`, `wait_event`, `branch`, `approval`, `notify`) | P1 | P5, P14 | feito (#413) |
 | P3 | A definição `play` 2.0: os tipos de passo da peça, a troca da máquina, o `flows.<id>` como parâmetro, o snapshot 1.x recusado | P2 | P6, P8, P9 | feito (#418) |
-| P4 | Versão de nascimento e migração em ponto seguro (N295), com a 2.0 → 2.1 de teste e o caos sobre workflows gerados | P10a | P12 | a fazer |
+| P4 | Versão de nascimento e migração em ponto seguro (N295), com a 2.0 → 2.1 de teste e o caos sobre workflows gerados | P10a | P12 | feito (#426) |
 | P5 | Biblioteca e vínculos (N296): tabelas, `workflows.default` e `allowed`, estados do vínculo, prazo, orçamento por período, concorrência | P1 | P2, P14 | feito (#412) |
 | P6 | Gatilhos: laço de sondagem mínimo (D3), eventos internos, eventos de plugin declarados (D6), filtro de autor | P5 | P3, P8, P9 | feito (#421) |
 | P7 | Porta `IssueTracker` (D4), adaptador GitHub, falso, conformidade; `fetchPullRequest` e `fetchCiLog` na `CodeHost` | P0 | P1, P13 | feito (#362) |
@@ -100,7 +100,7 @@ O `@otheater/workflows` é pacote novo do monorepo, não dependência de fora. E
 | P10c | A peça pela `play.yaml`: o `PlayStageHost` no runtime, as cinco diferenças do P3, o snapshot e a retomada da peça, e o `playMachine` sai (critério 4); a parte da N295 que vale só para a peça | P4, P12 | nada | a fazer |
 | P10b | API e CLI: validar, simular com o `fake-agent`, salvar, ativar, desativar, diff, listar, instalar (`ot flow ...`) | P4, P5, P9, P10a | P12, P10c | a fazer |
 | P11 | Editor do YAML na TUI, com o validador do P1 | P10b | P15, P16 (a parte automática) | a fazer |
-| P12 | Workflows prontos: `github-issues`, `pr-review` e `ci-fix` | P6, P8, P10a | P4, P10b | a fazer |
+| P12 | Workflows prontos: `github-issues`, `pr-review` e `ci-fix` | P6, P8, P10a | P4, P10b | feito (#425) |
 | P13 | Mural de recados da peça (N308, opção 1): `post_note`, `read_notes` | P0 | P1, P7 | feito (#360) |
 | P14 | Supervisão do Diretor (N309): sinais, `warn` e `redirect`, o canal pela resposta MCP (D8) e os três extras | P13 | P2, P5 | feito (#414) |
 | P15 | `ask_director` (N308, opção 2): o `blocked` que não encerra, com espera, prazo e o modo `relay` pelo canal do P14 | P14 | P3 a P12 | feito (#420) |
@@ -313,7 +313,7 @@ Todos **[proposta]** quanto ao nome. Cada um entra no catálogo do protocolo e n
 - O harness de caos ganha um gerador de definições pequenas e roda I1 a I8 sobre elas (docs/24 §6).
 - **Aceite próprio:** a parte 2 do critério de aceite.
 
-**Como ficou** (2026-11-28, [V] com os testes locais de protocol, workflows e daemon e com o caos de `kill -9` sobre o `pnpm build`; as escolhas marcadas [proposta] foram aceitas pelo dono em 2026-11-28, por múltipla escolha: "Aceitar todas"). Por ordem do dono de 2026-11-28, a troca da `playMachine` pela execução da `play.yaml` ficou para um passo próprio, o **P10c**: o P4 vale só para o motor genérico (`WorkflowRuntime`), e a `play` continua no `PlayRunner` (`pipeline/` e a máquina intactos).
+**Como ficou** (2026-11-28, PR #426; [V] com os testes locais de protocol, workflows e daemon e com o caos de `kill -9` sobre o `pnpm build`; as escolhas marcadas [proposta] foram aceitas pelo dono em 2026-11-28, por múltipla escolha: "Aceitar todas"). Por ordem do dono de 2026-11-28, a troca da `playMachine` pela execução da `play.yaml` ficou para um passo próprio, o **P10c**: o P4 vale só para o motor genérico (`WorkflowRuntime`), e a `play` continua no `PlayRunner` (`pipeline/` e a máquina intactos).
 - **Versão de nascimento:** o snapshot da execução guarda `born: {id, version, hash}` (a definição em que ela nasceu) ao lado de `workflow` (a de agora). Sem migração, as duas são iguais. [V] Teste: uma execução nascida na 2.0 continua na 2.0 depois de a 2.1 ser ativada, com `pin`.
 - **`workflows.running_on_change`:** `pin` (padrão) ou `migrate_at_safe_point`. A biblioteca avisa o runtime depois de ativar uma versão (gancho `onActivated`, com `runtime.onActivated`). Com `pin`, o runtime não pede nada e as execuções vivas ficam onde nasceram. Com `migrate_at_safe_point`, ele pede a migração das execuções abertas do workflow à versão ativada (só se for maior que a delas). [V] O Produtor também pode pedir uma migração explícita (`runtime.requestMigration(runId, versão)`), nos dois modos [proposta].
 - **Ponto seguro:** a migração só se aplica entre dois passos, com `inFlight === null`, sem efeito aberto no diário (`pending` ou `ambiguous`; `not_done` é veredito fechado) e com `safePoint` no tipo de passo do nó que a execução está para entrar. Uma execução parada em `approval` ou `wait_event` não está em ponto seguro. O pedido fica gravado no snapshot (`runtime.migration`), então sobrevive a uma queda; um pedido novo substitui o antigo [proposta]. [V]
