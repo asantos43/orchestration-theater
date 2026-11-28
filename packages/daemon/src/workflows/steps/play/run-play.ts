@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0
 import { createHash } from 'node:crypto';
+import { buildDaemonEvent, type WorkflowPlayCancelOutcome } from '@otheater/protocol';
 import { durationMs } from '@otheater/workflows';
+import { situationText } from '../../../situations.js';
 import type { CodeHostStepDeps } from '../codehost/deps.js';
 import {
   codeHostOf,
@@ -70,6 +72,12 @@ export interface PlayRunPort {
   }): Promise<PlayRunOpen>;
   /** `undefined` while the play has not reached a final state. */
   outcome(playId: string): Promise<PlayRunOutcome | undefined>;
+  /**
+   * Asks the play to cancel (P10c: the run that opened it was cancelled). `not_found` when there
+   * is no such play, `already_final` when it ended before, `cancelled` when it took the cancel.
+   * It rejects when the cancel could not be sent.
+   */
+  cancel(playId: string, reason: string): Promise<'cancelled' | 'already_final' | 'not_found'>;
 }
 
 /** The id of the play of a visit: short, valid as a branch name, and the same after a restart. */
@@ -187,6 +195,29 @@ export function createRunPlayStep(port: PlayRunPort): StepRunner {
         return portFailure(error);
       }
     },
+    async onCancel(ctx: StepContext): Promise<void> {
+      const playId = playIdOfVisit(ctx.key);
+      const report = async (outcome: WorkflowPlayCancelOutcome, detail?: string): Promise<void> => {
+        await ctx.deps.store.events.append({
+          ...buildDaemonEvent('workflow.play.cancelled', {
+            runId: ctx.runId,
+            node: ctx.node,
+            play: playId,
+            outcome,
+            ...(detail === undefined ? {} : { detail: detail.slice(0, 500) }),
+          }),
+          scenarioId: ctx.scenarioId,
+          playId: ctx.runId,
+        });
+      };
+      try {
+        const result = await port.cancel(playId, `The run ${ctx.runId} was cancelled.`);
+        if (result !== 'not_found') await report(result);
+      } catch (error) {
+        // A play that keeps running is the Producer's: the event is how they (and the hooks) know.
+        await report('failed', situationText(error, 400) ?? 'the cancel was not sent');
+      }
+    },
   };
 }
 
@@ -240,6 +271,7 @@ export function createLatePlayRunPort(): LatePlayRunPort {
       exists: async (playId) => await bound().exists(playId),
       open: async (request) => await bound().open(request),
       outcome: async (playId) => await bound().outcome(playId),
+      cancel: async (playId, reason) => await bound().cancel(playId, reason),
     },
     bind(port) {
       real = port;

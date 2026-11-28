@@ -55,6 +55,21 @@ export class FakePlayRunPort implements PlayRunPort {
     return Promise.resolve(this.plays.get(playId)?.outcome);
   }
 
+  /** Every `cancel` that reached the port, in order. */
+  readonly cancelled: { readonly playId: string; readonly reason: string }[] = [];
+  /** When set, `cancel` rejects with this message. */
+  cancelFails: string | undefined;
+
+  cancel(playId: string, reason: string): Promise<'cancelled' | 'already_final' | 'not_found'> {
+    if (this.cancelFails !== undefined) return Promise.reject(new Error(this.cancelFails));
+    const play = this.plays.get(playId);
+    if (play === undefined) return Promise.resolve('not_found');
+    this.cancelled.push({ playId, reason });
+    if (play.outcome !== undefined) return Promise.resolve('already_final');
+    play.outcome = { state: 'CANCELLED', branch: '', pullRequest: null, summary: reason };
+    return Promise.resolve('cancelled');
+  }
+
   /** Ends a play, as the machine would. */
   finish(playId: string, outcome: PlayRunOutcome = deliveredOutcome()): void {
     const play = this.plays.get(playId);

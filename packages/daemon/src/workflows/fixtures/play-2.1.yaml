@@ -1,0 +1,126 @@
+# Test only (a fixture, not shipped): the play 2.1.0 that the migration tests move a run of 2.0.0 to
+# (plan of Phase 11b, P10c; N295). It is play.yaml 2.0.0 with 'plan_reviews' raised to 3 and the
+# 'migrate_from' that says each node of 2.0.0 stays where it is. A run born in 2.0.0 stays in it
+# (running_on_change: pin) or moves here at a safe point (migrate_at_safe_point).
+id: play
+version: 2.1.0
+engine: '>=1 <2'
+migrate_from:
+  '2.0.0':
+    planning: planning
+    clarifying: clarifying
+    reviewing_plan: reviewing_plan
+    scripting: scripting
+    reviewing_script: reviewing_script
+    executing: executing
+    integrating: integrating
+    critiquing: critiquing
+    deciding: deciding
+    delivering: delivering
+    awaiting_producer: awaiting_producer
+description: 'The play: plan, script, execution by the Actors, critique and delivery.'
+inputs:
+  skip: { type: { list: string }, default: [] }
+nodes:
+  planning: { step: plan, role: director }
+  clarifying: { step: clarify }
+  reviewing_plan: { step: review, role: reviewer, params: { subject: plan } }
+  scripting: { step: script, role: scriptwriter }
+  reviewing_script: { step: review, role: reviewer, params: { subject: script } }
+  executing: { step: execute_dag, role: actor }
+  integrating: { step: integrate }
+  critiquing: { step: critique, role: critic }
+  deciding: { step: decide, role: director }
+  delivering: { step: deliver }
+  awaiting_producer: { step: await_producer }
+start: planning
+edges:
+  - planning -> clarifying when output.has_open_questions
+  - planning -> scripting when "plan_review" in inputs.skip
+  - planning -> reviewing_plan
+
+  - clarifying -> scripting when "plan_review" in inputs.skip
+  - clarifying -> reviewing_plan
+
+  - { from: reviewing_plan, to: scripting, when: output.approved }
+  - { from: reviewing_plan, to: planning, limit: plan_reviews, on_limit: awaiting_producer }
+
+  - scripting -> reviewing_script when output.valid
+  - { from: scripting, to: scripting, limit: script_validations, on_limit: awaiting_producer }
+
+  - reviewing_script -> executing when output.approved
+  - { from: reviewing_script, to: scripting, limit: script_vetoes, on_limit: awaiting_producer }
+
+  - executing -> integrating when output.outcome == "completed"
+  - {
+      from: executing,
+      to: scripting,
+      when: output.outcome == "restart_script",
+      limit: script_returns,
+      on_limit: awaiting_producer,
+    }
+  - {
+      from: executing,
+      to: planning,
+      when: output.outcome == "restart_plan",
+      limit: structural_restarts,
+      on_limit: awaiting_producer,
+    }
+
+  - integrating -> delivering when output.ok and "critique" in inputs.skip
+  - integrating -> critiquing when output.ok
+  - {
+      from: integrating,
+      to: scripting,
+      when: not output.ok,
+      limit: script_returns,
+      on_limit: awaiting_producer,
+    }
+
+  - critiquing -> delivering when output.approved
+  - { from: critiquing, to: deciding, limit: critic_rejections, on_limit: awaiting_producer }
+
+  - deciding -> scripting when output.decision == "script"
+  - deciding -> executing when output.decision == "execution"
+  - deciding -> awaiting_producer
+
+  - delivering -> done when output.outcome == "delivered"
+  - delivering -> awaiting_producer
+
+  - {
+      from: awaiting_producer,
+      to: planning,
+      when: output.choice == "plan",
+      limit: producer_rounds,
+      on_limit: cancelled,
+    }
+  - {
+      from: awaiting_producer,
+      to: scripting,
+      when: output.choice == "script",
+      limit: producer_rounds,
+      on_limit: cancelled,
+    }
+  - {
+      from: awaiting_producer,
+      to: executing,
+      when: output.choice == "execution",
+      limit: producer_rounds,
+      on_limit: cancelled,
+    }
+  - {
+      from: awaiting_producer,
+      to: delivering,
+      when: output.choice == "deliver",
+      limit: producer_rounds,
+      on_limit: cancelled,
+    }
+  - awaiting_producer -> cancelled
+limits:
+  plan_reviews: 3
+  script_validations: 3
+  script_vetoes: 2
+  script_returns: 2
+  structural_restarts: 1
+  critic_rejections: 2
+  producer_rounds: 20

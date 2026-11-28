@@ -97,4 +97,5 @@ Uma `run_play` abre uma peça pelo executor atual (`PlayRunner`) e espera por um
 - **A triagem pelo Diretor** do `github-issues` (docs/24, seção 11, item 2): o `ask_director` existe (P15), mas a definição pronta não o usa; a decisão de corrigir ou pedir informação fica com o Produtor, na aprovação. **[proposta]**
 - **PR com `Fixes #N`:** quem monta o texto do PR é a entrega da peça, que ainda não sabe da issue.
 - **`ci-fix` na mesma branch** e **`pr-review` só com o Crítico:** pedem a troca da máquina e um modo de a peça parar antes do push (P10c).
-- **Uma aprovação depois do trabalho** e **as saídas de um nó visíveis nos nós seguintes** (a interpolação substituiria o `body_from`): ficam para o P10b e o P10c.
+- **Uma aprovação depois do trabalho** pede um modo de a peça parar antes do push: fica para quando a peça rodar pela definição.
+- **As saídas de um nó nos nós seguintes** já existem (P10c): `${nodes.work.summary}` num parâmetro de texto. Os workflows prontos seguem com o `body_from`, que continua valendo; trocar pelos `${...}` é opcional.
