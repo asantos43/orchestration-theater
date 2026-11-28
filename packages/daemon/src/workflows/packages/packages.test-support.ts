@@ -207,7 +207,7 @@ function git(cwd: string, args: readonly string[]): Promise<string> {
       },
       (error, stdout) => {
         if (error === null) resolve(stdout.trim());
-        else reject(error);
+        else reject(new Error(error.message));
       },
     );
   });

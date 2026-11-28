@@ -116,7 +116,7 @@ async function makePackage(options: MakePackage = {}): Promise<string> {
     version,
     description: 'Review workflows',
     files: workflows.map((workflow) => ({
-      path: `workflows/${workflow.id}.yaml`,
+      path: `workflows/${workflow.id}-${workflow.version}.yaml`,
       text: workflowYaml(workflow.id, workflow.version, {
         ...(workflow.requiresTools === undefined ? {} : { requiresTools: workflow.requiresTools }),
       }),
@@ -206,7 +206,7 @@ describe('installing a folder with no signature', () => {
       version: '1.0.0',
       description: 'Review workflows',
       origin: { kind: 'file', path: folder },
-      workflows: [{ id: 'review', version: '1.0.0', path: 'workflows/review.yaml' }],
+      workflows: [{ id: 'review', version: '1.0.0', path: 'workflows/review-1.0.0.yaml' }],
       previousVersion: null,
       signature: { state: 'absent' },
       outcome: { kind: 'ready', confirm: ['unsigned'] },
@@ -503,7 +503,7 @@ describe('what is checked before anything is saved', () => {
         { id: 'b', version: '1.0.0' },
       ],
     });
-    await writeFile(join(folder, 'workflows/b.yaml'), 'not: a workflow\n');
+    await writeFile(join(folder, 'workflows/b-1.0.0.yaml'), 'not: a workflow\n');
     // The manifest hash no longer matches: the package is refused before it is validated.
     await expect(w.installer.install(folder, { approve: yes })).rejects.toThrow(InvalidInput);
     expect(await w.library.list()).toEqual([]);
@@ -696,12 +696,6 @@ describe('a failure while saving', () => {
       activate: w.library.activate.bind(w.library),
       remove: w.library.remove.bind(w.library),
     };
-    const broken = await world(
-      { activate: 'always' },
-      { library: failing as unknown as WorkflowLibrary },
-    );
-    // `broken` has its own store; build the case on the first world's store instead.
-    void broken;
     const installer = new WorkflowPackageInstaller({
       library: failing,
       registry: w.registry,
