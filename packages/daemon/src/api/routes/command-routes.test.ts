@@ -79,7 +79,12 @@ beforeEach(async () => {
     clientSearch: NO_CLIENTS,
     // No launcher (Windows with `windows_launcher: off`), so the plays are off: an empty pool alone
     // no longer turns them off (P18, N321), the daemon waits for a client to be found.
-    config: parseConfig('backup:\n  when: manual\nprocesses:\n  windows_launcher: off\n'),
+    // The loops of the triggers of the workflows (P10a) lap once a day: their laps on a fake clock of a day are not
+    // what this file tests (the order that expires after 24 h).
+    config: parseConfig(
+      'backup:\n  when: manual\nprocesses:\n  windows_launcher: off\n' +
+        'workflows:\n  triggers:\n    poll:\n      mode: off\n      interval: 1d\n    event_poll: 1d\n',
+    ),
     overrides: {
       clock,
       vault,

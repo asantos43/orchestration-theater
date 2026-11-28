@@ -30,6 +30,7 @@ import {
   GithubCodeHost,
   GithubCodeHostConfigSchema,
   GithubIssueTracker,
+  GithubRepoReader,
   ToolRunner,
 } from '@otheater/adapter-codehost-github';
 import {
@@ -161,6 +162,7 @@ import { createLogger, type DaemonLogger, type Logger } from './logger.js';
 import { dataPaths, profileDirOf, type DataPaths, type Env, type ProfileNames } from './paths.js';
 import { buildSandboxWiring, type SandboxWiring } from './sandbox-wiring.js';
 import type { CommandRunner } from './service/command-runner.js';
+import type { CollaboratorCheck, PullRequestLister } from './workflows/triggers/types.js';
 
 /** The ports the daemon composes. */
 export type PortName =
@@ -247,6 +249,13 @@ export interface ComposeOverrides {
    * the one `adapters.issue_tracker` names (`same_as_code_host` by default); tests hand in a fake.
    */
   readonly issueTracker?: IssueTracker;
+  /**
+   * What the triggers of the workflow bindings read beyond the ports of the core (Phase 11b, P10a):
+   * the open pull requests and who is a collaborator. Without them the composition builds the ones
+   * of GitHub where the code host is GitHub (`composeTriggerPorts`); tests hand in fakes.
+   */
+  readonly pullRequests?: PullRequestLister;
+  readonly collaborators?: CollaboratorCheck;
 }
 
 export interface ComposeOptions {
@@ -312,6 +321,13 @@ export interface Composition {
    * names, or the override. `compose` always sets it; `undefined` as for `codeHost`.
    */
   readonly issueTracker: IssueTracker | undefined;
+  /**
+   * The reads the triggers of the workflow bindings make of the code host beyond the ports of the
+   * core (Phase 11b, P10a): the open pull requests and who is a collaborator. `undefined` where the
+   * code host is not GitHub (`none`, `fake`, an override) or has no launcher: the triggers that need
+   * them (`pr_opened`, `ci_failed`, `authors: collaborators`) then fail their look with a clear message.
+   */
+  readonly triggerPorts: TriggerPorts;
   /**
    * The `ccusage` source (P12, N118): set only when `usage.ccusage.enabled` and the adapter could
    * be built. Whether it works (the version) is checked when the daemon starts the audit.
@@ -823,6 +839,13 @@ interface GithubAdapters {
   readonly host: GithubCodeHost;
   readonly probe: GithubProbe;
   readonly tracker: GithubIssueTracker;
+  readonly reader: GithubRepoReader;
+}
+
+/** What {@link Composition.triggerPorts} holds. */
+export interface TriggerPorts {
+  readonly pullRequests: PullRequestLister | undefined;
+  readonly collaborators: CollaboratorCheck | undefined;
 }
 
 /**
@@ -920,6 +943,7 @@ async function buildGithubAdapters(
   const env = token === undefined ? section.env : { ...section.env, GH_TOKEN: token };
   const host = new GithubCodeHost({ launcher, config: { ...section, env } });
   const tracker = new GithubIssueTracker({ launcher, config: { ...section, env } });
+  const reader = new GithubRepoReader({ launcher, config: { ...section, env } });
   const runner = new ToolRunner({
     launcher,
     timeoutMs: Math.min(section.timeoutMs, PROBE_TIMEOUT_MS),
@@ -945,7 +969,7 @@ async function buildGithubAdapters(
       }
     },
   };
-  return { host, probe, tracker };
+  return { host, probe, tracker, reader };
 }
 
 /**
@@ -1005,6 +1029,55 @@ async function composeIssueTracker(
   }
   if (github?.host === codeHost) return record(github.tracker);
   return record(new NoIssueTracker(() => 'the GitHub code host could not be built'));
+}
+
+/**
+ * The reads of the triggers (Phase 11b, P10a): `PullRequestLister` and `CollaboratorCheck` over the
+ * GitHub adapter (`GithubRepoReader`), by `adapters.code_host`:
+ * - `github`: always the reader (with the process launcher; without it, none);
+ * - `auto` (default): per repository, the reader where the code host picks GitHub for it; where it
+ *   picks the local host the call is `AdapterUnavailable` with the reason, so the look of the
+ *   binding fails with a clear message (and follows `workflows.triggers.poll.on_error`);
+ * - `none`, `fake` and an overridden code host: none (the triggers say so on the look).
+ * The instances of `overrides.pullRequests` and `overrides.collaborators` replace each one. [proposta]
+ */
+async function composeTriggerPorts(
+  parts: CodeHostParts,
+  codeHost: CodeHost,
+): Promise<TriggerPorts> {
+  const { config, overrides } = parts;
+  const built = await (async (): Promise<TriggerPorts> => {
+    const none: TriggerPorts = { pullRequests: undefined, collaborators: undefined };
+    if (overrides.codeHost !== undefined) return none;
+    const mode = config.adapters.code_host;
+    if (mode === 'none' || mode === 'fake') return none;
+    const github = await parts.github();
+    if (github === undefined) return none;
+    if (!(codeHost instanceof AutoCodeHost)) {
+      return { pullRequests: github.reader, collaborators: github.reader };
+    }
+    const reader = async (repo: string): Promise<GithubRepoReader> => {
+      const host = await codeHost.hostFor(repo);
+      if (host !== github.host) {
+        throw new AdapterUnavailable(
+          `the code host of ${repo} is not GitHub: ${codeHost.reasonFor(repo)}`,
+        );
+      }
+      return github.reader;
+    };
+    return {
+      pullRequests: {
+        listOpen: async (opts) => (await reader(opts.repo)).listOpen(opts),
+      },
+      collaborators: {
+        isCollaborator: async (opts) => (await reader(opts.repo)).isCollaborator(opts),
+      },
+    };
+  })();
+  return {
+    pullRequests: overrides.pullRequests ?? built.pullRequests,
+    collaborators: overrides.collaborators ?? built.collaborators,
+  };
 }
 
 function overrideRecord(port: PortName, portVersion: string): AdapterRecord {
@@ -1327,6 +1400,7 @@ export async function compose(config: DaemonConfig, options: ComposeOptions): Pr
     };
     const codeHost = await composeCodeHost(hostParts);
     const issueTracker = await composeIssueTracker(hostParts, codeHost);
+    const triggerPorts = await composeTriggerPorts(hostParts, codeHost);
 
     // Phase 8, P1 (N54): the telemetry base opens after the situations, which it reports to. It
     // never stops the daemon: a bad file is recreated, and a base that cannot be had is `no_base`.
@@ -1401,6 +1475,7 @@ export async function compose(config: DaemonConfig, options: ComposeOptions): Pr
       browser,
       codeHost,
       issueTracker,
+      triggerPorts,
       usageSource,
       situations,
       disk,

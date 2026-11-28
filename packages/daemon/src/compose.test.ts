@@ -1012,6 +1012,121 @@ describe('compose: the code host (Phase 11, P13, N289)', () => {
     ).rejects.toThrow(/code_host/);
   });
 
+  describe('the reads of the triggers (Phase 11b, P10a)', () => {
+    it('none, fake and an overridden code host: no reader, and the overrides replace each port', async () => {
+      for (const mode of ['none', 'fake']) {
+        const { composition, dispose } = await composed(
+          `adapters:\n  code_host: ${mode}\n${NO_LAUNCHER}`,
+        );
+        try {
+          expect(composition.triggerPorts).toEqual({
+            pullRequests: undefined,
+            collaborators: undefined,
+          });
+        } finally {
+          await composition.close();
+          await dispose();
+        }
+      }
+      const pullRequests = { listOpen: () => Promise.resolve([]) };
+      const collaborators = { isCollaborator: () => Promise.resolve(true) };
+      const tmp = await makeTempDataDir();
+      const clock = new FakeClock(1000);
+      const composition = await compose(
+        parseConfig(`adapters:\n  code_host: none\n${NO_LAUNCHER}`),
+        {
+          dataDir: tmp.dir,
+          overrides: {
+            clock,
+            store: new InMemoryStore({ clock }),
+            vault: new InMemorySecretVault(),
+            sandbox: 'none',
+            vcs,
+            pullRequests,
+            collaborators,
+          },
+        },
+      );
+      try {
+        expect(composition.triggerPorts.pullRequests).toBe(pullRequests);
+        expect(composition.triggerPorts.collaborators).toBe(collaborators);
+      } finally {
+        await composition.close();
+        await tmp.dispose();
+      }
+    });
+
+    it('github: the reader reads the pull requests and the collaborators through gh, with the token', async () => {
+      const launcher = new FakeProcessLauncher();
+      const vault = new InMemorySecretVault();
+      await vault.set(TOKEN_KEY, new Secret('test-token-not-real'));
+      const { composition, dispose } = await composed(
+        'adapters:\n  code_host: github\ncode_host:\n  ghBinary: /opt/fake/gh\n',
+        { launcher, vault },
+      );
+      try {
+        const { pullRequests, collaborators } = composition.triggerPorts;
+        expect(pullRequests).toBeDefined();
+        expect(collaborators).toBeDefined();
+        const listed = pullRequests
+          ?.listOpen({ repo: PR.repo, since: 0, limit: 5 })
+          .catch((error: unknown) => error);
+        await vi.waitFor(() => {
+          expect(launcher.launched).toHaveLength(1);
+        });
+        const first = launcher.launched[0];
+        expect(first?.options.cmd).toBe('/opt/fake/gh');
+        expect(first?.options.args[0]).toBe('api');
+        expect(first?.options.args).toContain('repos/{owner}/{repo}/pulls');
+        expect(first?.options.env.GH_TOKEN).toBe('test-token-not-real');
+        first?.exit(1);
+        expect(await listed).toBeInstanceOf(Error);
+        const checked = collaborators
+          ?.isCollaborator({ repo: PR.repo, login: 'dev-2' })
+          .catch((error: unknown) => error);
+        await vi.waitFor(() => {
+          expect(launcher.launched).toHaveLength(2);
+        });
+        expect(launcher.launched[1]?.options.args).toContain(
+          'repos/{owner}/{repo}/collaborators/dev-2/permission',
+        );
+        launcher.launched[1]?.exit(1);
+        expect(await checked).toBeInstanceOf(Error);
+      } finally {
+        await composition.close();
+        await dispose();
+      }
+    });
+
+    it('auto: a repository whose remote is not on GitHub is AdapterUnavailable, with the reason', async () => {
+      const launcher = new FakeProcessLauncher();
+      const { composition, dispose } = await composed('', { launcher });
+      try {
+        const { pullRequests, collaborators } = composition.triggerPorts;
+        expect(pullRequests).toBeDefined();
+        const listed = pullRequests
+          ?.listOpen({ repo: PR.repo, since: 0, limit: 5 })
+          .catch((error: unknown) => error);
+        await vi.waitFor(() => {
+          expect(launcher.launched).toHaveLength(1);
+        });
+        expect(launcher.launched[0]?.options.args).toEqual(['remote', 'get-url', 'origin']);
+        launcher.launched[0]?.exit(2);
+        const error = await listed;
+        expect(error).toBeInstanceOf(AdapterUnavailable);
+        expect(String(error)).toContain('is not GitHub');
+        // The answer for the repository is kept: the collaborator check does not ask git again.
+        await expect(
+          collaborators?.isCollaborator({ repo: PR.repo, login: 'dev-2' }),
+        ).rejects.toBeInstanceOf(AdapterUnavailable);
+        expect(launcher.launched).toHaveLength(1);
+      } finally {
+        await composition.close();
+        await dispose();
+      }
+    });
+  });
+
   describe('the issue tracker (Phase 11b, P7)', () => {
     const ISSUE = { repo: PR.repo, number: 7 };
     const codeOf = async (promise: Promise<unknown> | undefined): Promise<unknown> =>

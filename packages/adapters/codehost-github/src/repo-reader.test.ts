@@ -83,12 +83,13 @@ describe('GithubRepoReader against a fake gh', () => {
   it(
     'isCollaborator is true for write and admin, false for read and for who is not a user',
     async () => {
-      rig = await makeGithubRig();
-      await rig.seedCollaborator('owner-1', 'admin');
-      await rig.seedCollaborator('dev-2', 'write');
-      await rig.seedCollaborator('reader-3', 'read');
+      const current = await makeGithubRig();
+      rig = current;
+      await current.seedCollaborator('owner-1', 'admin');
+      await current.seedCollaborator('dev-2', 'write');
+      await current.seedCollaborator('reader-3', 'read');
       const check = (login: string): Promise<boolean> =>
-        rig!.reader.isCollaborator({ repo: rig!.repo, login });
+        current.reader.isCollaborator({ repo: current.repo, login });
       expect(await check('owner-1')).toBe(true);
       expect(await check('dev-2')).toBe(true);
       expect(await check('reader-3')).toBe(false);

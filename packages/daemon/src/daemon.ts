@@ -150,6 +150,7 @@ import { armFaults, disarmFaults } from './chaos/crash-points.js';
 import { faultPlanPath, resolveFaultPlan } from './chaos/faults.js';
 import type { DiskGuard } from './disk/index.js';
 import { reconcileBeforeResume, type RecoveryReport } from './recovery/reconcile.js';
+import { composeWorkflows } from './workflows/compose.js';
 import { BackupScheduler, type ActivityProbe } from './recovery/schedule.js';
 import { TrackingLauncher } from './recovery/tracking-launcher.js';
 import { ApplyCoordinator, type ApplyCoordinatorOptions } from './updates/apply/coordinator.js';
@@ -941,6 +942,26 @@ async function run(input: RunInput): Promise<DaemonHandle> {
 
   await directives.start();
 
+  // Phase 11b, P10a: the workflow engine (library, bindings, runtime and triggers). Nothing runs
+  // until the recovery ends: the runtime resumes its runs and the triggers start further down.
+  const workflows =
+    composition.codeHost === undefined || composition.issueTracker === undefined
+      ? undefined
+      : composeWorkflows({
+          config: () => config.workflows,
+          store,
+          clock,
+          logger,
+          dataDir: options.dataDir,
+          aggregator: pluginAggregator,
+          plugins: options.plugins ?? plugins,
+          ask: (scenarioId, question) =>
+            input.orchestrationHandlers.openApproval(scenarioId, question),
+          codeHost: composition.codeHost,
+          issueTracker: composition.issueTracker,
+          pullRequests: composition.triggerPorts.pullRequests,
+          collaborators: composition.triggerPorts.collaborators,
+        });
   const recoveryStartedAt = clock.now();
   // Before anything is resumed: the orphans, the sessions, the worktrees and the effects (5.21).
   const recovery = await reconcileBeforeResume({
@@ -951,6 +972,7 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     logger,
     situations: composition.situations,
     orphans: config.recovery.orphans,
+    ...(workflows === undefined ? {} : { pluginEffects: workflows.pluginEffects }),
   });
   const quotaPrepare: (() => Promise<readonly ProfileRef[]>)[] = [];
   // The runner holds the baton port from the start; the orchestration binds the real one (P18, P16b).
@@ -1159,6 +1181,14 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     },
   });
   const resumed = (await orchestration?.runner.resumeAll()) ?? { resumed: [], refused: [] };
+  // The runs of the workflow engine (the plays of another `flowId`, which the runner above skips).
+  const workflowsResumed = (await workflows?.runtime.resumeAll()) ?? { resumed: [], refused: [] };
+  if (workflowsResumed.refused.length > 0) {
+    logger.warn(
+      { runs: workflowsResumed.refused },
+      'workflow runs that could not be resumed (definition missing or changed)',
+    );
+  }
   // A play the daemon died too early to start (killed between its creation and START) is in NEED
   // and has no effect to dispatch again: start it now (see `startStalledPlays`).
   if (orchestration !== undefined) {
@@ -1357,6 +1387,10 @@ async function run(input: RunInput): Promise<DaemonHandle> {
       // A login left open is cancelled: its process must not outlive the daemon.
       await attempt('logins', () => logins.stop());
       await attempt('scheduler', () => scheduler.stop());
+      // The triggers stop looking and the runs of the workflows stop where they are (a restart
+      // resumes them) before the orchestration quiesces.
+      await attempt('workflow triggers', async () => workflows?.triggers.stop());
+      await attempt('workflow runtime', async () => workflows?.runtime.stop());
       await attempt('orchestration', async () => orchestration?.quiesce());
       await attempt('directives', () => directives.stop());
       await attempt('wakeups', () => wakeups.stop());
@@ -1809,6 +1843,11 @@ async function run(input: RunInput): Promise<DaemonHandle> {
     stop,
     stopped,
   };
+  // Phase 11b, P10a: the triggers of the bindings start last, once nothing in the start-up can fail
+  // any more (a loop left running by a failed start would write to a store that is closing).
+  // `workflows.triggers.poll.mode: off` makes the loop of the code host look at nothing (the one of
+  // the events follows `event_poll`).
+  workflows?.triggers.start();
   if (options.signal !== undefined) {
     if (options.signal.aborted) void handle.stop('signal');
     else options.signal.addEventListener('abort', onAbort, { once: true });
