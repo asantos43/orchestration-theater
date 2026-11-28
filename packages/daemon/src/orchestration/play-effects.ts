@@ -194,7 +194,8 @@ export interface OrchestrationEffectsOptions {
    * P14: the feedback of the relaunch of a demand the Director redirected (the machine drops the
    * reason of the cancel when the point is answered), for the prompt of the next attempt.
    */
-  readonly redirectFeedback?: ((playId: string, demandId: string) => string | undefined) | undefined;
+  readonly redirectFeedback?:
+    ((playId: string, demandId: string) => string | undefined) | undefined;
   /**
    * Phase 11, P5: the work of a play hit a full disk. The effect does not send its failure event (a
    * full disk is not the play's failure): the play stays in its state and the disk guard asks the
@@ -218,7 +219,9 @@ function isStatusAnswer(output: unknown): boolean {
   if (typeof output !== 'object' || output === null) return false;
   const result = (output as { result?: unknown }).result;
   return (
-    typeof result === 'object' && result !== null && (result as { state?: unknown }).state === 'status'
+    typeof result === 'object' &&
+    result !== null &&
+    (result as { state?: unknown }).state === 'status'
   );
 }
 

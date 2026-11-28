@@ -14,12 +14,7 @@ import type { EventHub } from '../events/event-hub.js';
 import type { DirectorSessions } from '../orchestration/director.js';
 import type { PromptDispatcher } from '../prompt-dispatcher.js';
 import type { SituationSink } from '../situations.js';
-import {
-  clipText,
-  noticeLabel,
-  SupervisionChannel,
-  type Notice,
-} from './channel.js';
+import { clipText, noticeLabel, SupervisionChannel, type Notice } from './channel.js';
 import type { SupervisionSettings } from './config.js';
 import { DirectorCaller, statusAnswerPrompt } from './director-call.js';
 import {
@@ -446,10 +441,7 @@ export class SupervisionService {
     return handlers;
   }
 
-  async #tool(
-    call: ToolCall,
-    run: (context: ToolContext) => Promise<unknown>,
-  ): Promise<unknown> {
+  async #tool(call: ToolCall, run: (context: ToolContext) => Promise<unknown>): Promise<unknown> {
     const runtime = this.#runtime;
     if (runtime === undefined) {
       return failure(
@@ -504,7 +496,12 @@ export class SupervisionService {
     const used = await this.channel.warnings(target.playId, target.demandId);
     if (used >= settings.max_warnings_per_demand) {
       const limit = { playId: target.playId, demandId: target.demandId, attemptId };
-      await this.#limit('max_warnings_per_demand', limit, used + 1, settings.max_warnings_per_demand);
+      await this.#limit(
+        'max_warnings_per_demand',
+        limit,
+        used + 1,
+        settings.max_warnings_per_demand,
+      );
       return failure(
         'limit_reached',
         `This demand already got ${String(used)} warnings, the most allowed (supervision.max_warnings_per_demand).`,
@@ -512,7 +509,8 @@ export class SupervisionService {
       );
     }
     // [proposta] delivery `relaunch` makes every warning a redirect, when the mode allows one
-    const relaunch = kind === 'redirect' || (settings.delivery === 'relaunch' && settings.mode === 'redirect');
+    const relaunch =
+      kind === 'redirect' || (settings.delivery === 'relaunch' && settings.mode === 'redirect');
     const notice = await this.channel.queue({
       ...target,
       attemptId,
@@ -520,7 +518,11 @@ export class SupervisionService {
       text,
     });
     if (!relaunch) {
-      return { ok: true, noticeId: notice.noticeId, via: settings.delivery === 'next_turn' ? 'next_turn' : 'tool_reply' };
+      return {
+        ok: true,
+        noticeId: notice.noticeId,
+        via: settings.delivery === 'next_turn' ? 'next_turn' : 'tool_reply',
+      };
     }
     this.#redirects.set(attemptId, { demand: `${target.playId}/${target.demandId}`, text });
     await this.channel.record(
@@ -539,14 +541,16 @@ export class SupervisionService {
     if (settings.broadcast === 'off') {
       return failure('broadcast_off', 'broadcast is off (supervision.broadcast).');
     }
-    const open = (await this.#deps.store.plays.list({ scenarioId: context.scenarioId, open: true })).map(
-      (record) => record.id,
-    );
+    const open = (
+      await this.#deps.store.plays.list({ scenarioId: context.scenarioId, open: true })
+    ).map((record) => record.id);
     const playId = play ?? (open.length === 1 ? open[0] : undefined);
     if (playId === undefined) {
       return failure(
         open.length === 0 ? 'not_found' : 'play_required',
-        open.length === 0 ? 'The scenario has no play running.' : 'Several plays are running: say which one with `play`.',
+        open.length === 0
+          ? 'The scenario has no play running.'
+          : 'Several plays are running: say which one with `play`.',
       );
     }
     if (!open.includes(playId)) {
@@ -556,13 +560,22 @@ export class SupervisionService {
     if (used >= settings.max_warnings_per_demand) {
       await this.channel.record(
         'supervision.limit_reached',
-        { limit: 'broadcast', demandId: null, value: used + 1, max: settings.max_warnings_per_demand },
+        {
+          limit: 'broadcast',
+          demandId: null,
+          value: used + 1,
+          max: settings.max_warnings_per_demand,
+        },
         playId,
       );
-      return failure('limit_reached', `This play already got ${String(used)} broadcasts, the most allowed.`, {
-        limit: 'broadcast',
-        max: settings.max_warnings_per_demand,
-      });
+      return failure(
+        'limit_reached',
+        `This play already got ${String(used)} broadcasts, the most allowed.`,
+        {
+          limit: 'broadcast',
+          max: settings.max_warnings_per_demand,
+        },
+      );
     }
     const recipients = this.detector.attempts(playId);
     for (const watched of recipients) {
@@ -577,7 +590,11 @@ export class SupervisionService {
     if (recipients.length > 0) this.channel.countBroadcast(playId);
     await this.channel.record(
       'supervision.broadcast',
-      { recipients: recipients.length, attemptIds: recipients.map((watched) => watched.attemptId), text: clipText(text) },
+      {
+        recipients: recipients.length,
+        attemptIds: recipients.map((watched) => watched.attemptId),
+        text: clipText(text),
+      },
       playId,
     );
     return { ok: true, recipients: recipients.length };
@@ -593,11 +610,20 @@ export class SupervisionService {
     if (target instanceof ToolFailure) return target;
     const used = await this.channel.statusRequests(target.playId, target.demandId);
     if (used >= settings.max_warnings_per_demand) {
-      await this.#limit('status_request', { ...target, attemptId }, used + 1, settings.max_warnings_per_demand);
-      return failure('limit_reached', `This demand already got ${String(used)} status requests, the most allowed.`, {
-        limit: 'status_request',
-        max: settings.max_warnings_per_demand,
-      });
+      await this.#limit(
+        'status_request',
+        { ...target, attemptId },
+        used + 1,
+        settings.max_warnings_per_demand,
+      );
+      return failure(
+        'limit_reached',
+        `This demand already got ${String(used)} status requests, the most allowed.`,
+        {
+          limit: 'status_request',
+          max: settings.max_warnings_per_demand,
+        },
+      );
     }
     const notice = await this.channel.queue({
       ...target,
@@ -611,7 +637,11 @@ export class SupervisionService {
       target.playId,
       attemptId,
     );
-    return { ok: true, noticeId: notice.noticeId, via: settings.delivery === 'next_turn' ? 'next_turn' : 'tool_reply' };
+    return {
+      ok: true,
+      noticeId: notice.noticeId,
+      via: settings.delivery === 'next_turn' ? 'next_turn' : 'tool_reply',
+    };
   }
 }
 

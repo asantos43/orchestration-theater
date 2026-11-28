@@ -102,7 +102,12 @@ export class DirectorCaller {
         await this.#deps.channel.warnings(playId, demandId),
       );
       if (used >= settings.max_warnings_per_demand) {
-        await this.#limit(signal, 'max_warnings_per_demand', used + 1, settings.max_warnings_per_demand);
+        await this.#limit(
+          signal,
+          'max_warnings_per_demand',
+          used + 1,
+          settings.max_warnings_per_demand,
+        );
         return { outcome: 'limited', limit: 'max_warnings_per_demand' };
       }
     }

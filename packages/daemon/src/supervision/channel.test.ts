@@ -45,7 +45,7 @@ function channelOf(
     record: (type, payload, correlation) => {
       recorded.push({
         type,
-        payload: payload as unknown as Record<string, unknown>,
+        payload: payload,
         attemptId: correlation?.attemptId,
         scenarioId: correlation?.scenarioId,
       });
@@ -104,7 +104,11 @@ describe('SupervisionChannel', () => {
     await channel.queue({ ...ctx, kind: 'warn', text: 'late' });
     await channel.endAttempt('p1', 'a', 'p1/a/1');
     const last = recorded.at(-1);
-    expect(last?.payload).toMatchObject({ delivered: false, reason: 'attempt_ended', kind: 'warn' });
+    expect(last?.payload).toMatchObject({
+      delivered: false,
+      reason: 'attempt_ended',
+      kind: 'warn',
+    });
     expect(await channel.take(ctx)).toEqual([]);
   });
 

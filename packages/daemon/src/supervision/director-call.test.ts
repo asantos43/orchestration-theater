@@ -19,12 +19,12 @@ function signal(patch: Partial<DetectedSignal> = {}): DetectedSignal {
   };
 }
 
-async function rig(patch: Partial<SupervisionSettings> = {}) {
+function rig(patch: Partial<SupervisionSettings> = {}) {
   const store = new InMemoryStore({ clock: new FakeClock(1_000) });
   const limits: Record<string, unknown>[] = [];
   const situations: SituationSink = {
     record: (type, payload) => {
-      if (type === 'supervision.limit_reached') limits.push(payload as unknown as Record<string, unknown>);
+      if (type === 'supervision.limit_reached') limits.push(payload);
     },
   };
   const settings = { ...DEFAULT_SUPERVISION, ...patch };
@@ -39,7 +39,7 @@ async function rig(patch: Partial<SupervisionSettings> = {}) {
         ensured.push(scenarioId);
         return Promise.resolve();
       },
-    } as never,
+    },
     dispatcher: {
       submit: (input: { scenarioId: string; text: string; source: string }) => {
         submitted.push(input);
@@ -82,7 +82,7 @@ describe('supervisionPrompt and statusAnswerPrompt', () => {
 
 describe('DirectorCaller', () => {
   it('calls the Director for a signal: ensures its session and submits the prompt as the daemon', async () => {
-    const { caller, ensured, submitted } = await rig();
+    const { caller, ensured, submitted } = rig();
     caller.step('p1');
     expect(await caller.call(signal(), 's1')).toEqual({ outcome: 'director_called' });
     expect(ensured).toEqual(['s1']);
@@ -91,17 +91,17 @@ describe('DirectorCaller', () => {
     expect(submitted[0]?.text.startsWith('#ot-supervise')).toBe(true);
   });
 
-  it('allows max(1, floor(share * steps)) calls, and none with a budget of 0', async () => {
-    const { caller } = await rig();
+  it('allows max(1, floor(share * steps)) calls, and none with a budget of 0', () => {
+    const { caller } = rig();
     expect(caller.allowance(0)).toBe(1);
     expect(caller.allowance(5)).toBe(1);
     expect(caller.allowance(35)).toBe(3);
-    const zero = (await rig({ director_budget: 0 })).caller;
+    const zero = rig({ director_budget: 0 }).caller;
     expect(zero.allowance(1_000)).toBe(0);
   });
 
   it('holds back a call past director_budget and records supervision.limit_reached', async () => {
-    const { caller, submitted, limits } = await rig({ max_warnings_per_demand: 10 });
+    const { caller, submitted, limits } = rig({ max_warnings_per_demand: 10 });
     expect((await caller.call(signal(), 's1')).outcome).toBe('director_called');
     const second = await caller.call(signal({ key: 'k2' }), 's1');
     expect(second).toEqual({ outcome: 'limited', limit: 'director_budget' });
@@ -113,10 +113,22 @@ describe('DirectorCaller', () => {
   });
 
   it('holds back a call past max_warnings_per_demand, counting the warnings already queued', async () => {
-    const { caller, channel, submitted, limits } = await rig({ max_warnings_per_demand: 2 });
+    const { caller, channel, submitted, limits } = rig({ max_warnings_per_demand: 2 });
     for (let i = 0; i < 100; i += 1) caller.step('p1');
-    await channel.queue({ playId: 'p1', demandId: 'a', attemptId: 'p1/a/1', kind: 'warn', text: 'w' });
-    await channel.queue({ playId: 'p1', demandId: 'a', attemptId: 'p1/a/1', kind: 'warn', text: 'v' });
+    await channel.queue({
+      playId: 'p1',
+      demandId: 'a',
+      attemptId: 'p1/a/1',
+      kind: 'warn',
+      text: 'w',
+    });
+    await channel.queue({
+      playId: 'p1',
+      demandId: 'a',
+      attemptId: 'p1/a/1',
+      kind: 'warn',
+      text: 'v',
+    });
     const held = await caller.call(signal(), 's1');
     expect(held).toEqual({ outcome: 'limited', limit: 'max_warnings_per_demand' });
     expect(submitted).toHaveLength(0);
@@ -124,7 +136,7 @@ describe('DirectorCaller', () => {
   });
 
   it('counts per demand: another demand still gets its call', async () => {
-    const { caller } = await rig({ max_warnings_per_demand: 1, director_budget: 1 });
+    const { caller } = rig({ max_warnings_per_demand: 1, director_budget: 1 });
     for (let i = 0; i < 10; i += 1) caller.step('p1');
     expect((await caller.call(signal(), 's1')).outcome).toBe('director_called');
     expect((await caller.call(signal(), 's1')).outcome).toBe('limited');

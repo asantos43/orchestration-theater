@@ -52,7 +52,9 @@ function asked(...paths: string[]): EventEnvelope {
   return event('permission.asked', { kind: 'edit', paths });
 }
 
-function script(contracts: readonly { id: string; title?: string; description?: string }[]): Script {
+function script(
+  contracts: readonly { id: string; title?: string; description?: string }[],
+): Script {
   return {
     contracts: contracts.map((contract) => ({
       id: contract.id,
@@ -147,9 +149,9 @@ describe('SignalDetector: outside_demand', () => {
       update: { kind: 'tool_call', toolKind: 'read', locations: [{ path: `${WORKTREE}/y.txt` }] },
     });
     expect(detector.inspect(read)).toEqual([]);
-    expect(detector.inspect(event('permission.asked', { kind: 'execute', paths: ['z.txt'] }))).toEqual(
-      [],
-    );
+    expect(
+      detector.inspect(event('permission.asked', { kind: 'execute', paths: ['z.txt'] })),
+    ).toEqual([]);
   });
 
   it('lists at most five paths and says how many more', () => {
@@ -166,10 +168,13 @@ describe('SignalDetector: outside_demand', () => {
     expect(off.inspect(asked(`${WORKTREE}/other.txt`))).toEqual([]);
     const on = new SignalDetector(() => settings());
     on.add(watched());
-    expect(on.inspect(event('permission.asked', { kind: 'edit', paths: ['x'] }, 'p1/zz/1'))).toEqual(
-      [],
-    );
-    const bare = { ...event('permission.asked', { kind: 'edit', paths: ['x'] }), attemptId: undefined };
+    expect(
+      on.inspect(event('permission.asked', { kind: 'edit', paths: ['x'] }, 'p1/zz/1')),
+    ).toEqual([]);
+    const bare = {
+      ...event('permission.asked', { kind: 'edit', paths: ['x'] }),
+      attemptId: undefined,
+    };
     expect(on.inspect(bare)).toEqual([]);
   });
 
@@ -248,13 +253,15 @@ describe('SignalDetector: budget_fraction and contract_changed', () => {
   it('names the attempts of the play whose demand cites a changed contract', () => {
     const detector = new SignalDetector(() => settings());
     detector.add(watched());
-    detector.add(
-      watched({ attemptId: 'p1/b/1', demandId: 'b', contracts: ['c1', 'c2'] }),
-    );
+    detector.add(watched({ attemptId: 'p1/b/1', demandId: 'b', contracts: ['c1', 'c2'] }));
     detector.add(watched({ attemptId: 'p1/c/1', demandId: 'c', contracts: ['c9'] }));
     detector.add(watched({ attemptId: 'p2/a/1', playId: 'p2', contracts: ['c1'] }));
     const one = detector.contractChanged('p1', ['c2']);
-    expect(one).toMatchObject({ signal: 'contract_changed', demandId: 'b', attemptIds: ['p1/b/1'] });
+    expect(one).toMatchObject({
+      signal: 'contract_changed',
+      demandId: 'b',
+      attemptIds: ['p1/b/1'],
+    });
     const two = detector.contractChanged('p1', ['c1']);
     expect(two?.demandId).toBeNull();
     expect(two?.attemptIds).toEqual(['p1/a/1', 'p1/b/1']);

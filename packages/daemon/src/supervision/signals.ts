@@ -131,8 +131,7 @@ export function changedContracts(before: Script | undefined, after: Script): rea
   for (const [id, contract] of now) {
     const old = was.get(id);
     if (
-      old === undefined ||
-      old.title !== contract.title ||
+      old?.title !== contract.title ||
       old.description !== contract.description ||
       old.kind !== contract.kind
     ) {
@@ -251,8 +250,16 @@ export class SignalDetector {
       }
       if (fresh.length > 0) {
         const listed = fresh.slice(0, DETAIL_PATHS).join(', ');
-        const more = fresh.length > DETAIL_PATHS ? ` and ${String(fresh.length - DETAIL_PATHS)} more` : '';
-        signals.push(this.#signal(state, 'outside_demand', `edited outside the demand: ${listed}${more}`, `outside:${fresh.join('|')}`));
+        const more =
+          fresh.length > DETAIL_PATHS ? ` and ${String(fresh.length - DETAIL_PATHS)} more` : '';
+        signals.push(
+          this.#signal(
+            state,
+            'outside_demand',
+            `edited outside the demand: ${listed}${more}`,
+            `outside:${fresh.join('|')}`,
+          ),
+        );
       }
     }
     if (triggers.test_loop !== 'off') {
@@ -289,7 +296,8 @@ export class SignalDetector {
    * them. Dedup is the caller's: the same change is not announced twice.
    */
   contractChanged(playId: string, changed: readonly string[]): DetectedSignal | undefined {
-    if (changed.length === 0 || this.#settings().triggers.contract_changed !== 'on') return undefined;
+    if (changed.length === 0 || this.#settings().triggers.contract_changed !== 'on')
+      return undefined;
     const affected = this.attempts(playId).filter((watched) =>
       watched.contracts.some((contract) => changed.includes(contract)),
     );
@@ -311,7 +319,10 @@ export class SignalDetector {
       return undefined;
     }
     if (event.type === 'tool.called') {
-      state.summaries.set(payload.callId, typeof payload.summary === 'string' ? payload.summary : 'run_tests');
+      state.summaries.set(
+        payload.callId,
+        typeof payload.summary === 'string' ? payload.summary : 'run_tests',
+      );
       return undefined;
     }
     const summary = state.summaries.get(payload.callId) ?? 'run_tests';
@@ -320,8 +331,7 @@ export class SignalDetector {
       state.streak = undefined;
       return undefined;
     }
-    const streak =
-      state.streak?.summary === summary ? state.streak : { summary, count: 0 };
+    const streak = state.streak?.summary === summary ? state.streak : { summary, count: 0 };
     streak.count += 1;
     state.streak = streak;
     if (streak.count !== limit) return undefined;
@@ -333,7 +343,12 @@ export class SignalDetector {
     );
   }
 
-  #signal(state: AttemptState, signal: SupervisionSignal, detail: string, key: string): DetectedSignal {
+  #signal(
+    state: AttemptState,
+    signal: SupervisionSignal,
+    detail: string,
+    key: string,
+  ): DetectedSignal {
     const { watched } = state;
     return {
       signal,

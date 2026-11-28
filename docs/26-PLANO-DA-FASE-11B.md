@@ -442,7 +442,23 @@ Todos **[proposta]** quanto ao nome. Cada um entra no catálogo do protocolo e n
   - o pedido de situação faz o Ator responder pelo `submit` com um estado parcial, sem encerrar.
 - **Aceite próprio:** a parte 3 do critério de aceite, menos o `ask_director`.
 
-**Como ficou:** a preencher.
+**Como ficou** (2026-11-27, [V] com os testes locais de protocol, core, daemon e fake-agent; ainda sem PR):
+
+- **Sinais (`supervision/signals.ts`):** o `SignalDetector` vê só o que o daemon já tem (eventos da tentativa, `expectedFiles` da demanda, o roteiro e o tempo gasto) e dispara `outside_demand`, `contract_changed`, `test_loop` (N falhas seguidas do mesmo teste) e `budget_fraction`. Cada sinal vira o evento `supervision.signal` e é dedupado por tentativa e chave.
+- **Canal (`supervision/channel.ts`):** os avisos ficam na fila da demanda, persistem no blackboard (`supervision/<demanda>`, chave em `core/src/blackboard-keys.ts`) e sobrevivem ao resume. O MCP (`mcp/server.ts`, opção `notices`) acrescenta o aviso, marcado `[Director supervision, ...]`, na resposta da próxima ferramenta do Ator (menos o `submit`). Se o Ator termina sem recebê-lo, grava `supervision.warning` com `delivered: false`.
+- **Chamada ao Diretor (`supervision/director-call.ts`, `service.ts`):** só um sinal chama o Diretor, pela fila de prompts da sessão dele, dentro de `supervision.director_budget`. Ferramentas novas (`core/src/registries/tools.ts`): `warn_actor`, `redirect_actor`, `broadcast`, `request_status`. O `redirect_actor` cancela a tentativa (`cancel_actor`) e a relança com o texto no prompt: o pipeline abre o ponto de julgamento 2 e os ganchos novos `redirectReason` e `redirectFeedback` (`orchestration/play-effects.ts`) devolvem o texto do aviso.
+- **Extras:** o aviso de contrato mudado vai do daemon a quem depende do contrato, sem chamar o Diretor; `broadcast` avisa todos os Atores da peça; `request_status` faz o Ator responder pelo `submit` com `result.state === 'status'`, que não encerra a tentativa nem conta como entrega.
+- **Eventos novos:** `supervision.signal`, `.warning`, `.redirect`, `.broadcast`, `.status_requested`, `.limit_reached` (162 eventos do daemon e 164 no registro, com os dois da peça).
+- **Chaves novas:** `supervision.mode` (`warn` padrão, `off`, `log`, `redirect`), `.delivery` (`tool_reply` padrão, `next_turn`, `relaunch`), `.triggers.outside_demand`, `.contract_changed`, `.test_loop` (3), `.budget_fraction` (0.8), `.max_warnings_per_demand` (3), `.director_budget` (0.1), `.broadcast` e `.status_request` (`on`).
+- **Aceite próprio:** `orchestration/supervision-e2e.test.ts` (6 testes, fake-agent com `#actor-supervise` e Diretor falso): a edição fora da demanda gera o sinal e o aviso chega na resposta MCP seguinte; o `redirect` relança com o aviso; cada limite gera `supervision.limit_reached`; a nota entre dois Atores chega pelo quadro de notas (P13). Os módulos têm testes próprios (`signals`, `channel`, `director-call`, `service`, `mcp/server`, `config`).
+- **Não coberto por e2e (só por teste de unidade):** `contract_changed`, `broadcast` e `request_status`. [N] Não foi verificado que o `submit` com `state: 'status'` de um Ator real (Claude Code, Codex, OpenCode) deixa a tentativa viva.
+- **[proposta] (para o dono):**
+  - `off` não faz nada; `log` só grava o sinal (as ferramentas ficam ocultas); `warn` chama o Diretor; `redirect_actor` só existe no modo `redirect`;
+  - `next_turn` só vale a partir do turno seguinte ao da fila; com `relaunch` ou modo `redirect`, o aviso vira redirecionamento;
+  - a cota de chamadas é `max(1, floor(director_budget x passos))` (0 desliga as chamadas);
+  - `max_warnings_per_demand` conta por demanda (aviso, redirecionamento, contrato, pedido de situação); o `broadcast` é limitado por peça;
+  - o roteiro é conferido por mudança de contrato no máximo a cada 2 s e sempre em `demand.transitioned`;
+  - o rótulo `[Director supervision, ...]` e os tokens do fake-agent (`#actor-supervise`).
 
 ### P15. `ask_director` (N308, opção 2)
 

@@ -109,7 +109,7 @@ async function rig(patch: Partial<SupervisionSettings> = {}): Promise<Rig> {
   const recorded: Recorded[] = [];
   const situations: SituationSink = {
     record: (type, payload) => {
-      recorded.push({ type, payload: payload as unknown as Record<string, unknown> });
+      recorded.push({ type, payload: payload });
     },
   };
   const submitted: string[] = [];
@@ -147,14 +147,21 @@ async function rig(patch: Partial<SupervisionSettings> = {}): Promise<Rig> {
         directors: {
           ensure: () => Promise.resolve(),
           scenarioOf: (id: string) => (id === 'director-1' ? 's1' : undefined),
-        } as never,
+        },
         dispatcher: {
           submit: (input: { text: string }) => {
             submitted.push(input.text);
             return Promise.resolve();
           },
         } as never,
-        hub: { follow: () => (async function* () {})() } as never,
+        hub: {
+          follow: () =>
+            ({
+              [Symbol.asyncIterator]: () => ({
+                next: () => Promise.resolve({ done: true as const, value: undefined }),
+              }),
+            }) as never,
+        },
         cancelAttempt: (id: string) => {
           cancelled.push(id);
           return Promise.resolve();
@@ -224,7 +231,10 @@ describe('the tools of the Director', () => {
     const r = await rig();
     failure(await r.tool('warn_actor', { attemptId: 'p1/a/1', text: 'x' }), 'not_ready');
     await r.bind();
-    failure(await r.tool('warn_actor', { attemptId: 'p1/a/1', text: 'x' }, 'someone'), 'no_scenario');
+    failure(
+      await r.tool('warn_actor', { attemptId: 'p1/a/1', text: 'x' }, 'someone'),
+      'no_scenario',
+    );
     r.settings = { ...r.settings, mode: 'log' };
     failure(await r.tool('warn_actor', { attemptId: 'p1/a/1', text: 'x' }), 'supervision_off');
     await r.service.unbind();
@@ -253,7 +263,9 @@ describe('the tools of the Director', () => {
     failure(await r.tool('warn_actor', { attemptId: 'p9/z/1', text: 'x' }), 'not_found');
     failure(await r.tool('warn_actor', { attemptId: 'nope', text: 'x' }), 'not_found');
     failure(await r.tool('warn_actor', { attemptId: 'p1/old/1', text: 'x' }), 'not_running');
-    expect(await r.tool('warn_actor', { attemptId: 'p1/a/1', text: 'one' })).toMatchObject({ ok: true });
+    expect(await r.tool('warn_actor', { attemptId: 'p1/a/1', text: 'one' })).toMatchObject({
+      ok: true,
+    });
     failure(await r.tool('warn_actor', { attemptId: 'p1/a/1', text: 'two' }), 'limit_reached');
     expect(r.of('supervision.limit_reached')).toMatchObject([
       { limit: 'max_warnings_per_demand', demandId: 'a', max: 1 },
@@ -278,7 +290,9 @@ describe('the tools of the Director', () => {
 
     const r = await rig({ mode: 'redirect' });
     await r.bind();
-    expect(await r.tool('redirect_actor', { attemptId: 'p1/a/1', text: 'start over' })).toMatchObject({
+    expect(
+      await r.tool('redirect_actor', { attemptId: 'p1/a/1', text: 'start over' }),
+    ).toMatchObject({
       ok: true,
       via: 'relaunch',
     });
@@ -323,7 +337,9 @@ describe('the tools of the Director', () => {
     await r.bind();
     await edit(r, `${WORKTREE}/a.txt`); // the attempt is discovered, nothing outside the demand
     await r.service.handle(
-      r.event('attempt.submitted', { output: { result: { state: 'status', summary: 'half done' } } }),
+      r.event('attempt.submitted', {
+        output: { result: { state: 'status', summary: 'half done' } },
+      }),
     );
     expect(r.submitted).toHaveLength(1);
     expect(r.submitted[0]?.startsWith('#ot-status')).toBe(true);
@@ -338,14 +354,19 @@ describe('the tools of the Director', () => {
     await r.bind();
     await edit(r, `${WORKTREE}/a.txt`, 'p1/a/1');
     await edit(r, `${WORKTREE}/b.txt`, 'p1/b/1');
-    expect(await r.tool('broadcast', { text: 'all hands' })).toMatchObject({ ok: true, recipients: 2 });
+    expect(await r.tool('broadcast', { text: 'all hands' })).toMatchObject({
+      ok: true,
+      recipients: 2,
+    });
     expect(r.of('supervision.broadcast')).toMatchObject([
       { recipients: 2, attemptIds: ['p1/a/1', 'p1/b/1'] },
     ]);
     const [fromA] = await r.service.noticesFor(A);
     expect(fromA).toContain('broadcast to every Actor of the play');
     failure(await r.tool('broadcast', { text: 'again' }), 'limit_reached');
-    expect(r.of('supervision.limit_reached')).toMatchObject([{ limit: 'broadcast', demandId: null }]);
+    expect(r.of('supervision.limit_reached')).toMatchObject([
+      { limit: 'broadcast', demandId: null },
+    ]);
     failure(await r.tool('broadcast', { text: 'x', play: 'p7' }), 'not_found');
     r.settings = { ...r.settings, broadcast: 'off' };
     failure(await r.tool('broadcast', { text: 'x' }), 'broadcast_off');
@@ -363,7 +384,12 @@ describe('the signals', () => {
     expect(r.submitted).toHaveLength(1);
     expect(r.submitted[0]).toContain('#ot-signal: outside_demand');
     expect(r.of('supervision.signal')).toMatchObject([
-      { signal: 'outside_demand', demandId: 'a', outcome: 'director_called', attemptIds: ['p1/a/1'] },
+      {
+        signal: 'outside_demand',
+        demandId: 'a',
+        outcome: 'director_called',
+        attemptIds: ['p1/a/1'],
+      },
     ]);
     await r.service.unbind();
   });
@@ -432,8 +458,14 @@ describe('the signals', () => {
     await r.bind();
     await edit(r, `${WORKTREE}/b.txt`, 'p1/b/1');
     await r.tool('warn_actor', { attemptId: 'p1/b/1', text: 'late' });
-    await r.service.handle({ ...r.event('play.transitioned', { to: 'DONE' }), attemptId: undefined });
-    expect(r.of('supervision.warning').at(-1)).toMatchObject({ delivered: false, reason: 'attempt_ended' });
+    await r.service.handle({
+      ...r.event('play.transitioned', { to: 'DONE' }),
+      attemptId: undefined,
+    });
+    expect(r.of('supervision.warning').at(-1)).toMatchObject({
+      delivered: false,
+      reason: 'attempt_ended',
+    });
     await r.service.unbind();
   });
 });

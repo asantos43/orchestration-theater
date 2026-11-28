@@ -104,7 +104,12 @@ describe('parseConfig', () => {
     expect(parseConfig('').supervision).toEqual({
       mode: 'warn',
       delivery: 'tool_reply',
-      triggers: { outside_demand: 'on', contract_changed: 'on', test_loop: 3, budget_fraction: 0.8 },
+      triggers: {
+        outside_demand: 'on',
+        contract_changed: 'on',
+        test_loop: 3,
+        budget_fraction: 0.8,
+      },
       max_warnings_per_demand: 3,
       director_budget: 0.1,
       broadcast: 'on',
@@ -127,7 +132,12 @@ describe('parseConfig', () => {
     expect(other).toMatchObject({
       mode: 'redirect',
       delivery: 'next_turn',
-      triggers: { outside_demand: 'off', contract_changed: 'on', test_loop: 'off', budget_fraction: 0.5 },
+      triggers: {
+        outside_demand: 'off',
+        contract_changed: 'on',
+        test_loop: 'off',
+        budget_fraction: 0.5,
+      },
       max_warnings_per_demand: 5,
       director_budget: 0.25,
       broadcast: 'off',

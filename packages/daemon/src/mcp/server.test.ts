@@ -313,7 +313,8 @@ describe('the token and the role', () => {
 });
 
 describe('the notices of the Director (supervision, P14)', () => {
-  const read = (): ToolHandlers => new ToolHandlers().register('read_blackboard', () => ({ value: 1 }));
+  const read = (): ToolHandlers =>
+    new ToolHandlers().register('read_blackboard', () => ({ value: 1 }));
 
   it('adds the notices as text blocks to the reply of a tool of an Actor', async () => {
     const seen: unknown[] = [];
@@ -324,7 +325,9 @@ describe('the notices of the Director (supervision, P14)', () => {
         return Promise.resolve(['[Director supervision, warning] stay inside']);
       },
     });
-    const { result } = await callTool(h.grant('actor'), h.server.url, 'read_blackboard', { key: 'k' });
+    const { result } = await callTool(h.grant('actor'), h.server.url, 'read_blackboard', {
+      key: 'k',
+    });
     expect(result?.structuredContent).toEqual({ value: 1 });
     expect(result?.content.at(-1)).toEqual({
       type: 'text',
@@ -357,7 +360,9 @@ describe('the notices of the Director (supervision, P14)', () => {
       handlers: read(),
       notices: () => Promise.reject(new Error('store closed')),
     });
-    const { result } = await callTool(h.grant('actor'), h.server.url, 'read_blackboard', { key: 'k' });
+    const { result } = await callTool(h.grant('actor'), h.server.url, 'read_blackboard', {
+      key: 'k',
+    });
     expect(result?.isError).not.toBe(true);
     expect(result?.structuredContent).toEqual({ value: 1 });
     expect(result?.content).toHaveLength(1);

@@ -344,8 +344,7 @@ async function playActor(host: RolePlayHost, demandId: string): Promise<void> {
       return;
     }
   }
-  const notes =
-    (await playNotes(host, demandId)) + (await playSupervised(host, demandId, attempt));
+  const notes = (await playNotes(host, demandId)) + (await playSupervised(host, demandId, attempt));
   if (host.signal.aborted) return;
   // An attempt that takes over earlier work (N82, N84) says what the prompt gave it.
   const carried = host.text.includes('## Work of the earlier attempt')
@@ -425,11 +424,12 @@ async function playSupervised(
   }
   const edits = Math.max(1, Number(token.value) || 1);
   const waitMs = Number(process.env.FAKE_AGENT_SUPERVISE_MS) || 4000;
-  for (let index = 1; index <= edits && !host.signal.aborted; index += 1) {
+  const aborted = (): boolean => host.signal.aborted;
+  for (let index = 1; index <= edits && !aborted(); index += 1) {
     const file = `outside-${demandId}-${String(index)}.txt`;
     await host.ask({ kind: 'edit', title: `Write ${file}`, locations: [join(host.cwd, file)] });
     const until = Date.now() + waitMs;
-    while (Date.now() < until && !host.signal.aborted) {
+    while (Date.now() < until && !aborted()) {
       let text = '';
       try {
         // a tool that always answers (with an error: there is no such decision), for its reply
@@ -665,7 +665,9 @@ async function playSupervise(host: RolePlayHost): Promise<void> {
       ? `start over and stay inside the demand (${signal})`
       : `stay inside the demand (${signal})`,
   });
-  await host.say(`${redirect ? 'redirect_actor' : 'warn_actor'}: ${reply.isError ? 'refused' : 'done'} ${reply.text}`);
+  await host.say(
+    `${redirect ? 'redirect_actor' : 'warn_actor'}: ${reply.isError ? 'refused' : 'done'} ${reply.text}`,
+  );
 }
 
 async function playClarify(host: RolePlayHost): Promise<void> {
